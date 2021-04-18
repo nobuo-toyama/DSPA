@@ -1,0 +1,531 @@
+---
+title: "02 Managing Data in R"
+author: "nobuo"
+date: "2021/4/18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+**Managing Data in R
+
+In this chapter, we will discuss strategies to `import` data and `export` results. Also, we are going to learn the basic tricks we need to know about processing different types of data. Specifically, we will illustrate common `R` data structures and strategies for loading (ingesting) and saving (regurgitating) data. In addition, we will (1) present some basic statistics, e.g., for measuring central tendency (mean, median, mode) or dispersion (variance, quartiles, range), (2) explore simple plots, (3) demonstrate the uniform and normal distributions, (4) contrast numerical and categorical types of variables, (5) present strategies for handling incomplete (missing) data, and (6) show the need for cohort-rebalancing when comparing imbalanced groups of subjects, cases or units.	
+
+# Saving and Loading R Data Structures
+
+Let's start by extracting the Edgar Anderson's Iris Data from the package `datasets`. The [iris dataset](https://en.wikipedia.org/wiki/Iris_flower_data_set) quantifies morphologic shape variations of 50 Iris flowers of three related genera - *Iris setosa*, *Iris virginica* and *Iris versicolor*. Four shape features were measured from each sample - length and the width of the sepals and petals (in centimeters). These data were used by [Ronald Fisher](https://en.wikipedia.org/wiki/Ronald_Fisher) in his [1936 linear discriminant analysis paper](https://doi.org/10.1111%2Fj.1469-1809.1936.tb02137.x).	
+
+```{r}
+data(iris)	
+class(iris)	
+```
+
+# Importing and Saving Data from CSV Files
+
+Importing the data from `"CaseStudy07_WorldDrinkingWater_Data.csv"` from [these case-studies](https://umich.instructure.com/courses/38100/files/folder/Case_Studies) and saving it into the R dataset named "water". The variables in the dataset are as follows:
+
+* **Time**: Years (1990, 1995, 2000, 2005, 2010, 2012)	
+* **Demographic**: Country (across the world)	
+* **Residence Area Type**: Urban, rural, or total	
+* **WHO Region**	
+* **Population using improved drinking-water sources**: The percentage of the population using an improved drinking water source.	
+* **Population using improved sanitation facilities**: The percentage of the population using an improved sanitation facility.	
+ 	
+Generally, the separator of a CSV file is comma. By default, we have option`sep=", "` in the command `read.csv()`. Also, we can use `colnames()` to rename the column variables.	
+
+```{r}
+water <- read.csv('https://umich.instructure.com/files/399172/download?download_frd=1',
+                  header=T)	
+water[1:3, ]	
+colnames(water)<-c("year", "region", "country", "residence_area", "improved_water", "sanitation_facilities")	
+water[1:3, ]	
+which.max(water$year); 	
+# rowMeans(water[,5:6])	
+mean(water[,6], trim=0.08, na.rm=T)	
+```
+This code loads CSV files that already include a header line listing the names of the variables. If we don't have a header in the dataset, we can use the `header = FALSE` option to fix it. R will assign default names to the column variables of the dataset.	
+```{r}
+Simulation <- read.csv("https://umich.instructure.com/files/354289/download?download_frd=1",
+                       header = FALSE)	
+Simulation[1:3, ]	
+```
+To save a data frame to CSV files, we could use the `write.csv()` function. The option `file = "a/local/file/path"` allow us edit the saved file path.	
+```{r}
+write.csv(water, file = "water.csv")
+```
+
+# Exploring the Structure of Data
+
+We can use the command `str()` to explore the structure of a dataset.	
+```{r}
+str(water)
+```
+We can see that this `World Drinking Water` dataset has 3331 observations and 6 variables. The output also includes the class of each variable and first few elements in the variable. 	
+# Exploring Numeric Variables
+
+Summary statistics for numeric variables in the dataset could be accessed by using the command `summary()`. 	
+```{r}
+summary(water$year)	
+summary(water[c("improved_water", "sanitation_facilities")])	
+plot(density(water$improved_water,na.rm = T))  
+# no need to be continuous, we can still get intuition about the variable distribution	
+```
+The six summary statistics and `NA`'s (missing data) are reported in the output.	
+
+# Measuring the Central Tendency - mean, median, mode
+
+**Mean** and **median** are two frequent measurements of the central tendency. Mean is "the sum of all values divided by the number of values". Median is the number in the middle of an ordered list of values. In R, `mean()` and `median()` functions can provide us with these two measurements.	
+```{r}
+vec1<-c(40, 56, 99)	
+mean(vec1)	
+mean(c(40, 56, 99))	
+median(vec1)	
+median(c(40, 56, 99))	
+
+library("psych")	
+geometric.mean(vec1, na.rm=TRUE)
+```
+The **mode** is the value that occurs most often in the dataset. It is often used in categorical data, where mean and median are inappropriate measurements.	
+
+We can have one or more modes. In the [water dataset](https://umich.instructure.com/files/399172/download?download_frd=1), we have "Europe" and "Urban" as the modes for region and residence area respectively. These two variables are unimodal, which has a single mode. For the year variable, we have two modes 2000 and 2005. Both of the categories have 570 counts. The year variable is an example of a bimodal. We also have multimodal that has two or more modes in the data.	
+
+Mode is one of the measures for the central tendency. The best way to use it is to comparing the counts of the mode to other values. This help us to judge whether one or several categories dominates all others in the data. After that, we are able to analyze the story behind these common ones.	
+
+In numeric datasets, we could think mode as the highest bin in the histogram, since it is unlikely to have many repeated measurements for continuous variables. In this way, we can also examine if the numeric data is multimodal.	
+
+[More information about measures of centrality is available here](https://wiki.socr.umich.edu/index.php/AP_Statistics_Curriculum_2007_EDA_Center). 	
+
+# Measuring Spread - quartiles and the five-number summary	
+
+The five-number summary describes the spread of a dataset. They are:	
+ 	
+* Minimum (`Min.`), representing the smallest value in the data	
+* First quantile/Q1 (`1st Qu.`), representing the $25^{th}$ percentile, which splits off the lowest 25% of data from the highest 75%	
+* Median/Q2 (`Median`), representing the $50^{th}$ percentile, which splits off the lowest 50% of data from the top 50%	
+* Third quantile/Q3 (`3rd Qu.`), representing the $75^{th}$ percentile, which splits off the lowest 75% of data from the top 25%	
+* Maximum (`Max.`), representing the largest value in the data.	
+ 	
+`Min` and `Max` can be obtained by using `min()` and `max()` respectively.
+
+The difference between maximum and minimum is known as range. In R, `range()` function give us both the minimum and maximum. An combination of `range()` and `diff()` could do the trick of getting the actual range value.	
+```{r}
+range(water$year)	
+diff(range(water$year))
+```
+Q1 and Q3 are the 25th and 75th percentiles of the data. Median (Q2) is right in the middle of Q1 and Q3. The difference between Q3 and Q1 is called the interquartile range (IQR). Within the IQR lies half of our data that has no extreme values.	
+
+In R, we use the `IQR()` to calculate the interquartile range. If we use `IQR()` for a data with `NA`'s, the `NA`'s are ignored by the function while using the option `na.rm=TRUE`.	
+```{r}
+IQR(water$year)	
+summary(water$improved_water)	
+IQR(water$improved_water, na.rm = T)
+```
+Just like the command `summary()` that we have talked about earlier in this chapter. A similar function `quantile()` could be used to obtain the five-number summary.	
+```{r}
+quantile(water$improved_water, na.rm = T)
+```
+We can also calculate specific percentiles in the data. For example, if we want the 20th and 60th percentiles, we can do the following.	
+```{r}
+quantile(water$improved_water, probs = c(0.2, 0.6), na.rm = T)	
+```
+When we include the `seq()` function, generating percentiles of evenly-spaced values is available.	
+```{r}
+quantile(water$improved_water, seq(from=0, to=1, by=0.2), na.rm = T)
+```
+Let's re-examine the five-number summary for the `improved_water` variable. When we ignore the `NA`'s, the difference between minimum and Q1 is 74 while the difference between Q3 and maximum is only 1. The interquartile range is 22%. Combining these facts, the first quarter is more widely spread than the middle 50 percent of values. The last quarter is the most condensed one that has only two percentages 99% and 100%. Also, we can notice that the mean is smaller than the median. The mean is more sensitive to the extreme values than the median. We have a very small minimum that makes the range of first quantile very large. This extreme value impacts the mean less than the median. 	
+
+# Visualizing Numeric Variables - boxplots
+
+We can visualize the five-number summary by a boxplot (box-and-whiskers plot). With the `boxplot()` function we can manage the title (`main=""`) and labels for x (`xlab=""`) and y (`ylab=""`) axis.	
+```{r}
+boxplot(water$improved_water, 
+        main="Boxplot for Percent improved_water", ylab="Percentage")	
+```
+ In the boxplot we have five horizontal lines each represents the corresponding value in the five-number summary. The box in the middle represents the middle 50 percent of values. The bold line in the box is the median. Mean value is not illustrated on the graph.	
+
+ Boxplots only allow the two ends to extend to a minimum or maximum of 1.5 times the IQR. Therefore, any value that falls outside of the $3\times IQR$ range will be represented as circles or dots. They are considered outliers. We can see that there are a lot of outliers with small values on the low ends of the graph.	
+ 
+# Visualizing Numeric Variables - histograms
+
+Histogram is another way to show the spread of a numeric variable, see [Chapter 3](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/03_DataVisualization.html) for additional information). It uses predetermined number of bins as containers for values to divide the original data. The height of the bins indicates frequency. 	
+
+```{r}
+hist(water$improved_water, 
+     main = "Histogram of  Percent improved_water", xlab="Percentage")	
+hist(water$sanitation_facilities, 
+     main = "Histogram of  Percent sanitation_facilities", xlab = "Percentage")	
+```
+We could see that the shape of two graphs are somewhat similar. They are both left skewed patterns ($mean \lt median$). Other common skew patterns are shown in the following picture.	
+```{r}
+N <- 10000	
+x <- rnbinom(N, 10, .5)	
+hist(x, 	
+ xlim=c(min(x), max(x)), probability=T, nclass=max(x)-min(x)+1, 	
+   col='lightblue', xlab=' ', ylab=' ', axes=F, 	
+   main='Right Skewed')	
+lines(density(x, bw=1), col='red', lwd=3)	
+	
+N <- 10000	
+x <- rnorm(N, 0, 1)	
+hist(x, probability=T, 	
+   col='lightblue', xlab=' ', ylab=' ', axes=F, 	
+   main='Symmetric')	
+lines(density(x, bw=0.4), col='red', lwd=3)	
+```
+These plots are generated by `R` and the code is provided in the appendix.	
+
+You can learn more about [Probability Distributions in the SOCR EBook](https://wiki.socr.umich.edu/index.php/EBook#Chapter_IV:_Probability_Distributions) and see the density plots of over 80 different probability distributions using the [SOCR Java Distribution Calculators](https://socr.umich.edu/html/dist/) or the [Distributome HTML5 Distribution Calculators](http://www.distributome.org/V3/calc/index.html).	
+
+For each probability distribution defined in R, there are four functions that provide the density (e.g., `dnorm`), the cumulative probability (e.g., `pnorm`), the inverse cumulative distribution (quantile) function (e.g., `qnorm`), and the random sampling (simulation) function (e.g., `rnorm`). The plots below show the *standard normal* density, cumulative probability and the quantile functions. As the density is very small outside of the interval $(-4,4)$, the plots are restricted to this domain.
+
+```{r}
+z<-seq(-4, 4, 0.1)  # points from -4 to 4 in 0.1 steps	
+q<-seq(0.001, 0.999, 0.001)  # probaility quantile values from 0.1% to 99.9% in 0.1% steps	
+	
+dStandardNormal <- data.frame(Z=z, 
+                              Density=dnorm(z, mean=0, sd=1), 
+                              Distribution=pnorm(z, mean=0, sd=1))  	
+	
+qStandardNormal <- data.frame(Q=q,
+                              Quantile=qnorm(q, mean=0, sd=1))  	
+head(dStandardNormal)	
+	
+plot(z, dStandardNormal$Density,
+     main="Normal Density Curve", type = "l", 
+     xlab = "critical values", ylab="density", lwd=4, col="blue")	
+polygon(z, dStandardNormal$Density, col="red", border="blue")	
+	
+plot(z, dStandardNormal$Distribution, 
+     main="Normal Distribution", type = "l",
+     xlab = "critical values", ylab="Cumulative Distribution", lwd=4, col="blue")	
+	
+plot(q, qStandardNormal$Quantile,
+     main="Normal Quantile Function (Inverse CDF)", type = "l",
+     xlab = "p-values", ylab="Critical Values", lwd=4, col="blue")
+```
+
+# Understanding Numeric Data - uniform and normal distributions
+
+If the data follows a *uniform distribution*, then all values are equally likely to occur. The histogram for a uniformly distributed data would have equal heights for each bin like the following graph. 	
+
+```{r}
+x<-runif(1000, 1, 50)	
+hist(x, col='lightblue', main="Uniform Distribution", probability = T,
+     xlab="", ylab="Density", axes=F)	
+abline(h=0.02, col='red', lwd=3)
+```
+
+Often, but not always, real world processes may appear as normally distributed data. A *normal distribution* would have a higher frequency for middle values and lower frequency for more extreme values. It has a symmetric and bell-curved shape just like the following diagram generated by R. Many parametric-based statistical approaches assume normality of the data. In cases where this parametric assumption is violated, variable transformations or distribution-free tests may be more appropriate.
+
+```{r}
+x <- rnorm(N, 0, 1)	
+hist(x, probability=T, 	
+   col='lightblue', xlab=' ', ylab=' ', axes=F, 	
+   main='Normal Distribution')	
+lines(density(x, bw=0.4), col='red', lwd=3)	
+```
+
+# Measuring Spread - variance and standard deviation
+
+Distribution is a great way to characterize data using only a few parameters. For example, normal distribution can be defined by only two parameters center and spread or statistically mean and standard deviation.	
+
+The way to get mean value is to divide the sum of the data values by the number of values. So, we have the following formula.	
+$$Mean(X)=\mu=\frac{1}{n}\sum^{n}_{i=1} x_i$$
+The standard deviation is the square root of the variance. Variance is the average sum of square. 	
+$$Var(X)=\sigma^2=\frac{1}{n-1}\sum^{n}_{i=1} (x_i-\mu)^2$$	
+$$StdDev(X)=\sigma=\sqrt{Var(X)}$$
+Since the water dataset is non-normal, we use a new dataset about the demographics of baseball players to illustrate normal distribution properties. The `"01_data.txt"` in our class file has following variables:
+
+* Name	
+* Team	
+* Position	
+* Height	
+* Weight	
+* Age
+
+We check the histogram for approximate normality first.	
+
+```{r}
+baseball<-read.table("https://umich.instructure.com/files/330381/download?download_frd=1",
+                     header=T)
+write.csv(baseball, "baseball.csv")
+hist(baseball$Weight, main = "Histogram for Baseball Player's Weight", xlab="weight")	
+hist(baseball$Height, main = "Histogram for Baseball Player's Height", xlab="height")	
+```
+
+This plot allows us to visually inspect the normality of the players height and weight. We could also obtain mean and standard deviation of the weight and height variables.	
+
+```{r}
+mean(baseball$Weight)	
+mean(baseball$Height)	
+var(baseball$Weight)	
+sd(baseball$Weight)	
+var(baseball$Height)	
+sd(baseball$Height)	
+```
+
+Larger standard deviation, or variance, suggest the data is more spread out from the mean. Therefore, the weight variable is more spread than the height variable.	
+
+Given the first two moments (mean and standard deviation), we can easily estimate how extreme a specific value is. Assuming we have a normal distribution, the values follow a $68-95-99.7$ rule. This means 68% of the data lies within the interval $[\mu-\sigma, \mu+\sigma]$;95% of the data lies within the interval $[\mu-2*\sigma, \mu+2*\sigma]$ and 99.7% of the data lies within the interval $[\mu-3*\sigma, \mu+3*\sigma]$. The following graph plotted by R illustrates the $68-95-99.7$ rule.	
+
+```{r}
+x <- rnorm(N, 0, 1)	
+hist(x, probability=T, 	
+   col='lightblue', xlab=' ', ylab=' ', axes = F, 	
+   main='68-95-99.7 Rule')	
+lines(density(x, bw=0.4), col='red', lwd=3)	
+axis(1, at=c(-3, -2, -1, 0, 1, 2, 3), labels = expression(mu-3*sigma, mu-2*sigma, mu-sigma, mu, mu+sigma, mu+2*sigma, mu+3*sigma))	
+abline(v=-1, lwd=3, lty=2)	
+abline(v=1, lwd=3, lty=2)	
+abline(v=-2, lwd=3, lty=2)	
+abline(v=2, lwd=3, lty=2)	
+abline(v=-3, lwd=3, lty=2)	
+abline(v=3, lwd=3, lty=2)	
+text(0, 0.2, "68%")	
+segments(-1, 0.2, -0.3, 0.2, col = 'red', lwd=2)	
+segments(1, 0.2, 0.3, 0.2, col = 'red', lwd=2)	
+text(0, 0.15, "95%")	
+segments(-2, 0.15, -0.3, 0.15, col = 'red', lwd=2)	
+segments(2, 0.15, 0.3, 0.15, col = 'red', lwd=2)	
+text(0, 0.1, "99.7%")	
+segments(-3, 0.1, -0.3, 0.1, col = 'red', lwd=2)	
+segments(3, 0.1, 0.3, 0.1, col = 'red', lwd=2)
+```
+
+Applying the 68-95-99.7 rule to our baseball weight variable, we know that 68% of our players weighted between 180.7168 pounds and 222.7164 pounds; 95% of the players weighted between 159.7170 pounds and 243.7162 pounds; And 99.7% of the players weighted between 138.7172 pounds and 264.7160 pounds.	
+
+# Exploring Categorical Variables
+
+Back to our water dataset, we can treat the year variable as categorical rather than a numeric variable. Since the year variable only have six distinctive values, it is rational to treat it as a categorical variable where each value is a category that could apply to multiple WHO regions. Moreover, region and residence area variables are also categorical.	
+Different from numeric variables, the categorical variables are better examined by tables rather than summary statistics. One-way table represents a single categorical variable. It gives us the counts of different categories. `table()` function can create one-way tables for our water dataset:	
+
+```{r}
+# water <- read.csv('https://umich.instructure.com/files/399172/download?download_frd=1', header=T)	
+	
+# colnames(water)<-c("year", "region", "country", "residence_area", "improved_water", "sanitation_facilities")	
+	
+table(water$year)	
+table(water$region)	
+table(water$residence_area)	
+```
+
+Given that we have a total of 3331 observations, the WHO region table tells us that about 27% (910/3331) of the areas examined in the study are in Europe. 	
+
+R can directly give us table proportions when using the `prop.table()` function. The proportion values can be transformed into percentage form and edit number of digits.	
+
+```{r}
+year_table<-table(water$year)	
+prop.table(year_table)	
+year_pct<-prop.table(year_table)*100	
+round(year_pct, digits=1)	
+```
+
+# Exploring Relationships Between Variables
+
+So far the methods and statistics that we have go through are at univariate level. Sometimes we want to examine the relationship between two or multiple variables. For example, did the percentage of population that uses improved drinking-water sources increase over time? To address these problems we need to look at bivariate or multivariate relationships.	
+
+**Visualizing Relationships - scatterplots**
+
+Let's look at bivariate case first. A scatterplot is a good way to visualize bivariate relationships. We have x axis and y axis each representing one of the variables. Each observation is illustrated on the graph by a dot. If the graph shows a clear pattern rather a group of messy dots or a horizontal line, the two variables may correlated with each other.	
+
+In R we can use `plot()` function to create scatterplots. We have to define the variables for x-axis and y-axis. The labels in the graph are editable.	
+
+```{r}
+plot.window(c(400,1000), c(500,1000))	
+plot(x=water$year, y=water$improved_water, 	
+     main= "Scatterplot of Year vs. Improved_water", 	
+     xlab= "Year", 	
+     ylab= "Percent of Population Using Improved Water")
+```
+
+We can see from the scatterplot that there is an increasing pattern. In later years, the percentages are more centered around one hundred. Especially, in 2012, not of the regions had less than 20% of people using improved water sources while there used to be some regions that have such low percentages in the early years. 	
+
+**Examining Relationships - two-way cross-tabulations**
+
+Scatterplot is a useful tool to examine the relationship between two variables where at least one of them is numeric. When both variables are nominal, two-way cross-tabulation would be a better choice (also named as crosstab or contingency table). 	
+
+The function `CrossTable()` is available in R under the package `gmodels`. Let's install it first.	
+
+```{r}
+#install.packages("gmodels", repos = "http://cran.us.r-project.org")	
+library(gmodels)
+```
+
+We are interested in investigating the relationship between WHO region and residence area type in the water study. We might want to know if there is a difference in terms of residence area type between the African WHO region and all other WHO regions.	
+
+To address this problem we need to create an indicator variable for African WHO region first.	
+
+```{r}
+water$africa <- water$region=="Africa"
+```
+
+Let's revisit the `table()` function to see how many WHO regions are in Africa.	
+
+```{r}
+table(water$africa)
+```
+
+Now, let's create a two-way cross-tabulation using `CrossTable()`.
+
+```{r}
+CrossTable(x=water$residence_area, y=water$africa)
+```
+
+Each cell in the table contains five numbers. The first one N give us the count that falls into its corresponding category. The Chi-square contribution provide us information about the cell's contribution in the Pearson's Chi-squared test for independence between two variables. This number measures the probability that the differences in cell counts are due to chance alone. 	
+
+ The number of most interest is the `N/ Col Total` or the counts over column total. In this case, these numbers represent the distribution for residence area type among African regions and the regions in the rest of the world. We can see the numbers are very close between African and non-African regions for each type of residence area. Therefore, we can conclude that African WHO regions do not have a difference in terms of residence area types compared to the rest of the world.	
+
+# Missing Data
+
+In the previous sections, we simply ignored the incomplete observations in our water dataset (`na.rm = TRUE`). Is this an appropriate strategy to handle incomplete data? Could the missingness pattern of those incomplete observations be important? It is possible that the arrangement of the missing observations may reflect an important factor that was not accounted for in our statistics or our models. 	
+
+**Missing Completely at Random (MCAR)** is an assumption about the probability of missingness being equal for all cases; **Missing at Random (MAR)** assumes the probability of missingness has a known but random mechanism (e.g., different rates for different groups); **Missing not at Random (MNAR)** suggest a missingness mechanism linked to the values of predictors and/or response, e.g., some participants may drop out of a drug trial when they have side-effects.	
+
+There are a number of strategies to impute missing data. The [expectation maximization (EM) algorithm provides one example for handling missing data](https://doi.org/10.1016/0167-9473(93)E0056-A). The [SOCR EM tutorial, activity, and documentations](http://wiki.stat.ucla.edu/socr/index.php/SOCR_EduMaterials_Activities_2D_PointSegmentation_EM_Mixture) provides the theory, applications and practice for effective (multidimensional) EM parameter estimation.	
+
+The simplest way to handle incomplete data is to substitute each missing value with its (feature or column) average. When the missingness proportion is small, the effect of substituting the means for the missing values will have little effect on the mean, variance, or other important statistics of the data. Also, this will preserve those non-missing values of the same observation or row.	
+
+```{r}
+m1 <- mean(water$improved_water, na.rm = T)	
+m2 <- mean(water$sanitation_facilities, na.rm = T)	
+water_imp <- water	
+for(i in 1:3331){	
+  if(is.na(water_imp$improved_water[i])){	
+    water_imp$improved_water[i]=m1	
+  }	
+  if(is.na(water_imp$sanitation_facilities[i])){	
+    water_imp$sanitation_facilities[i]=m2	
+  }	
+}	
+summary(water_imp)
+```
+
+A more sophisticated way of resolving missing data is to use a model (e.g., linear regression) to predict the missing feature and impute its missing values. This is called the `predictive mean matching approach`. This method is good for data with multivariate normality. However, a disadvantage of it is that it can only predict one value at a time, which is very time consuming. Also, the multivariate normality assumption might not be satisfied and there may be important multivariate relations that are not accounted for. We are using the `mi` package for the predictive mean matching procedure.	
+
+Let's install the `mi` package first.
+
+```{r}
+# install.packages("mi")	
+library(mi)	
+```
+
+Then we need to get the missing information matrix. We are using the imputation method `pmm`(predictive mean matching approach) for both missing variables. 	
+
+```{r}
+mdf <- missing_data.frame(water)	
+head(mdf)	
+show(mdf)	
+mdf <- change(mdf, y="improved_water", what = "imputation_method", to="pmm")	
+mdf <- change(mdf, y="sanitation_facilities", what = "imputation_method", to="pmm")
+```
+
+* *Notes*:
+
++ Converting the input `data.frame` to a `missing_data.frame` allows us to include in the DF enhanced metadata about each variable, which is essential for the subsequent modeling, interpretation and imputation of the initial missing data.	
++ `show()` displays all missing variables and their class-labels (e.g., continuous), along with meta-data. The `missing_data.frame` constructor suggests the most appropriate classes for each missing variable, however, the user often needs to correct, modify or change these meta-data, using `change()`.	
++ Use the `change()` function to change/correct many meta-data in the constructed `missing_data.frame` object which are incorrect when using `show(mfd)`.	
++ To get a sense of the raw data, look at the `summary`, `image`, or `hist` of the missing_data.frame.	
++ The [mi vignettes](https://cran.r-project.org/web/packages/mi/vignettes/mi_vignette.pdf) provide many useful examples of handling missing data.	
+
+We can perform the initial imputation. Here we imputed 3 times, which will create 3 different datasets with slightly different imputed values.	
+
+```{r}
+imputations <- mi(mdf, n.iter=10, n.chains=3, verbose=T)
+```
+
+Next, we need to extract several multiply imputed `data.frames` from `imputations` object. Finally, we can compare the summary stats between the original dataset and the imputed datasets.	
+
+```{r}
+data.frames <- complete(imputations, 3)	
+summary(water)	
+summary(data.frames[[1]])	
+mySummary <- lapply(data.frames, summary)	
+mySummary$`chain:1`   # report just hte summary of the first chain.	
+```
+
+This is just a brief introduction for handling incomplete datasets. In later chapters, we will discuss more about missing data with different imputation methods and how to evaluate the complete imputed results.	
+
+## Simulate some real multivariate data
+
+Suppose we would like to generate a synthetic dataset:
+$$sim\_data=\{y, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10\}.$$
+Then, we can introduce a method that takes a dataset and a desired proportion of missingness and wipes out the same proportion of the data, i.e., introduces random patterns of missingness. Note that there are already `R` functions that automate the introduction of missingness, e.g., `missForest::prodNA()`, however writing such method from scratch is also useful.	
+
+```{r}
+set.seed(123)	
+# create MCAR missing-data generator	
+create.missing <- function (data, pct.mis = 10) 	
+{	
+    n <- nrow(data)	
+    J <- ncol(data)	
+    if (length(pct.mis) == 1) {	
+        if(pct.mis>= 0 & pct.mis <=100) {	
+            n.mis <- rep((n * (pct.mis/100)), J)	
+        }	
+        else {	
+          warning("Percent missing values should be an integer between 0 and 100! Exiting"); break	
+        }	
+      }	
+    else {	
+        if (length(pct.mis) < J) 	
+            stop("The length of the missing-vector is not equal to the number of columns in the data! Exiting!")	
+            n.mis <- n * (pct.mis/100)	
+    }	
+    for (i in 1:ncol(data)) {	
+        if (n.mis[i] == 0) { # if column has no missing do nothing.	
+            data[, i] <- data[, i]	
+        }	
+        else {	
+            data[sample(1:n, n.mis[i], replace = FALSE), i] <- NA	
+    		  # For each given column (i), sample the row indices (1:n), 	
+    		  # a number of indices to replace as "missing", n.mis[i], "NA", 	
+      	  # without replacement	
+        }	
+    }	
+    return(as.data.frame(data))	
+}	
+```
+
+Next, let's synthetically generate (simulate) $1,000$ cases including all 11 features in the data ($\{y, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10\}$). 	
+
+```{r}
+n <- 1000
+u1 <- rbinom(n, 1, .5); v1 <- log(rnorm(n, 5, 1)); x1 <- u1*exp(v1)	
+u2 <- rbinom(n, 1, .5); v2 <- log(rnorm(n, 5, 1)); x2 <- u2*exp(v2)	
+x3 <- rbinom(n, 1, prob=0.45)
+x4 <- ordered(rep(seq(1, 5), n)[sample(1:n, n)])
+x5 <- rep(letters[1:10], n)[sample(1:n, n)]
+x6 <- trunc(runif(n, 1, 10))
+x7 <- rnorm(n)
+x8 <- factor(rep(seq(1, 10), n)[sample(1:n, n)])
+x9 <- runif(n, 0.1, .99)
+x10 <- rpois(n, 4)
+y <- x1 + x2 + x7 + x9 + rnorm(n)	
+
+# package the simulated data as a data frame object
+sim_data <- cbind.data.frame(y, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10)
+
+# randomly create missing values
+sim_data_30pct_missing <- create.missing(sim_data, pct.mis=30)
+head(sim_data_30pct_missing)
+summary(sim_data_30pct_missing)	
+	
+# install.packages("DT")	
+library("DT")	
+datatable(sim_data)	
+datatable(sim_data_30pct_missing)
+
+# install.packages("mi")	
+# install.packages("betareg")	
+library("betareg"); library("mi")	
+	
+# get show the missing information matrix				
+mdf <- missing_data.frame(sim_data_30pct_missing) 	
+# show(mdf)	
+datatable(mdf)	
+	
+# mdf@patterns   # to get the textual missing pattern	
+image(mdf)   # remember the visual pattern of this MCAR
+```
+
