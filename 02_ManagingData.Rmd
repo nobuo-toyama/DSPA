@@ -1192,4 +1192,178 @@ plot_ly(z = ~mat1, type = "surface")
 
 # Cohort-Rebalancing (for Imbalanced Groups)
 
+Comparing cohorts with imbalanced sample sizes (unbalanced designs) may present hidden biases in the results. Frequently, a cohort-rebalancing protocol is necessary to avoid such unexpected effects. Extremely unequal sample sizes can invalidate various parametric assumptions (e.g., homogeneity of variances). Also, there may be insufficient data representing the patterns belonging to the minority class(es) leading to inadequate capturing of the feature distributions. Although, the groups do not have to have equal sizes, a general rule of thumb is that group sizes where one groups is more than an order of magnitude larger than the size of another group has the `potential` for bias.	
+
+**Example 1: Parkinson's Diseases Study**	involving neuroimaging, genetics, clinical, and phenotypic data for over 600 volunteers produced multivariate data for 3 cohorts -- *HC=Healthy Controls(166)* , *PD=Parkinson's (434)*, *SWEDD= subjects without evidence for dopaminergic deficit (61)*.	
+
+```{r}
+	# load the data: 06_PPMI_ClassificationValidationData_Short.csv	
+ppmi_data <-read.csv("https://umich.instructure.com/files/330400/download?download_frd=1", header=TRUE)	
+write.csv(ppmi_data, "ppmi_data.csv")
+	
+table(ppmi_data$ResearchGroup)	
+	
+# binarize the Dx classes	
+ppmi_data$ResearchGroup <- ifelse(ppmi_data$ResearchGroup == "Control", "Control", "Patient")	
+attach(ppmi_data)	
+	
+head(ppmi_data)	
+	
+# Model-free analysis, classification	
+# install.packages("crossval")	
+# install.packages("ada")	
+# library("crossval")	
+require(crossval)	
+require(ada)	
+#set up adaboosting prediction function	
+	
+	
+# Define a new classification result-reporting function	
+my.ada <- function (train.x, train.y, test.x, test.y, negative, formula){	
+  ada.fit <- ada(train.x, train.y)	
+  predict.y <- predict(ada.fit, test.x)	
+  #count TP, FP, TN, FN, Accuracy, etc.	
+  out <- confusionMatrix(test.y, predict.y, negative = negative)	
+ # negative	 is the label of a negative "null" sample (default: "control").	
+  return (out)	
+}	
+	
+# balance cases	
+# SMOTE: Synthetic Minority Oversampling Technique
+# to handle class misbalance in binary classification.	
+set.seed(1000)	
+# install.packages("unbalanced") to deal with unbalanced group data	
+require(unbalanced)	
+ppmi_data$PD <- ifelse(ppmi_data$ResearchGroup=="Control", 1, 0) 	
+uniqueID <- unique(ppmi_data$FID_IID) 	
+ppmi_data <- ppmi_data[ppmi_data$VisitID==1, ]	
+ppmi_data$PD <- factor(ppmi_data$PD)	
+	
+colnames(ppmi_data)	
+# ppmi_data.1<-ppmi_data[, c(3:281, 284, 287, 336:340, 341)]	
+n <- ncol(ppmi_data)	
+output.1 <- ppmi_data$PD	
+	
+# remove Default Real Clinical subject classifications! 	
+ppmi_data$PD <- ifelse(ppmi_data$ResearchGroup=="Control", 1, 0) 	
+input <- ppmi_data[ , -which(names(ppmi_data) %in% c("ResearchGroup", "PD", "X", "FID_IID"))]	
+# output <- as.matrix(ppmi_data[ , which(names(ppmi_data) %in% {"PD"})])	
+output <- as.factor(ppmi_data$PD)	
+c(dim(input), length(output))	
+	
+#balance the dataset	
+data.1<-ubBalance(X= input, Y=output, type="ubSMOTE", 
+                  percOver=300, percUnder=150, verbose=TRUE)	
+# percOver = A number that drives the decision of how many extra cases from the minority class are generated (known as over-sampling).	
+# k = A number indicating the number of nearest neighbors that are used to generate the new examples of the minority class.	
+# percUnder = A number that drives the decision of how many extra cases from the majority classes are selected for each case generated from the minority class (known as under-sampling)  	
+	
+balancedData<-cbind(data.1$X, data.1$Y)	
+table(data.1$Y)	
+	
+nrow(data.1$X); ncol(data.1$X)	
+nrow(balancedData); ncol(balancedData)	
+nrow(input); ncol(input)	
+	
+colnames(balancedData) <- c(colnames(input), "PD")	
+	
+# check visually for differences between the distributions of the raw (input) and rebalanced data (for only one variable, in this case)	
+qqplot(input[, 5], balancedData [, 5])	
+	
+###Check balance	
+## Wilcoxon test	
+alpha.0.05 <- 0.05	
+test.results.bin <- NULL		# binarized/dichotomized p-values	
+test.results.raw <- NULL		# raw p-values	
+	
+for (i in 1:(ncol(balancedData)-1)) 	
+{	
+	test.results.raw [i]  <- wilcox.test(input[, i], balancedData [, i])$p.value	
+  	test.results.bin [i] <- ifelse(test.results.raw [i] > alpha.0.05, 1, 0)	
+	print(c("i=", i, "Wilcoxon-test=", test.results.raw [i]))	
+}	
+print(c("Wilcoxon test results: ", test.results.bin))	
+	
+test.results.corr <- stats::p.adjust(test.results.raw, method = "fdr", n = length(test.results.raw)) 	
+# where methods are "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none")	
+plot(test.results.raw, test.results.corr)	
+# zeros (0) are significant independent between-group T-test differences, ones (1) are insignificant	
+	
+# Check the Differences between the rate of significance between the raw and FDR-corrected p-values	
+test.results.bin <- ifelse(test.results.raw > alpha.0.05, 1, 0)	
+table(test.results.bin)	
+test.results.corr.bin <- ifelse(test.results.corr > alpha.0.05, 1, 0)	
+table(test.results.corr.bin)
+```
+
+**Notes**
+
+* SMOTE over-sampling of the minority cohort is via generation of synthetic minority samples within the neighborhoods of observed observations. Thus, new minority instances	
+blend observations in the same class and create clusters around each observed minority element.	
+* The `percOver` parameter (perc.over/100) represents the number of new instances generated for each rare instance in the minority sample, when $perc.over < 100$, a single instance is generated. For example, `percOver=300` and `percOver=30` would triple (300/100) and leave unchanged (30/100) the size of the *minority sample*, respectively.	
+* The $k$ parameter represents the number of neighbors to consider as the aggregate pool that the new examples are generated.	
+* The `percUnder` (perc.under/100) represents the number of "normal" (majority class) instances that are randomly selected for each *smoted* (synthetically generated) observation. For instance, `percUnder=300` or `percUnder=30` would downsample the *majority sample* by choosing one-out-of-each-three or all of the majority sample points, respectively.	
+
+# Appendix
+
+## Importing Data from SQL Databases
+
+ We can also import SQL databases in to R. First, we need to install and load the RODBC(R Open Database Connectivity) package.  	
+
+```{r}
+# install.packages("RODBC", repos = "http://cran.us.r-project.org")	
+library(RODBC)	
+```
+
+Then, we could open a connection to the SQL server database with Data Source Name (DSN), via Microsoft Access. More details are provided [here](https://technet.microsoft.com/en-us/library/cc879308%28v=sql.105%29.aspx) and [here](https://cran.r-project.org/web/packages/RODBC/vignettes/RODBC.pdf).	
+
+## R codes for graphs shown in this chapter
+
+```{r}
+#Right Skewed	
+N <- 10000	
+x <- rnbinom(N, 10, .5)	
+hist(x, 	
+ xlim=c(min(x), max(x)), probability=T, nclass=max(x)-min(x)+1, 	
+   col='lightblue', xlab=' ', ylab=' ', axes=F, 	
+   main='Right Skewed')	
+lines(density(x, bw=1), col='red', lwd=3)	
+	
+#No Skew	
+N <- 10000	
+x <- rnorm(N, 0, 1)	
+hist(x, probability=T, 	
+   col='lightblue', xlab=' ', ylab=' ', axes=F, 	
+   main='No Skew')	
+lines(density(x, bw=0.4), col='red', lwd=3)	
+	
+#Uniform density	
+x<-runif(1000, 1, 50)	
+hist(x, col='lightblue', main="Uniform Distribution", probability = T, xlab="", ylab="Density", axes=F)	
+abline(h=0.02, col='red', lwd=3)	
+	
+#68-95-99.7 rule	
+x <- rnorm(N, 0, 1)	
+ hist(x, probability=T, 	
+   col='lightblue', xlab=' ', ylab=' ', axes = F, 	
+   main='68-95-99.7 Rule')	
+lines(density(x, bw=0.4), col='red', lwd=3)	
+axis(1, at=c(-3, -2, -1, 0, 1, 2, 3), labels = expression(mu-3*sigma, mu-2*sigma, mu-sigma, mu, mu+sigma, mu+2*sigma, mu+3*sigma))	
+abline(v=-1, lwd=3, lty=2)	
+abline(v=1, lwd=3, lty=2)	
+abline(v=-2, lwd=3, lty=2)	
+abline(v=2, lwd=3, lty=2)	
+abline(v=-3, lwd=3, lty=2)	
+abline(v=3, lwd=3, lty=2)	
+text(0, 0.2, "68%")	
+segments(-1, 0.2, -0.3, 0.2, col = 'red', lwd=2)	
+segments(1, 0.2, 0.3, 0.2, col = 'red', lwd=2)	
+text(0, 0.15, "95%")	
+segments(-2, 0.15, -0.3, 0.15, col = 'red', lwd=2)	
+segments(2, 0.15, 0.3, 0.15, col = 'red', lwd=2)	
+text(0, 0.1, "99.7%")	
+segments(-3, 0.1, -0.3, 0.1, col = 'red', lwd=2)	
+segments(3, 0.1, 0.3, 0.1, col = 'red', lwd=2)
+```
+
 
