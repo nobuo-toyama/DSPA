@@ -458,3 +458,290 @@ The shades are different and darker dots represent high correlation of the two v
 # Relationships
 
 ## Line plots using `ggplot
+
+[Line charts](https://en.wikipedia.org/wiki/Line_chart) display a series of data points, e.g., observed intensities ($Y$) over time ($X$), by connecting them with straight-line segments. These can be used to either track temporal changes of a process or compare the trajectories of multiple cases, time series or subjects over time, space, or state.	
+
+In this section, we will utilize the Earthquakes dataset on [SOCR website](https://wiki.socr.umich.edu/index.php/SOCR_Data_Dinov_021708_Earthquakes). It records information about earthquakes that occurred between 1969 and 2007 with magnitudes larger than 5 on the [Richter scale](https://simple.wikipedia.org/wiki/Richter_scale).	
+
+```{r}
+# library("xml2"); library("rvest") 	
+wiki_url <- read_html("https://wiki.socr.umich.edu/index.php/SOCR_Data_Dinov_021708_Earthquakes")	
+html_nodes(wiki_url, "#content")	
+earthquake <- html_table(html_nodes(wiki_url, "table")[[2]])	
+```
+
+In this dataset, we set `Magt`(magnitude type) as groups. We will draw a "Depth vs Latitude" line plot from this dataset. The function we are using is called `ggplot()` under `ggplot2`. The input type for this function is mostly data frame and `aes()` specifies aesthetic mappings of how variables in the data are mapped to visual properties (aesthetics) of the `geom` objects, e.g., lines.	
+
+```{r}
+library(ggplot2)	
+plot4<-ggplot(earthquake, aes(Longitude, Latitude, group=Magt, color=Magt))+	
+  # Either draw lines	
+  # geom_line()	
+  # or, alternatively, we can draw glyphs/points	
+  geom_point(data=earthquake, size=4, mapping=aes(x=Longitude, y=Latitude, shape=Magt))	
+plot4  # or plint(plot4)
+```
+
+We can see the most important line of code was made up with 2 parts. The first part `ggplot(earthquake, aes(Depth, Latitude, group=Magt, color=Magt))` specifies the setting of the plot: dataset, group and color. The second part specifies we are going to draw (points or) lines between data points. In later chapters, we will frequently use package `ggplot2` and the structure under this great package is always `function1+function2`.	
+
+## Density Plots
+
+We can visualize the distribution for different variables using density plots.
+
+The following segment of R code plots the distribution for latitude among different [earthquake magnitude types](https://wiki.socr.umich.edu/index.php/SOCR_Data_Dinov_021708_Earthquakes#Data_Description). Also, it is using `ggplot()` function but combined with `geom_density()`.	
+
+```{r}
+# library("ggplot2")	
+plot5 <- ggplot(earthquake, aes(Latitude, group=Magt, newsize=2))+geom_density(aes(color=Magt), size = 2) +	
+theme(legend.position = 'right', 	
+      legend.text = element_text(color= 'black', size = 12, face = 'bold'),	
+      legend.key = element_rect(size = 0.5, linetype='solid'),	
+      legend.key.size = unit(1.5, 'lines'))	
+print(plot5)
+# table(earthquake$Magt) # to see the distribution of magnitude types
+```
+
+Note how the green `magt` type (Local (ML) earthquakes) has a peak at latitude $37.5$, which represents [37-38 degrees North](https://en.wikipedia.org/wiki/37th_parallel_north).	
+
+# Distributions
+
+Recall that there is a duality between *theoretical* and *empirical* mass, density, and distribution functions. Earlier, we saw the relations between these using the (continuous) Normal distribution, let's now look at the (discrete) Poisson distribution. The graph below plots (1) the histogram of a sample of 1,000 Poisson(1) random observations (light blue color), (2) the theoretical density/mass function (magenta color), and (3) a smooth continuous (Gaussian) kernel density estimation based on the random sample (blue color).	
+
+```{r}
+set.seed(1234)	
+poisson_sample <- rpois(1000, 1)	
+# slightly offset the histogram bins to align with mass function	
+hist_breakes <- c(-0.5, 0.5, 1.5, 2.5, 3.5, 6.5)	
+hist(poisson_sample, freq=F, breaks = hist_breakes, col="light blue", lwd=2, ylim = c(0, 0.45))	
+lines(density(poisson_sample, kernel = "gaussian"), lwd=2, col="blue") 	
+t <- seq(0, 6, by=0.01)	
+lines(t, dpois(t,1), type="h", col="magenta", lwd=6) # add the theoretical density line	
+legend(3,0.3, legend=c("Sample histogram (n=1,000)", "Theoretical mass function", 	
+                            "Gaussian kernel density estimate"), 	
+       bty = "n", box.lty=0, col=c("light blue", "magenta", "blue"), lty=1, lwd=3)	
+```
+
+## Data Modeler
+
+A common task in data-driven inference involves the *fitting* of appropriate distribution models to specific observed data elements (features). In general, as there are uncountably many possible distributions that can be used as models for various types of processes, this is a difficult tasks. The [Probability Distributome Project (see Distributome Navigator)](http://distributome.org/) provides deeper understanding of the notion of a probability distribution and the relations between various distributions.	
+
+We will demonstrate the concept of a **data modeler** by using *crystallographic data* from the [Ivanova Lab at the University of Michigan](http://www.umich.edu/~mivanova), which includes the crystal spectra of [9 length samples](https://umich.instructure.com/files/11653615/download?download_frd=1) and [9 width samples](https://umich.instructure.com/files/11653614/download?download_frd=1). For both, the length and width spectra, the 9 features include "AC1338", "AC1432", "AC1593", "AC1679", "AC1860", "AC1874", "AC1881", "AC1903", and "Rec" (these represent different samples). Notice that the nine spectra are not congruent, different features have different sampling rates. We will employ the [`fitdistrplus` R-package](https://cran.r-project.org/web/packages/fitdistrplus) to estimate the parameters of 3 complementary distributions, however, there are many alternative packages that can also be used.	
+
+### Loading the spectral crystallography data
+
+The data include two separate signals capturing the spectral *length* and the *width* of the crystallographic sample.	
+ 	
+  - [Dec 2019 crystallography spectral data](https://umich.instructure.com/files/13375767/download?download_frd=1)	
+  - [crystallography Length data are here](https://umich.instructure.com/files/11653615/download?download_frd=1)	
+  - [crystallography Width data are here](https://umich.instructure.com/files/11653614/download?download_frd=1)	
+
+```{r}
+# You may choose which of the 2 CSV files (width or length) to work with	
+crystallography_Length_data <- read.csv(file = "https://umich.instructure.com/files/11653615/download?download_frd=1",	
+                         header=TRUE)	
+	
+crystallography_Width_data <- read.csv(file = "https://umich.instructure.com/files/11653614/download?download_frd=1",	
+                         header=TRUE)	
+	
+crystallography_data <- crystallography_Length_data	
+# crystallography_data <- crystallography_Width_data	
+	
+# Get the feature names (IDs)	
+colNames <- colnames(crystallography_data)
+colNames
+```
+
+### Feature distributions
+
+Let's plot the histograms of for each of the 9 features.
+
+```{r}
+# plot all histograms	
+library(tidyr)	
+library(ggplot2)	
+# or `library(tidyverse)`	
+	
+crystallography_data %>% gather() %>% head()	
+
+crystallography_data %>% gather() %>% tail()	
+
+ggplot(gather(crystallography_data), aes(value)) + 	
+    geom_histogram(bins = 20) + 	
+    facet_wrap(~key, scales = 'free_x')	
+```
+
+### Single-distribution data modeling
+
+We will fit [Weibull](https://en.wikipedia.org/wiki/Weibull_distribution), [Gamma](https://en.wikipedia.org/wiki/Gamma_distribution), and [Log-Normal](https://en.wikipedia.org/wiki/Log-normal_distribution) distribution models to each feature in the data.	
+
+```{r}
+library(fitdistrplus)	
+col_num <- dim(crystallography_data)[2]; col_num	
+	
+# Store the Weibull, Gamma, and Log-Normal Distribution models for the 9 features	
+fit_W <- vector(mode = "list", length = col_num)	
+fit_G <- vector(mode = "list", length = col_num)	
+fit_LN <- vector(mode = "list", length = col_num)	
+  	
+for(i in 1:col_num) {	
+  data_no_NA <- crystallography_data[complete.cases(crystallography_data[, i]), i]	
+  length(data_no_NA)	
+  fit_W[[i]]  <- fitdist(data_no_NA, "weibull"); summary(fit_W[i])	
+  fit_G[[i]]  <- fitdist(data_no_NA, "gamma"); summary(fit_G[i])	
+  fit_LN[[i]] <- fitdist(data_no_NA, "lnorm"); summary(fit_LN[i])	
+}	
+	
+# extract the model parameters	
+W_mod_p1_name = array(dim=c(col_num,2)); dim(W_mod_p1_name)  # param name	
+W_mod_p1_val = array(dim=c(col_num,2)); dim(W_mod_p1_val)    # parameter-estimate value	
+G_mod_p1_name = array(dim=c(col_num,2)); dim(G_mod_p1_name)  # param name	
+G_mod_p1_val = array(dim=c(col_num,2)); dim(G_mod_p1_val)    # parameter-estimate value	
+LN_mod_p1_name = array(dim=c(col_num,2)); dim(LN_mod_p1_name)  # param name	
+LN_mod_p1_val = array(dim=c(col_num,2)); dim(LN_mod_p1_val)    # parameter-estimate value	
+	
+# Compute the mean (m) and standard deviation (sd) for each model distribution	
+W_mod_mean = array(dim=c(col_num,1)); length(W_mod_mean)  # Weibull mean or mode	
+W_mod_sd = array(dim=c(col_num,1)); length(W_mod_sd)      # Weibull SD	
+G_mod_mean = array(dim=c(col_num,1)); length(G_mod_mean)  # Gamma mean or mode	
+G_mod_sd = array(dim=c(col_num,1)); length(G_mod_sd)      # Gamma SD	
+LN_mod_mean = array(dim=c(col_num,1)); length(LN_mod_mean)  # Log-normal mean or mode	
+LN_mod_sd = array(dim=c(col_num,1)); length(LN_mod_sd)      # Log-normal SD	
+	
+for(i in 1:col_num) {	
+  W_mod_p1_name[i, 1] <- names(fit_W[[i]]$estimate[1])  # Weibull "shape"	
+  W_mod_p1_val[i, 1] <- fit_W[[i]]$estimate[[1]]	
+  W_mod_p1_name[i, 2] <- names(fit_W[[i]]$estimate[2])  # Weibull "scale"	
+  W_mod_p1_val[i, 2] <- fit_W[[i]]$estimate[[2]]	
+  W_mod_mean[i] = W_mod_p1_val[i, 2] * gamma(1+1/W_mod_p1_val[i, 1])  # Weibull mean	
+  W_mod_mean[i] = W_mod_p1_val[i, 2] * 	
+          ((W_mod_p1_val[i, 1]-1)/W_mod_p1_val[i, 1])^(1/W_mod_p1_val[i, 1])  # Weibull mode	
+  W_mod_sd[i] = W_mod_p1_val[i, 2]*sqrt(gamma(1+2/W_mod_p1_val[i, 1])-	
+                                        (gamma(1+1/W_mod_p1_val[i, 1]))^2)  # Weibull SD	
+	
+  G_mod_p1_name[i, 1] <- names(fit_G[[i]]$estimate[1])  # Gamma "shape"	
+  G_mod_p1_val[i, 1] <- fit_G[[i]]$estimate[[1]]	
+  G_mod_p1_name[i, 2] <- names(fit_G[[i]]$estimate[2])  # Gamma "scale"	
+  G_mod_p1_val[i, 2] <- fit_G[[i]]$estimate[[2]]	
+  G_mod_mean[i] = G_mod_p1_val[i, 1] / G_mod_p1_val[i, 2]  # Gamma mean	
+  G_mod_mean[i] = (G_mod_p1_val[i, 1]-1) / G_mod_p1_val[i, 2]  # Gamma mode	
+  G_mod_sd[i] = sqrt(G_mod_p1_val[i, 1]) / G_mod_p1_val[i, 2]  # Gamma SD	
+  	
+  LN_mod_p1_name[i, 1] <- names(fit_LN[[i]]$estimate[1])  # Log-normal "shape"	
+  LN_mod_p1_val[i, 1] <- fit_LN[[i]]$estimate[[1]]	
+  LN_mod_p1_name[i, 2] <- names(fit_LN[[i]]$estimate[2])  # Log-normal "scale"	
+  LN_mod_p1_val[i, 2] <- fit_LN[[i]]$estimate[[2]]	
+  LN_mod_mean[i] = exp(LN_mod_p1_val[i, 1]+ (LN_mod_p1_val[i, 2])^2/2)  # Log-normal mean	
+  LN_mod_mean[i] = exp(LN_mod_p1_val[i, 1] - LN_mod_p1_val[i, 2]^2)  # Log-normal mean	
+  LN_mod_sd[i] = sqrt((exp(LN_mod_p1_val[i, 2]^2)-1)*	
+                  exp(2*LN_mod_p1_val[i, 1]+LN_mod_p1_val[i, 2]^2))  # Log-normal SD	
+}	
+	
+# Check results, just for one model	
+str(fit_W[[1]])
+```
+### Visual inspection 	
+Let's examine graphically the quality of the fitted distribution models. We'll plot the histograms of the features, the fitted probability densities, and the corresponding cumulative distribution functions (CDF) and compare them to their sample counterparts.	
+ 	
+```{r}
+windows(width=20, height=8)	
+par(mfrow=c(3,3))	
+	
+for(i in 1:col_num) {	
+  # W_mod_p1_name[i] <- names(fit_W[[i]]$estimate[1])	
+  # W_mod_p1_val[i] <- fit_W[[1]]$estimate[[1]]	
+  plot.legend <- c(sprintf("Weibull(%s=%s,%s=%s) (m=%s,sd=%s)", 	
+                           W_mod_p1_name[i, 1], format(W_mod_p1_val[i, 1], digits=2),	
+                           W_mod_p1_name[i, 2], format(W_mod_p1_val[i, 2], digits=2),	
+                           format(W_mod_mean[i], digits=2),	
+                           format(W_mod_sd[i], digits=2)), 	
+                   sprintf("Gamma(%s=%s,%s=%s) (m=%s,sd=%s)", 	
+                           G_mod_p1_name[i, 1], format(G_mod_p1_val[i, 1], digits=2),	
+                           G_mod_p1_name[i, 2], format(G_mod_p1_val[i, 2], digits=2),	
+                           format(G_mod_mean[i], digits=2),	
+                           format(G_mod_sd[i], digits=2)), 	
+                   sprintf("Log-normal(%s=%s,%s=%s) (m=%s,sd=%s)", 	
+                           LN_mod_p1_name[i, 1], format(LN_mod_p1_val[i, 1], digits=2),	
+                           LN_mod_p1_name[i, 2], format(LN_mod_p1_val[i, 2], digits=2),	
+                           format(LN_mod_mean[i], digits=2),	
+                           format(LN_mod_sd[i], digits=2)))	
+  denscomp(list(fit_W[[i]], fit_G[[i]], fit_LN[[i]]), legendtext = plot.legend, 	
+           xlegend = "topright", ylegend ="right",	
+           main=sprintf("Width: Feature: %s: Histogram & Model Densities", colnames(crystallography_data)[i]))	
+  abline(v = format(W_mod_mean[i], digits=2), col = "red", lty=1)	
+  abline(v = format(G_mod_mean[i], digits=2), col = "green", lty=2)	
+  abline(v = format(LN_mod_mean[i], digits=2), col = "blue", lty=3)	
+  # cdfcomp (list(fit_w, fit_g, fit_ln), legendtext = plot.legend)	
+  # qqcomp  (list(fit_w, fit_g, fit_ln), legendtext = plot.legend)	
+  # ppcomp  (list(fit_w, fit_g, fit_ln), legendtext = plot.legend)	
+}	
+	
+# Plot histograms and CDF (cumulative distribution function) models	
+windows(width=20, height=12)	
+par(mfrow=c(3,3))	
+for(i in 1:col_num) {	
+  plot.legend <- c(sprintf("Weibull(%s=%s,%s=%s) (m=%s,sd=%s)", 	
+                           W_mod_p1_name[i, 1], format(W_mod_p1_val[i, 1], digits=2),	
+                           W_mod_p1_name[i, 2], format(W_mod_p1_val[i, 2], digits=2),	
+                           format(W_mod_mean[i], digits=2),	
+                           format(W_mod_sd[i], digits=2)), 	
+                   sprintf("Gamma(%s=%s,%s=%s) (m=%s,sd=%s)", 	
+                           G_mod_p1_name[i, 1], format(G_mod_p1_val[i, 1], digits=2),	
+                           G_mod_p1_name[i, 2], format(G_mod_p1_val[i, 2], digits=2),	
+                           format(G_mod_mean[i], digits=2),	
+                           format(G_mod_sd[i], digits=2)), 	
+                   sprintf("Log-normal(%s=%s,%s=%s) (m=%s,sd=%s)", 	
+                           LN_mod_p1_name[i, 1], format(LN_mod_p1_val[i, 1], digits=2),	
+                           LN_mod_p1_name[i, 2], format(LN_mod_p1_val[i, 2], digits=2),	
+                           format(LN_mod_mean[i], digits=2),	
+                           format(LN_mod_sd[i], digits=2)))	
+  cdfcomp(list(fit_W[[i]], fit_G[[i]], fit_LN[[i]]), legendtext = plot.legend, 	
+           xlegend = "bottomright", ylegend ="right",	
+           main=sprintf("Width: Feature: %s: Aggregate Hist & Model CDFs", colnames(crystallography_data)[i]))	
+}
+```
+ 	
+### Quantitative summaries
+
+Often it's useful to export the numerical results of the models. This may include various distribution characteristics like measure of centrality (e.g., mean, median, mode), measures of dispersion, and metrics of the model performance (e.g., [Kolmogorov-Smirnov test](https://wiki.socr.umich.edu/index.php/SMHS_ModelFitting)).	
+
+```{r}
+# Save the summary outputs (mode & SD) across 9 samples, 3 models and 2 measures into a dataframe	
+	
+df_matrix = array(dim=c(col_num,3*2*2)); dim(df_matrix) 	
+	
+for(i in 1:col_num) {	
+  data1 <- crystallography_data[complete.cases(crystallography_data[, i]), i]	
+  	
+  df_matrix[i, 1] = format(W_mod_mean[i], digits=2)  # Weibull mode	
+  df_matrix[i, 2] = format(W_mod_sd[i], digits=2)    # Weibull SD	
+  ks_W <- ks.test(data1, "pweibull", scale=W_mod_p1_val[i, 2], shape=W_mod_p1_val[i, 1])	
+  df_matrix[i, 3] = format(ks_W$statistic[[1]], digits=4)  # KS-test-stat Weibull	
+  df_matrix[i, 4] = format(ks_W$p.value, digits=5)    # KS-test-p-value Weibull	
+  	
+  df_matrix[i, 5] = format(G_mod_mean[i], digits=2)  # Gamma mode	
+  df_matrix[i, 6] = format(G_mod_sd[i], digits=2)    # Gamma SD	
+  ks_G <- ks.test(data1, "pgamma", rate=G_mod_p1_val[i, 2], shape=G_mod_p1_val[i, 1])	
+  df_matrix[i, 7] = format(ks_G$statistic[[1]], digits=4)  # KS-test-stat Gamma	
+  df_matrix[i, 8] = format(ks_G$p.value, digits=5)    # KS-test-p-value Gamma	
+  	
+  df_matrix[i, 9] = format(LN_mod_mean[i], digits=2)  # Log-normal mode	
+  df_matrix[i, 10] = format(LN_mod_sd[i], digits=2)    # Log-normal SD	
+  ks_LN <- ks.test(data1, "plnorm", sdlog=LN_mod_p1_val[i, 2], meanlog=LN_mod_p1_val[i, 1])	
+  df_matrix[i, 11] = format(ks_LN$statistic[[1]], digits=4)  # KS-test-stat Log-normal	
+  df_matrix[i, 12] = format(ks_G$p.value, digits=5)    # KS-test-p-value Log-normal	
+}	
+	
+df_summary <- as.data.frame(df_matrix, row.names=colNames)	
+colnames(df_summary) <- c("Weibull_mode", "Weibull_sd","Weibull_KS.test.stat", "Weibull_KS.p.val",	
+                  "Gamma_mode", "Gamma_sd","Gamma_KS.test.stat", "Gamma_KS.p.val",	
+                  "Lognormal_mode", "Lognormal_sd","Lognormal_KS.test.stat", "Lognormal_KS.p.val")	
+df_summary	
+	
+library("DT")	
+datatable(df_summary)	
+#write.csv(df_summary, file = "/Desktop/SummaryResults_Width_Models.csv", 	
+#          row.names=T, col.names=T)
+```
+
+
+
