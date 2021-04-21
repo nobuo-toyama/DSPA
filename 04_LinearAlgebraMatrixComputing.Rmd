@@ -1,0 +1,554 @@
+---
+title: "04_LinearAlgebraMatrixCompiting"
+author: "nobuo"
+date: "2021/4/21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+*Linear algebra* is a branch of mathematics that studies linear associations using vectors, vector-spaces, linear equations, linear  transformations and matrices. Although it is generally challenging to visualize complex data, e.g., large vectors, tensors, and tables in n-dimensional Euclidean spaces ($n\ge 3$), linear algebra allows us to represent, model, synthesize and summarize such compex data.	
+
+Virtually all natural processes permit first-order linear approximations. This is useful because linear equations are easy (to write, interpret, solve) and these first order approximations may be useful to practically assess the process, determine general trends, identify potential patterns, and suggest associations in the data.	
+
+Linear equations represent the simplest type of models for many processes. Higher order models may include additional non-linear terms, e.g., [Taylor-series expansion](https://en.wikipedia.org/wiki/Taylor_series). Linear algebra provides the foundation for linear representation, analytics, solutions, inference and visualization of first-order affine models. Linear algebra is a small part of the larger mathematics *functional analysis* field, which is actually the infinite-dimensional version of linear algebra.	
+
+Specifically, *linear algebra* allows us to **computationally** manipulate, model, solve, and interpret complex systems of equations representing large numbers of dimensions/variables. Arbitrarily large problems can be mathematically transformed into simple matrix equations of the form $A x = b$ or $A x = \lambda x$.	
+
+In this chapter, we review the fundamentals of linear algebra, matrix manipulation and their applications to representation, modeling, and analysis of real data. Specifically, we will cover (1) construction of matrices and matrix operations, (2) general matrix algebra notations, (3) eigenvalues and eigenvectors of linear operators, (4) least squares estimation, and (5) linear regression and variance-covariance matrices.	
+
+# Building Matrices
+
+## Create matrices
+
+The easiest way to create matrix is using `matrix()` function. It put those elements of a vector into desired positions in a matrix. 	
+
+```{r}
+seq1 <- seq(1:6)	
+m1 <- matrix(seq1, nrow=2, ncol=3)	
+m1	
+m2 <- diag(seq1)	
+m2	
+m3 <- matrix(rnorm(20), nrow=5)	
+m3
+```
+
+The function `diag()` is very useful. When the object is a vector, it create a diagonal matrix with the vector in the principal diagonal.	
+
+```{r}
+diag(c(1, 2, 3))
+```
+
+When the object is a matrix, `diag()` returns its principal diagonal.
+
+```{r}
+diag(m1)
+```
+
+When the object is a scalar, `diag(k)` returns a $k\times k$ identity matrix.
+
+```{r}
+diag(4)
+```
+
+## Adding columns and rows
+
+Function `cbind()` and `rbind()` will be used in this section.
+
+```{r}
+c1 <- 1:5	
+m4 <- cbind(m3, c1)	
+m4	
+r1 <- 1:4	
+m5 <- rbind(m3, r1)	
+m5
+```
+
+Note that `m5` has a row name `r1` in the *4*th row. We remove row/column names by naming them as `NULL`. 	
+
+```{r}
+dimnames(m5) <- list(NULL, NULL)	
+m5
+```
+
+## Matrix subscripts
+
+Each element in a matrix has a location. `A[i, j]` means the *i*th row and *j*th column in matrix *A*. We can also access to some specific rows or columns using matrix subscripts.	
+
+```{r}
+m6 <- matrix(1:12, nrow=3)	
+m6	
+m6[1, 2]	
+m6[1, ]	
+m6[, 2]	
+m6[, c(2, 3)]	
+```
+
+# Matrix Operations
+
+## Addition
+
+Elements in same position adds up together.
+
+```{r}
+m7 <- matrix(1:6, nrow=2)	
+m7	
+m8 <- matrix(2:7, nrow = 2)	
+m8	
+m7 + m8
+```
+
+## Subtraction
+
+Subtraction between elements in same position.
+
+```{r}
+m8 - m7
+m8 - 1
+```
+
+## Multiplication
+
+We can do elementwise multiplication or matrix multiplication. For matrix multiplication, dimensions have to be match. That is the number of columns in the first matrix must equal to the number of rows in the second matrix. 	
+
+### Elementwise multiplication
+
+Multiplication between elements in same position.
+
+```{r}
+m8 * m7
+```
+
+### Matrix multiplication
+
+The resulting matrix will have the same number of rows as the first matrix and the same number of columns as the second matrix.	
+
+```{r}
+dim(m8)
+m9 <- matrix(3:8, nrow=3)	
+m9	
+dim(m9)	
+m8 %*% m9	
+```
+
+We made a $2\times 2$ matrix from multiplying two matrices $2\times 3$ * $3\times 2$.	
+
+The process of multiplying two vectors is called **outer product**. Assume we have two vectors $u$ and $v$, in matrix multiplication their outer product is the same as $u%*%t(v)$ or mathematically $uv^T$. In R the operator for outer product is `%o%`. 	
+
+```{r}
+u <- c(1, 2, 3, 4, 5)	
+v <- c(4, 5, 6, 7, 8)	
+u %o% v	
+u %*% t(v)
+```
+
+What are the differences between $u\%*\%t(v)$, $u\%*\%t(v)$, $u * t(v)$, and $u * v$?	
+
+## Division
+
+Elementwise division.
+
+```{r}
+m8 / m7	
+m8 / 2
+```
+
+## Transpose
+
+The transpose of a matrix is to swapping columns and rows for a matrix. In R we can do this in a simple function `t()`.	
+
+```{r}
+m8
+t(m8)
+```
+
+Notice that the [1, 2] element in `m8` is the [2, 1] element in `t(m8)`.
+
+## Inverse
+
+Multiplying an original matrix ($A$) by its inverse  ($A^{-1}$) yields the identity matrix, which has 1's on the main diagonal and 0's off the diagonal.	
+$$AA^{-1}=I$$	
+Given the following $2\times 2$ matrix:	
+$$	
+\left(\begin{array}{cc} 	
+a & b \\	
+c & d	
+\end{array}\right) ,	
+$$	
+its matrix inverse is	
+$$	
+\frac{1}{ad-bc}\left(\begin{array}{cc} 	
+d & -b \\	
+-c & a	
+\end{array}\right) .	
+$$	
+For higher dimensions, the [Cramer's rule](https://en.wikipedia.org/wiki/Invertible_matrix#Analytic_solution) may be used to compute the matrix inverse. Matrix inversion is available in R via the `solve()` function.	
+
+```{r}
+m10 <- matrix(1:4, nrow=2)	
+m10	
+solve(m10)	
+m10 %*% solve(m10)
+```
+
+Note that only some matrices have inverse. These matrices are square (have same number of rows and columns) and non-singular.	
+
+Another function that can help us to get inverse of a matrix is the `ginv()` function under `MASS` package. This function give us Moore-Penrose Generalized Inverse of a matrix.	
+
+```{r}
+require(MASS)	
+ginv(m10)
+```
+
+Also, function `solve()` can be used as solving matrix equations. `solve(A, b)` returns vector $x$ in the equation $b = Ax$ (i.e., $x= A^{-1}b$).	
+
+```{r}
+s1 <- diag(c(2, 4, 6, 8))	
+s2 <- c(1, 2, 3, 4)	
+solve(s1, s2)
+```
+
+The following table summarizes basic operation functions.	
+ 	
+Expression    |Explanation	
+--------------|----------------------------------------------------------------	
+`t(x)`| transpose	
+`diag(x)`| diagonal	
+`%*%`| matrix multiplication	
+`solve(a, b)`| solves `a %*% x = b` for x	
+`solve(a)`| matrix inverse of a	
+`rowsum(x)`| sum of rows for a matrix-like object. `rowSums(x)` is a faster version	
+`colSums(x)`, `colSums(x)`| id. for columns 	
+`rowMeans(x)`| fast version of row means 	
+`colMeans(x)`| id. for columns
+
+```{r}
+mat1 <- cbind(c(1, -1/5), c(-1/3, 1))	
+mat1.inv <- solve(mat1)	
+	
+mat1.identity <- mat1.inv %*% mat1	
+mat1.identity	
+b <- c(1, 2)	
+x <- solve (mat1, b)	
+x
+```
+
+# Matrix Algebra Notation
+
+## Matrix Notation
+
+We introduce the basics of matrix notation.  The product $AB$ between matrices $A$ and $B$ is defined only if the number of columns in $A$ equals the number of rows in $B$. That is, we can multiply an $m\times n$ matrix $A$ by an $n\times k$ matrix $B$ and the result will be $AB_{m\times k}$ matrix. Each element of the product matrix, $(AB_{i, j})$, represents the product of the $i$-th row in $A$ and the $j$-th column in $B$, which are of the same size $n$. Matrix multiplication is `row-by-column`.	
+
+## Linear models
+
+Linear algebra notation simplifies the mathematical descriptions and manipulations of linear models, as well as coding in R.	
+
+The main point of now is to show how we can write the models using matrix notation. Later, we'll explain how this is useful for solving the least squares matrix equation. Start by defining notation and matrix multiplication.	
+
+## Solving Systems of Equations
+
+Linear algebra notation enables the mathematical analysis and Solution of systems of linear equations:	
+ 	
+$$	
+\begin{align*}	
+a + b + 2c &= 6\\	
+3a - 2b + c &= 2\\	
+2a + b  - c &= 3	
+\end{align*}	
+$$
+It provides a generic machinery for solving these problems.
+
+$$ 	
+\underbrace{\begin{pmatrix}	
+1&1&2\\	
+3&-2&1\\	
+2&1&-1	
+\end{pmatrix}}_{\text{A}}	
+\underbrace{\begin{pmatrix}	
+a\\	
+b\\	
+c	
+\end{pmatrix}}_{\text{x}} =	
+\underbrace{\begin{pmatrix}	
+6\\	
+2\\	
+3	
+\end{pmatrix}}_{\text{b}}$$
+
+That is: $Ax = b$. This implies that:
+
+$$\begin{pmatrix}	
+a\\	
+b\\	
+c	
+\end{pmatrix} =	
+\begin{pmatrix}	
+1&1&2\\	
+3&-2&1\\	
+2&1&-1	
+\end{pmatrix}^{-1}	
+\begin{pmatrix}	
+6\\	
+2\\	
+3	
+\end{pmatrix}	
+$$
+In other words, $A^{-1}A x ==x = A^{-1}b$.
+
+Notice that this parallels the solution to simple (univariate) linear equations like: 	
+$$\underbrace{2}_{\text{(design matrix) A }} \underbrace{x}_{\text{unknown x }} \underbrace{-3}_{\text{simple constant term}} = \underbrace{5}_{\text{b}}.$$	
+
+The constant term, $-3$, can be simply joined with the right-hand-size, $b$, to form a new term $b'=5+3=8$, thus the shifting factor is mostly ignored in linear models, or linear equations, to simplify the equation to:	
+$$\underbrace{2}_{\text{(design matrix) A }} \underbrace{x}_{\text{unknown x }}  = \underbrace{5+3}_{\text{b'}}=\underbrace{8}_{\text{b'}}.$$
+
+This (simple) linear equation is solved by multiplying both-sides by the inverse (reciprocal) of the $x$ multiplier, $2$:	
+$$\frac{1}{2} 2 x  = \frac{1}{2} 8.$$	
+Thus, the unique solution is:	
+$$x  = \frac{1}{2} 8=4.$$
+
+So, let's use exactly the same protocol to solve the corresponding matrix equation (linear equations, $Ax = b$) for real using R (the unknown is $x$, and the design matrix $A$ and the constant vector $b$ are known):	
+
+$$ 	
+\underbrace{\begin{pmatrix}	
+1&1&2\\	
+3&-2&1\\	
+2&1&-1	
+\end{pmatrix}}_{\text{A}}	
+\underbrace{\begin{pmatrix}	
+a\\	
+b\\	
+c	
+\end{pmatrix}}_{\text{x}} =	
+\underbrace{\begin{pmatrix}	
+6\\	
+2\\	
+3	
+\end{pmatrix}}_{\text{b}}
+$$
+
+```{r}
+A_matrix_values <- c(1, 1, 2, 3, -2, 1, 2, 1, -1)	
+A <- t(matrix(A_matrix_values, nrow=3, ncol=3))  # matrix elements arranged by columns, so, we need to transpose to arrange them by rows.	
+b <- c(6, 2, 3)	
+# to solve Ax = b, x=A^{-1}*b	
+x <- solve (A, b)	
+# Ax = b ==> x = A^{-1} * b	
+x	
+	
+# Check the Solution x=(1.35 1.75 1.45)	
+LHS <- A %*% x	
+round(LHS-b, 6)
+```
+
+How about if we want to triple-check the accuracy of the `solve` method to provide accurate solutions to matrix-based systems of linear equations?	
+
+We can generate the solution ($x$) to the equation $Ax=b$ using first principles:	
+$$ x = A^{-1}b$$
+
+```{r}
+A.inverse <- solve(A) # the inverse matrix A^{-1} 	
+x1 <- A.inverse %*% b	
+# check if X and x1 are the same	
+x; x1	
+round(x - x1, 6)
+```
+
+## The identity matrix
+
+The identity matrix is the matrix analog to the multiplicative numeric identity, the number $1$. Multiplying the identity matrix by any other matrix ($B$) does not change the matrix $B$. For this to happen, the multiplicative identity matrix must look like:	
+ 	
+$$
+\mathbf{I} = \begin{pmatrix} 1&0&0&\dots&0&0\\	
+0&1&0&\dots&0&0\\	
+0&0&1&\dots&0&0\\	
+\vdots &\vdots & \vdots & \ddots&\vdots&\vdots\\	
+0&0&0&\dots&1&0\\	
+0&0&0&\dots&0&1 \end{pmatrix} 
+$$
+
+The identity matrix is always square matrix with diagonal elements $1$ and $0$ at the off-diagonal elements.	
+
+If you follow the matrix multiplication rule above, you notice this works out:	
+ 	
+$$
+\mathbf{X\times I} = \begin{pmatrix} x_{1, 1} & \dots & x_{1, p}\\	
+& \vdots & \\ x_{n, 1} & \dots & x_{n, p} \end{pmatrix} 	
+\begin{pmatrix} 1&0&0&\dots&0&0\\	
+0&1&0&\dots&0&0\\	
+0&0&1&\dots&0&0\\	
+& & &\vdots & &\\	
+0&0&0&\dots&1&0\\	
+0&0&0&\dots&0&1	
+\end{pmatrix}
+$$	
+ 	
+$$
+= 	
+\begin{pmatrix} x_{1, 1} & \dots & x_{1, p}\\ & \vdots & \\ x_{n, 1} & \dots & x_{n, p} \end{pmatrix}
+$$	
+
+In R you can form an identity matrix as follows:
+
+```{r}
+n <- 3 #pick dimensions	
+I <- diag(n); I	
+A %*% I
+I %*% A
+```
+
+## Vectors, Matrices, and Scalars
+
+Let's look at this notation deeper. In the Baseball player data, there are 3 quantitative variables: `Heights`, `Weight`, and `Age`. Suppose the variable `Weight` is represented as a `response` $Y_1, \dots, Y_n$ random vector.	
+
+We can examine player's `Weight` as a function of `Age` and `Height`.
+
+```{r}
+# Data: https://umich.instructure.com/courses/38100/files/folder/data   (01a_data.txt)	
+data <- read.table('https://umich.instructure.com/files/330381/download?download_frd=1', as.is=T, header=T)    	
+attach(data)	
+head(data)
+```
+
+We can also use just one symbol. We usually use bold to distinguish it from the individual entries:	
+ 	
+$$
+\mathbf{Y} = 	
+\begin{pmatrix}	
+Y_1\\	
+Y_2\\	
+\vdots\\	
+Y_n	
+\end{pmatrix}	
+$$
+
+The default representation of data vectors is as columns, i.e., we have dimension $n\times 1$, as opposed to $1 \times n$ rows.	
+
+Similarly, we can use math notation to represent the covariates or predictors: `Age` and `Height`. In a case with two predictors, we can represent them like this:	
+ 	
+$$ 	
+\mathbf{X}_1 = \begin{pmatrix}	
+x_{1, 1}\\	
+\vdots\\	
+x_{n, 1}	
+\end{pmatrix} \mbox{ and }	
+\mathbf{X}_2 = \begin{pmatrix}	
+x_{1, 2}\\	
+\vdots\\	
+x_{n, 2}	
+\end{pmatrix}	
+$$
+
+Note that for the Baseball player example $x_{1, 1}= Age_1$ and $x_{i, 1}=Age_i$ with $Age_i$ representing the `Age` of the i-th player. Similarly for $x_{i, 2}= Height_i$, the height of the i-th player. These vectors are also thought of as $n\times 1$ matrices.	
+
+It is convenient to represent these covariates as matrices:	
+ 	
+$$ 	
+\mathbf{X} = [ \mathbf{X}_1 \mathbf{X}_2 ] = \begin{pmatrix}	
+x_{1, 1}&x_{1, 2}\\	
+\vdots\\	
+x_{n, 1}&x_{n, 2}	
+\end{pmatrix}	
+$$
+
+This matrix has dimension $n \times 2$. We can create this matrix in R this way:	
+
+```{r}
+X <- cbind(Age, Height)	
+head(X)	
+dim(X)
+```
+
+We can also use this notation to denote an arbitrary number of covariates ($k$) with the following $n\times k$ matrix:	
+ 	
+$$	
+\mathbf{X} = \begin{pmatrix}	
+x_{1, 1}&\dots & x_{1, k} \\	
+x_{2, 1}&\dots & x_{2, k} \\	
+& \vdots & \\	
+x_{n, 1}&\dots & x_{n, k} 	
+\end{pmatrix}	
+$$
+
+You can simulate such matrix in R now using `matrix` instead of `cbind`:
+
+```{r}
+n <- 1034; k <- 5	
+X <- matrix(1:(n*k), n, k)	
+head(X)	
+dim(X)
+```
+
+By default, the matrices are filled column-by-column order, but using `byrow=TRUE` argument allows us to change the order to row-by-row:	
+
+```{r}
+n <- 1034; k <- 5	
+X <- matrix(1:(n*k), n, k, byrow=TRUE)	
+head(X)	
+dim(X)
+```
+
+A scalar is just a univariate number, which is different from vectors and matrices, denoted usually by lower case not bolded letters. 	
+
+## Sample Statistics (mean, variance, etc.)
+
+### Mean	
+To compute the sample average and variance of a dataset, we use the formulas:	
+$$\bar{Y}=\frac{1}{n} \sum_{i=1}^n {Y_i}$$ 	
+and 	
+$$\mbox{var}(Y)=\frac{1}{n-1} \sum_{i=1}^n {(Y_i - \bar{Y})}^2, $$	
+which can be represented as matrix multiplications.
+
+Define an $n \times 1$ matrix made of $1$'s:	
+ 	
+$$	
+A=\begin{pmatrix}	
+1\\	
+1\\	
+\vdots\\	
+1	
+\end{pmatrix}	
+$$
+
+This implies that:	
+ 	
+$$	
+\frac{1}{n}	
+\mathbf{A}^\top Y = \frac{1}{n}	
+\begin{pmatrix}1&1& \dots&1\end{pmatrix}	
+\begin{pmatrix}	
+Y_1\\	
+Y_2\\	
+\vdots\\	
+Y_n	
+\end{pmatrix}=	
+\frac{1}{n} \sum_{i=1}^n {Y_i}= \bar{Y}	
+$$
+
+Note that we are multiplying matrices by scalars, like $\frac{1}{n}$, by `*`, whereas we multiply matrices using `%*%`:	
+
+```{r}
+# Using the Baseball dataset	
+y <- data$Height	
+print(mean(y))	
+	
+n <- length(y)	
+Y <- matrix(y, n, 1)	
+A <- matrix(1, n, 1)	
+barY = t(A) %*% Y / n	
+	
+print(barY)	
+# double-check the result	
+mean(data$Height)
+```
+
+**Note**: Multiplying the transpose of a matrix with another matrix is very common in statistical computing and modeling and there is a function in R, `crossprod`:	
+
+```{r}
+barY = crossprod(A, Y) / n	
+print(barY)
+```
+
+### Variance
+
