@@ -743,5 +743,574 @@ datatable(df_summary)
 #          row.names=T, col.names=T)
 ```
 
+### Mixture distribution data modeling
+
+Earlier, in [Chapter 2](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/02_ManagingData.html#143_imputation_via_expectation-maximization), we discussed the *expectations maximization* (EM) algorithm for parameter estimation. Now, we will illustrate the use of EM to estimate the mixture weights and the distribution parameters needed to obtain mixture-distribution data models.	
+
+For each sample, we fit a mixture distribution of $k=3$ (different number of distribution models, which is predefined). The specific types of mixtures for each of the 9 samples are indicated below.	
+
+```{r}
+sampleColNames <- c("AC1338","AC1432","AC1593", "AC1679", "AC1860", "AC1874", "AC1881", "AC1903", "Rec")	
+sampleMixtureParam <- c(3, 3, 3, 3, 3, 3, 3, 3, 3)	
+df_sampleMixtureParam <- data.frame(t(sampleMixtureParam))	
+colnames(df_sampleMixtureParam) <- sampleColNames; # df_sampleMixtureParam	
+```
+### Mixture-distribution model fitting and parameter estimation
+
+We will use the [R package mixtools](https://cran.r-project.org/web/packages/mixtools/index.html) to obtain the EM estimates of hte mixture distribution weights and the corresponding distribution parameters.	
+
+```{r}
+crystallography_data <- read.csv(file = "https://umich.instructure.com/files/13375767/download?download_frd=1",	
+                         header=TRUE)	
+	
+# install.packages("mixtools")	
+library(mixtools)	
+	
+# Fit mixture models	
+for(i in 1:col_num) {	
+  data_no_NA <- crystallography_data[complete.cases(crystallography_data[, i]), i]	
+  length(data_no_NA)	
+  fit_W[[i]]  <- weibullRMM_SEM(data_no_NA, k=df_sampleMixtureParam[1,i]); summary(fit_W[i])	
+  fit_G[[i]]  <- gammamixEM(data_no_NA, k=df_sampleMixtureParam[1,i]); summary(fit_G[i])	
+  fit_LN[[i]] <- normalmixEM(data_no_NA, k=df_sampleMixtureParam[1,i]); summary(fit_LN[i])	
+}	
+# plot(fit_LN[[1]], which=2)	
+# lines(density(crystallography_data[complete.cases(crystallography_data[, 1]), 1]), lty=2, lwd=2)	
+```
+
+### Plotting the mixture distribution models
+
+We will define custom plots for the mixtures of *Gamma*, *Weibull*, and *Normal* distributions. Alternatively, we can also use some of the `mixtools::plot()` function to display mixture distribution models.	
+
+```{r}
+# Custom design of Gamma-Mixture Model plot	
+gammaMM.plot <- function(mix.object, k = 2, main = "") {  # mix.object <- fit_G[[i]]	
+  data_no_NA <- crystallography_data[complete.cases(crystallography_data[, i]), i]	
+  d3 <- function(x) { # construct the mixture using the estimated parameters	
+    mix.object$lambda[1]*dgamma(x, shape=mix.object$gamma.pars[1,1], 1/mix.object$gamma.pars[2,1]) + 	
+      mix.object$lambda[2]*dgamma(x, shape=mix.object$gamma.pars[1,2], 1/mix.object$gamma.pars[2,2]) + 	
+      mix.object$lambda[3]*dgamma(x, shape=mix.object$gamma.pars[1,3], 1/mix.object$gamma.pars[2,3])	
+  }	
+	
+  x <- seq(min(data_no_NA), max(data_no_NA), 0.001)	
+  hist(data_no_NA, col="pink", freq=F, breaks=10, main = main, xlab="Intensities")	
+  lines(x, d3(x), lwd=3, col="black", xlim=c(4,23), ylim=c(0, 0.25))	
+  mixColors <- colorRampPalette(c("blue", "red"))(k)	
+  	
+  for (i in 1:k) {	
+    d = function(x) { # construct each of the Gamma components using the estimated parameters	
+      mix.object$lambda[i]*dgamma(x, shape=mix.object$gamma.pars[1, i], 1/mix.object$gamma.pars[2,i])	
+    }	
+    lines(x, d(x), lwd=3, col=mixColors[i])	
+  }	
+}	
+	
+# Custom design of Weibull-Mixture Model plot	
+weibullMM.plot <- function(mix.object, k = 2, main = "") {  # mix.object <- fit_W[[i]]	
+  data_no_NA <- crystallography_data[complete.cases(crystallography_data[, i]), i]	
+  d3 <- function(x) { # construct the mixture using the estimated parameters	
+    mix.object$lambda[1]*dweibull(x, shape=mix.object$shape[1], scale=mix.object$scale[1]) + 	
+      mix.object$lambda[2]*dweibull(x, shape=mix.object$shape[2], scale=mix.object$scale[2]) +	
+      mix.object$lambda[3]*dweibull(x, shape=mix.object$shape[3], scale=mix.object$scale[3])	
+  }	
+	
+  x <- seq(min(data_no_NA), max(data_no_NA), 0.001)	
+  hist(data_no_NA, col="pink", freq=F, breaks=15, main = main, xlab="Intensities")	
+  lines(x, d3(x), lwd=3, col="black", xlim=c(4,23), ylim=c(0, 0.25))	
+  mixColors <- colorRampPalette(c("blue", "red"))(k)	
+  	
+  for (i in 1:k) {	
+    d = function(x) { # onstruct each of the Weibull components using the estimated parameters	
+      mix.object$lambda[i]*dweibull(x, shape=mix.object$shape[i], scale=mix.object$scale[i])	
+    }	
+    lines(x, d(x), lwd=3, col=mixColors[i])	
+  }	
+}	
+	
+# Custom design of Normal-Mixture Model plot	
+normalMM.plot <- function(mix.object, k = 2, main = "") {  # mix.object <- fit_LN[[i]]	
+  data_no_NA <- crystallography_data[complete.cases(crystallography_data[, i]), i]	
+  d3 <- function(x) { # construct the mixture using the estimated parameters	
+    mix.object$lambda[1]*dnorm(x, mean=mix.object$mu[1], sd=mix.object$sigma[1]) + 	
+      mix.object$lambda[2]*dnorm(x, mean=mix.object$mu[2], sd=mix.object$sigma[2]) +	
+      mix.object$lambda[3]*dnorm(x, mean=mix.object$mu[3], sd=mix.object$sigma[3])	
+  }	
+	
+  x <- seq(min(data_no_NA), max(data_no_NA), 0.001)	
+  hist(data_no_NA, col="pink", freq=F, breaks=20, main = main, xlab="Intensities", xlim = c(4,23), ylim = c(0.0, 0.25))	
+  lines(x, d3(x), lwd=3, col="black")	
+  mixColors <- colorRampPalette(c("blue", "red"))(k)	
+  	
+  for (i in 1:k) {	
+    d = function(x) { # onstruct each of the Weibull components using the estimated parameters	
+      mix.object$lambda[i]*dnorm(x, mean=mix.object$mu[i], sd=mix.object$sigma[i])	
+    }	
+    lines(x, d(x), lwd=3, col=mixColors[i])	
+  }	
+}
+```
+
+Next, we will display the three alternative mixture distribution models overlayed on the sample histograms of each of the nine samples.	
+
+```{r}
+# Plot Mixture Models and Report model parameter estimates	
+# for(i in 1:col_num) {  # uncomment this to plot all 9 samples	
+for(i in 1:2) {    # this only plots the first 2 samples to save space	
+  weibullMM.plot(fit_W[[i]], df_sampleMixtureParam[1,i], 	
+               paste0("Mixture of ", df_sampleMixtureParam[1, sampleColNames[i]], 	
+                  " Weibull Models of ", sampleColNames[i]))	
+  #plot(fit_W[[i]], density=TRUE, whichplots = 2,	
+  #   main2=paste0("Mixture of ", df_sampleMixtureParam[1, sampleColNames[i]], 	
+  #                " Weibull Models of ", sampleColNames[i]), xlab2="Intensities")	
+  gammaMM.plot(fit_G[[i]], df_sampleMixtureParam[1,i], 	
+               paste0("Mixture of ", df_sampleMixtureParam[1, sampleColNames[i]], 	
+                  " Gamma Models of ", sampleColNames[i]))	
+  normalMM.plot(fit_LN[[i]], df_sampleMixtureParam[1,i], 	
+               paste0("Mixture of ", df_sampleMixtureParam[1, sampleColNames[i]], 	
+                  " Normal Models of ", sampleColNames[i]))	
+}	
+```
 
 
+### Reporting model parameter estimates
+
+For each of the [9 samples in this dataset](https://umich.instructure.com/files/13375767/download?download_frd=1)) and each of the 3 types of mixture distribution models ([Weibull](https://en.wikipedia.org/wiki/Weibull_distribution), [Gamma](https://en.wikipedia.org/wiki/Gamma_distribution), and [Normal](https://en.wikipedia.org/wiki/Normal_distribution)) we will summarize:	
+ 	
+  - **lambda**: The weights (impacts) of each of the 3 mixture components to the overall mixture model,	
+  - **parameters**: of each mixture distribution component, *mean* and *sd*,	
+  - **loglik**: the overall mixture distribution [log-likelihood value](https://en.wikipedia.org/wiki/Likelihood_function).	
+  
+```{r}
+# Generate the sumamry DF	
+getSummaryTable <- function (crystalSampleIndex) {	
+  mat <- matrix(0, nrow = 3, ncol = 10)	
+  	
+  # Weibull estimates for all 3 model components 	
+  # For Weibull Dist mean and SD see: https://en.wikipedia.org/wiki/Weibull_distribution	
+  mat[1,1] <- round(fit_W[[crystalSampleIndex]]$lambda[1],3) # lambda	
+  mat[1,2] <- round(fit_W[[crystalSampleIndex]]$scale[1] * 	
+                      gamma(1+1/fit_W[[crystalSampleIndex]]$shape[1]),3)  # mean	
+  mat[1,3] <- round(fit_W[[crystalSampleIndex]]$scale[1] *	
+                      sqrt(gamma(1+2/fit_W[[crystalSampleIndex]]$shape[1])-	
+                          (gamma(1+1/fit_W[[crystalSampleIndex]]$shape[1]))^2),3)  #  sd	
+  	
+  mat[1,4] <- round(fit_W[[crystalSampleIndex]]$lambda[2],3) # lambda	
+  mat[1,5] <- round(fit_W[[crystalSampleIndex]]$scale[2] * 	
+                      gamma(1+1/fit_W[[crystalSampleIndex]]$shape[2]),3)  # mean	
+  mat[1,6] <- round(fit_W[[crystalSampleIndex]]$scale[2] *	
+                      sqrt(gamma(1+2/fit_W[[crystalSampleIndex]]$shape[2])-	
+                          (gamma(1+1/fit_W[[crystalSampleIndex]]$shape[2]))^2),3)  #  sd	
+  	
+  mat[1,7]  <- round(fit_W[[crystalSampleIndex]]$lambda[3],3) # lambda	
+  mat[1,8] <- round(fit_W[[crystalSampleIndex]]$scale[3] * 	
+                      gamma(1+1/fit_W[[crystalSampleIndex]]$shape[3]),3)  # mean	
+  mat[1,9] <- round(fit_W[[crystalSampleIndex]]$scale[3] *	
+                      sqrt(gamma(1+2/fit_W[[crystalSampleIndex]]$shape[3])-	
+                          (gamma(1+1/fit_W[[crystalSampleIndex]]$shape[3]))^2),3)  #  sd	
+  mat[1,10] <- round(fit_W[[crystalSampleIndex]]$loglik,3)    # Log-lik	
+  	
+  # Gamma estimates for all 3 model components 	
+  # For Gamma dist mean & SD see: https://en.wikipedia.org/wiki/Gamma_distribution	
+  mat[2,1] <- round(fit_G[[crystalSampleIndex]]$lambda[1],3)        # lambda	
+  mat[2,2] <- round(fit_G[[crystalSampleIndex]]$gamma.pars[1,1]*	
+                      fit_G[[crystalSampleIndex]]$gamma.pars[2,1],3)  # mean	
+  mat[2,3] <- round(sqrt(fit_G[[crystalSampleIndex]]$gamma.pars[1,1])*	
+                      fit_G[[crystalSampleIndex]]$gamma.pars[2,1],3)  # SD	
+  	
+  mat[2,4] <- round(fit_G[[crystalSampleIndex]]$lambda[2],3)        # lambda	
+  mat[2,5] <- round(fit_G[[crystalSampleIndex]]$gamma.pars[1,2]*	
+                      fit_G[[crystalSampleIndex]]$gamma.pars[2,2],3)  # mean	
+  mat[2,6] <- round(sqrt(fit_G[[crystalSampleIndex]]$gamma.pars[1,2])*	
+                      fit_G[[crystalSampleIndex]]$gamma.pars[2,2],3)  # sd	
+  	
+  mat[2,7]  <- round(fit_G[[crystalSampleIndex]]$lambda[3],3)        # lambda	
+  mat[2,8] <- round(fit_G[[crystalSampleIndex]]$gamma.pars[1,3]*	
+                       fit_G[[crystalSampleIndex]]$gamma.pars[2,3],3)  # mean	
+  mat[2,9] <- round(sqrt(fit_G[[crystalSampleIndex]]$gamma.pars[1,3])*	
+                       fit_G[[crystalSampleIndex]]$gamma.pars[2,3],3)  # sd	
+  mat[2,10] <- round(fit_G[[crystalSampleIndex]]$loglik,3)    # Log-lik	
+  	
+  # Normal estimates for all 3 model components 	
+  mat[3,1] <- round(fit_LN[[crystalSampleIndex]]$lambda[1],3)        # lambda	
+  mat[3,2] <- round(fit_LN[[crystalSampleIndex]]$mu[1],3)  # shape	
+  mat[3,3] <- round(fit_LN[[crystalSampleIndex]]$sigma[1],3)  # scale	
+  	
+  mat[3,4] <- round(fit_LN[[crystalSampleIndex]]$lambda[2],3)        # lambda	
+  mat[3,5] <- round(fit_LN[[crystalSampleIndex]]$mu[2],3)  # shape	
+  mat[3,6] <- round(fit_LN[[crystalSampleIndex]]$sigma[2],3)  # scale	
+  	
+  mat[3,7]  <- round(fit_LN[[crystalSampleIndex]]$lambda[3],3)        # lambda	
+  mat[3,8] <- round(fit_LN[[crystalSampleIndex]]$mu[3],3)  # shape	
+  mat[3,9] <- round(fit_LN[[crystalSampleIndex]]$sigma[3],3)  # scale	
+  mat[3,10] <- round(fit_LN[[crystalSampleIndex]]$loglik,3)    # Log-lik	
+  	
+  return(as.data.frame(mat))	
+}	
+	
+# render the sumamry DT tables	
+library("DT")	
+```
+Below we summarize the mixture-distribution models just for the first two crystallographic features.	
+
+#### *AC1338* Report (Case 1)
+
+```{r}
+df_summary <- getSummaryTable(1)	
+rownames(df_summary) <- c("Weibull", "Gamma", "Normal")	
+colnames(df_summary) <- c("MC 1 Weight", "MC 1 Mean", "MC 1 SD", 	
+                            "MC 2 Weight", "MC 2 Mean", "MC 2 SD", 	
+                            "MC 3 Weight", "MC 3 Mean", "MC 3 SD", "MixMod LogLik")	
+datatable(df_summary, rownames = TRUE)
+```
+
+#### *AC1432* Report (Case 2)
+
+```{r}
+ddf_summary <- getSummaryTable(2)	
+rownames(df_summary) <- c("Weibull", "Gamma", "Normal")	
+colnames(df_summary) <- c("MC 1 Weight", "MC 1 Mean", "MC 1 SD", 	
+                            "MC 2 Weight", "MC 2 Mean", "MC 2 SD", 	
+                            "MC 3 Weight", "MC 3 Mean", "MC 3 SD", "MixMod LogLik")	
+datatable(df_summary, rownames = TRUE)
+```
+
+## 2D Kernel Density and 3D Surface Plots
+
+[Density estimation](https://en.wikipedia.org/wiki/Density_estimation) is the process of using observed data to compute an estimate of the underlying process' probability density function. There are several approaches to obtain density estimation, but the most basic technique is to use a rescaled histogram.	
+
+Plotting 2D Kernel Density and 3D Surface plots is very important and useful in multivariate exploratory data analytics. 	
+
+We will use `plot_ly()` function under `plotly` package, which takes value from a data frame.	
+
+To create a surface plot, we use two vectors: *x* and *y* with length *m* and *n* respectively. We also need a matrix: *z* of size $m\times n$. This *z* matrix is created from matrix multiplication between *x* and *y*. 	
+
+To plot the 2D Kernel Density estimation plot we will use the eruptions data from the "Old Faithful" geyser in Yellowstone National Park, Wyoming stored under `geyser`. Also, `kde2d()` function is needed for 2D kernel density estimation.	
+
+```{r}
+kd <- with(MASS::geyser, MASS::kde2d(duration, waiting, n = 50))	
+kd$x[1:5]	
+kd$y[1:5]	
+kd$z[1:5, 1:5]
+```
+
+Here `z=t(x)%*%y`. Then we apply `plot_ly` to the list `kd` via `with()` function.	
+
+```{r}
+library(plotly)	
+with(kd, plot_ly(x=x, y=y, z=z, type="surface"))
+```
+
+Note we used the option `"surface"`.
+
+For 3D surfaces, we have a built-in dataset in R called `volcano`. It records the volcano height at location x, y (longitude, latitude). Because *z* is always made from *x* and *y*, we can simply specify *z* to get the complete surface plot.	
+
+```{r}
+volcano[1:10, 1:10]	
+plot_ly(z=volcano, type="surface")
+```
+
+## Multiple 2D image surface plots
+
+```{r}
+#install.packages("jpeg") ## if necessary	
+library(jpeg)	
+	
+# Get an image file downloaded (default: MRI_ImageHematoma.jpg)	
+img_url <- "https://umich.instructure.com/files/1627149/download?download_frd=1"	
+img_file <- tempfile(); download.file(img_url, img_file, mode="wb")	
+img <- readJPEG(img_file)	
+file.info(img_file)	
+file.remove(img_file) # cleanup	
+img <- img[, , 1] # extract the first channel (from RGB intensity spectrum) as a univariate 2D array	
+	
+# install.packages("spatstat")	
+# package spatstat has a function blur() that applies a Gaussian blur	
+library(spatstat) 	
+img_s <- as.matrix(blur(as.im(img), sigma=10)) # the smoothed version of the image	
+	
+z2 <- img_s + 1   # abs(rnorm(1, 1, 1)) # Upper confidence surface	
+z3 <- img_s - 1   # abs(rnorm(1, 1, 1)) # Lower confidence limit	
+	
+# Plot the image surfaces	
+p <- plot_ly(z=img, type="surface", showscale=FALSE) %>%	
+ add_trace(z=z2, type="surface", showscale=FALSE, opacity=0.98) %>%	
+ add_trace(z=z3, type="surface", showscale=FALSE, opacity=0.98)	
+p # Plot the mean-surface along with lower and upper confidence services.	
+```
+
+## 3D and 4D Visualizations
+
+ Many datasets have intrinsic multi-dimensional characteristics. For instance, the human body is a 3D solid of matter (3 spatial dimensions can be used to describe the position of every component, e.g., [sMRI volume](https://en.wikipedia.org/wiki/Magnetic_resonance_imaging)) that changes over time (the fourth dimension, e.g., [fMRI hypervolumes](https://en.wikipedia.org/wiki/Functional_magnetic_resonance_imaging)).	
+
+The [SOCR BrainViewer](https://socr.umich.edu/HTML5/BrainViewer/) shows how to use a web-browser to visualize 2D cross-sections of 3D volumes, display volume-rendering, and show 1D (e.g., 1-manifold curves embedded in 3D) and 2D (e.g., surfaces, shapes) models jointly into the same 3D scene.	
+
+We will now illustrate an example of 3D/4D visualization in `R` using the packages [brainR](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4911196/) and [rgl](https://cran.r-project.org/web/packages/rgl).	
+
+```{r}
+# install.packages("brainR") ## if necessary	
+library(brainR)	
+# Test data: https://socr.umich.edu/HTML5/BrainViewer/data/TestBrain.nii.gz	
+	
+brainURL <- "https://socr.umich.edu/HTML5/BrainViewer/data/TestBrain.nii.gz"	
+brainFile <- file.path(tempdir(), "TestBrain.nii.gz")	
+download.file(brainURL, dest=brainFile, quiet=TRUE)	
+brainVolume <- readNIfTI(brainFile, reorient=FALSE)	
+	
+brainVolDims <- dim(brainVolume); brainVolDims	
+# try different levels at which to construct contour surfaces (10 fast)	
+# lower values yield smoother surfaces # see ?contour3d	
+contour3d(brainVolume, level = 20, alpha = 0.1, draw = TRUE)	
+	
+# multiple levels may be used to show multiple shells	
+# "activations" or surfaces like hyper-intense white matter	
+# This will take 1-2 minutes to rend!	
+contour3d(brainVolume, level = c(10, 120), alpha = c(0.3, 0.5),	
+        add = TRUE, color=c("yellow", "red"))	
+	
+# create text for orientation of right/left	
+text3d(x=brainVolDims[1]/2, y=brainVolDims[2]/2, z = brainVolDims[3]*0.98, text="Top")	
+text3d(x=brainVolDims[1]*0.98, y=brainVolDims[2]/2, z = brainVolDims[3]/2, text="Right")	
+	
+### render this on a webpage and view it!	
+#browseURL(paste("file://",	
+#        writeWebGL_split(dir= file.path(tempdir(),"webGL"),	
+#        template = system.file("my_template.html", package="brainR"),	
+#        width=500), sep="")
+```
+Below we provide some additional 3D/4D PET, sMRI, and fMRI volumes in [*.nii.gz format][(https://nifti.nimh.nih.gov/nifti-1/data):	
+ 	
+  - [sMRI](https://socr.umich.edu/HTML5/BrainViewer/data/ABIDE_MRI_MPRAGE_peds_defaced.nii.gz) (3D real-valued structural MRI volume)	
+  - [fMRI](https://socr.umich.edu/HTML5/BrainViewer/data/fMRI_FilteredData_4D.nii.gz) (4D real-valued functional MRI hyper-volume)	
+  - [PET](https://socr.umich.edu/HTML5/BrainViewer/data/PET_FDG_3D_vol.nii.gz) (3D perfusion Positron Emission Tomography volume).	
+
+For 4D fMRI time-series, we can load the hypervolumes similarly and then display them:	
+
+```{r}
+# See examples here: https://cran.r-project.org/web/packages/oro.nifti/vignettes/nifti.pdf	
+# and here: http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0089470	
+	
+fMRIURL <- "https://socr.umich.edu/HTML5/BrainViewer/data/fMRI_FilteredData_4D.nii.gz"	
+fMRIFile <- file.path(tempdir(), "fMRI_FilteredData_4D.nii.gz")	
+download.file(fMRIURL, dest=fMRIFile, quiet=TRUE)	
+(fMRIVolume <- readNIfTI(fMRIFile, reorient=FALSE))	
+# dimensions: 64 x 64 x 21 x 180 ; 4mm x 4mm x 6mm x 3 sec 	
+	
+fMRIVolDims <- dim(fMRIVolume); fMRIVolDims	
+time_dim <- fMRIVolDims[4]; time_dim	
+	
+# Plot the 4D array of imaging data in a 5x5 grid of images 	
+# The first three dimensions are spatial locations of the voxel (volume element) and the fourth dimension is time for this functional MRI (fMRI) acquisition. 	
+image(fMRIVolume, zlim=range(fMRIVolume)*0.95)	
+hist(fMRIVolume)	
+	
+# Plot an orthographic display of the fMRI data using the axial plane containing the left-and-right thalamus to approximately center the crosshair vertically	
+	
+orthographic(fMRIVolume, xyz=c(34,29,10), zlim=range(fMRIVolume)*0.9)	
+	
+stat_fmri_test <- ifelse(fMRIVolume > 15000, fMRIVolume, NA)	
+hist(stat_fmri_test)	
+dim(stat_fmri_test)	
+	
+overlay(fMRIVolume, fMRIVolume[,,,5], zlim.x=range(fMRIVolume)*0.95)	
+	
+# overlay(fMRIVolume, stat_fmri_test[,,,5], zlim.x=range(fMRIVolume)*0.95)	
+	
+# To examine the time course of a specific 3D voxel (say the one at x=30, y=30, z=10):	
+plot(fMRIVolume[30, 30, 10,], type='l', main="Time Series of 3D Voxel \n (x=30, y=30, z=10)", col="blue")	
+	
+x1 <- c(1:180)	
+y1 <- loess(fMRIVolume[30, 30, 10,]~ x1, family = "gaussian")	
+lines(x1, smooth(fMRIVolume[30, 30, 10,]), col = "red", lwd = 2)	
+lines(ksmooth(x1, fMRIVolume[30, 30, 10,], kernel = "normal", bandwidth = 5), col = "green", lwd = 3)	
+	
+legend("bottomright", legend=c("(raw) fMRI", "smooth(fMRI)", "ksmooth(fMRI"),	
+       col=c("blue", "red", "green"), lty=1, cex=0.8,	
+       y.intersp=0.8)
+```
+
+Finally, [DSPA Appendix 3](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/DSPA_Appendix_03_Geometric_Parametric_Surface_Viz.html) includes details about classification, representation, modeling, and visualization of parametric and implicit, open and closed manifolds.	
+
+# Appendix
+## Hands-on Activity (Health Behavior Risks)
+
+```{r}
+# load data CaseStudy09_HealthBehaviorRisks_Data	
+data_2 <- read.csv("https://umich.instructure.com/files/602090/download?download_frd=1", sep=",", header = TRUE)	
+```
+
+Classify the cases using these variables:  "AGE_G"  "SEX"  "RACEGR3"  "IMPEDUC"  "IMPMRTL"  "EMPLOY1"  "INCOMG"  "CVDINFR4" "CVDCRHD4" "CVDSTRK3" "DIABETE3" "RFSMOK3"	"FRTLT1" "VEGLT1" 	
+
+```{r}
+data.raw <- data_2[, -c(1, 14, 17)]	
+	
+# Does the classification match either of these: 	
+#	TOTINDA (Leisure time physical activities per month, 1=Yes, 2=No, 9=Don't know/Refused/Missing)	
+#	RFDRHV4 (Heavy alcohol consumption, 1=No, 2=Yes, 9=Don't know/Refused/Missing)	
+	
+hc = hclust(dist(data.raw), 'ave') 	
+# the agglomeration method can be specified "ward.D", "ward.D2", "single", "complete", "average" (= UPGMA), "mcquitty" (= WPGMA), "median" (= WPGMC) or "centroid" (= UPGMC)	
+#' 	
+#' 	
+#' Plot clustering diagram	
+#' 	
+#' 	
+par (mfrow=c(1, 1))	
+# very simple dendogram	
+plot(hc)	
+ 	
+summary(data_2$TOTINDA); summary(data_2$RFDRHV4)	
+	
+cutree(hc, k = 2)	
+# alternatively specify the height, which is, the value of the criterion associated with the 	
+# clustering method for the particular agglomeration -- cutree(hc, h= 10)	
+	
+table(cutree(hc, h= 10)) # cluster distribution	
+```
+
+To identify the number of cases for varying number of clusters	
+
+```{r}
+# To identify the number of cases for varying number of clusters we can combine calls to cutree and table 	
+# in a call to sapply -- to see the sizes of the clusters for $2\ge k \ge 10$ cluster-solutions:	
+# numbClusters=4; 	
+myClusters = sapply(2:5, function(numbClusters)table(cutree(hc, numbClusters)))	
+names(myClusters) <- paste("Number of Clusters=", 2:5, sep = "")	
+myClusters	
+```
+
+Inspect which SubjectIDs are in which clusters:
+
+```{r}
+#To see which SubjectIDs are in which clusters:	
+table(cutree(hc, k=2)) 	
+groups.k.2 <- cutree(hc, k = 2)	
+sapply(unique(groups.k.2), function(g)data_2$ID[groups.k.2 == g])
+```
+
+To see which TOTINDA (Leisure time physical activities per month, 1=Yes, 2=No, 9=Don't know/Refused/Missing) & which RFDRHV4 are in which clusters:	
+
+```{r}
+groups.k.3 <- cutree(hc, k = 3)	
+sapply(unique(groups.k.3), function(g)data_2$TOTINDA [groups.k.3 == g])	
+sapply(unique(groups.k.3), function(g)data_2$RFDRHV4[groups.k.3 == g])	
+	
+# Perhaps there are intrinsically 3 groups here e.g., 1, 2 and 9 .	
+groups.k.3 <- cutree(hc, k = 3)	
+sapply(unique(groups.k.3), function(g)data_2$TOTINDA [groups.k.3 == g])	
+sapply(unique(groups.k.3), function(g)data_2$RFDRHV4 [groups.k.3 == g])	
+	
+# Note that there is quite a dependence between the outcome variables.	
+plot(data_2$RFDRHV4, data_2$TOTINDA)	
+	
+# drill down deeper	
+table(groups.k.3, data_2$RFDRHV4)	
+```
+
+To characterize the clusters, we can look at cluster summary statistics, like the median, of the variables that were used to perform the cluster analysis. These can be broken down by the groups identified by the cluster analysis. The aggregate function will compute stats (e.g., median) on many variables simultaneously. To look at the median values for the variables we've used in the cluster analysis, broken up by the cluster groups:	
+
+```{r}
+aggregate(data_2, list(groups.k.3), median) 
+```
+
+## Some additional `ggplot` examples
+
+###  Housing Price Data
+
+This example uses the [SOCR Home Price Index data of 19 major city in US from 1991-2009](https://wiki.socr.umich.edu/index.php/SOCR_Data_Dinov_091609_SnP_HomePriceIndex).	
+
+```{r}
+library(rvest)	
+# draw data	
+wiki_url <- read_html("https://wiki.socr.umich.edu/index.php/SOCR_Data_Dinov_091609_SnP_HomePriceIndex")	
+hm_price_index<- html_table(html_nodes(wiki_url, "table")[[1]])	
+head(hm_price_index)	
+hm_price_index <- hm_price_index[, c(-2, -3)]	
+colnames(hm_price_index)[1] <- c('time') 	
+library(reshape2)	
+hm_index_melted = melt(hm_price_index, id.vars='time') #a common trick for plot, wide -> long format	
+ggplot(data=hm_index_melted, aes(x=time, y=value, color=variable)) +	
+  geom_line(size=1.5) + ggtitle("HomePriceIndex:1991-2009")	
+```
+
+### Modeling the home price index data
+
+```{r}
+#Linear regression and predict	
+hm_price_index$pred = predict(lm(`CA-SanFrancisco` ~ `CA-LosAngeles`, data=hm_price_index))	
+ggplot(data=hm_price_index, aes(x = `CA-LosAngeles`)) +	
+  geom_point(aes(y = `CA-SanFrancisco`)) +	
+  geom_line(aes(y = pred), color='Magenta', size=2) + ggtitle("PredictHomeIndex SF - LA")
+```
+
+Let's examine some popular `ggplot` graphs.
+
+```{r}
+# install.packages("GGally")	
+require(GGally)	
+pairs <- hm_price_index[, 10:15] 	
+head(pairs)	
+colnames(pairs) <- c("Atlanta", "Chicago", "Boston", "Detroit", "Minneapolis",  "Charlotte")	
+ggpairs(pairs) # you can define the plot design by claim "upper", "lower", "diag" etc.
+```
+
+### Map of the neighborhoods of Los Angeles (LA)	
+
+This example interrogates data of [110 LA neighborhoods](https://wiki.socr.umich.edu/index.php/SOCR_Data_LA_Neighborhoods_Data), which includes measures of education, income and population demographics.	
+
+Here, we select the **Longitude** and *Latitude* as the axes, mark these 110 Neighborhoods according to their population, fill out those points according to the income of each area, and label each neighborhood.	
+
+```{r}
+library(rvest)	
+library(ggplot2)	
+#draw data	
+wiki_url <- read_html("https://wiki.socr.umich.edu/index.php/SOCR_Data_LA_Neighborhoods_Data")	
+html_nodes(wiki_url, "#content")	
+LA_Nbhd_data <- html_table(html_nodes(wiki_url, "table")[[2]])	
+#display several lines of data	
+head(LA_Nbhd_data); 	
+theme_set(theme_grey())	
+#treat ggplot as a variable	
+#When claim "data", we can access its column directly eg"x = Longitude"	
+plot1 = ggplot(data=LA_Nbhd_data,
+               aes(x=LA_Nbhd_data$Longitude, y=LA_Nbhd_data$Latitude)) 	
+#you can easily add attribute, points, label(eg:text) 	
+plot1 + geom_point(aes(size=Population, fill=LA_Nbhd_data$Income),
+                   pch=21, stroke=0.2, alpha=0.7, color=2) + 
+  geom_text(aes(label=LA_Nbhd_data$LA_Nbhd),
+            size=1.5, hjust=0.5, vjust=2, check_overlap = T) +
+  scale_size_area() + 
+  scale_fill_distiller(limits=c(range(LA_Nbhd_data$Income)),
+                       palette='RdBu', na.value='white', name='Income') + 	
+  scale_y_continuous(limits=c(min(LA_Nbhd_data$Latitude),
+                              max(LA_Nbhd_data$Latitude))) +	
+  coord_fixed(ratio=1) + 
+  ggtitle('LA Neughborhoods Scatter Plot (Location, Population, Income)') 	
+```
+
+Observe that some areas (e.g., Beverly Hills) have disproportionately higher incomes and notice that the resulting plot resembles this plot	
+
+### Latin letter frequency in different languages
+
+This example uses `ggplot` to interrogate the [SOCR Latin letter frequency data](https://wiki.socr.umich.edu/index.php/SOCR_LetterFrequencyData).	
+
+```{r}
+library(rvest)	
+wiki_url <- read_html("https://wiki.socr.umich.edu/index.php/SOCR_LetterFrequencyData")	
+letter<- html_table(html_nodes(wiki_url, "table")[[1]])	
+summary(letter)	
+head(letter)	
+sum(letter[, -1]) #reasonable	
+require(reshape)	
+library(scales)	
+dtm = melt(letter[, -14], id.vars = c('Letter'))	
+p = ggplot(dtm, aes(x = Letter, y = value, fill = variable)) + 	
+  geom_bar(position = "fill", stat = "identity") + 	
+  scale_y_continuous(labels = percent_format())+ggtitle('Pie Chart')	
+#or exchange 	
+#p = ggplot(dtm, aes(x = variable, y = value, fill = Letter)) + geom_bar(position = "fill", stat = "identity") + scale_y_continuous(labels = percent_format())	
+p	
+#gg pie plot actually is stack plot + polar coordinate	
+p + coord_polar()
+```
+
+You can see [some additional Latin Letters plots here](http://wiki.stat.ucla.edu/socr/index.php/SOCR_LetterFrequencyData#Graphs).	
