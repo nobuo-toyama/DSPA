@@ -552,3 +552,545 @@ print(barY)
 
 ### Variance
 
+For the variance, we note that if:	
+ 	
+$$	
+\mathbf{Y'}\equiv \begin{pmatrix}	
+Y_1 - \bar{Y}\\	
+\vdots\\	
+Y_n - \bar{Y}	
+\end{pmatrix}, \, \, 	
+\frac{1}{n-1} \mathbf{Y'}^\top\mathbf{Y'} = 	
+\frac{1}{n-1}\sum_{i=1}^n (Y_i - \bar{Y})^2	
+$$
+
+An `crossprod` with only one matrix input computes: $Y'^\top Y'$ so we can simply type:	
+
+```{r}
+Y1 <- y - mean(y)	
+crossprod(Y1)/(n-1)  # Y1.man <- (1/(n-1))* t(Y1) %*% Y1	
+	
+# Check the result	
+var(y)
+```
+
+### Applications of Matrix Algebra: Linear modeling
+
+Let's use these matrices:	
+  	
+$$	
+\mathbf{Y} = \begin{pmatrix}	
+Y_1\\	
+Y_2\\	
+\vdots\\	
+Y_n	
+\end{pmatrix}	
+, 	
+\mathbf{X} = \begin{pmatrix}	
+1&x_1\\	
+1&x_2\\	
+\vdots\\	
+1&x_n	
+\end{pmatrix}	
+, 	
+\mathbf{\beta} = \begin{pmatrix}	
+\beta_0\\	
+\beta_1	
+\end{pmatrix} \mbox{ and }	
+\mathbf{\varepsilon} = \begin{pmatrix}	
+\varepsilon_1\\	
+\varepsilon_2\\	
+\vdots\\	
+\varepsilon_n	
+\end{pmatrix}	
+$$
+
+Then we can write a linear model:	
+ 	
+$$ Y_i = \beta_0 + \beta_1 x_i + \varepsilon_i, i=1, \dots, n$$
+as: 	
+ 	
+$$	
+\begin{pmatrix}	
+Y_1\\	
+Y_2\\	
+\vdots\\	
+Y_n	
+\end{pmatrix} = 	
+\begin{pmatrix}	
+1&x_1\\	
+1&x_2\\	
+\vdots\\	
+1&x_n	
+\end{pmatrix}	
+\begin{pmatrix}	
+\beta_0\\	
+\beta_1	
+\end{pmatrix} +	
+\begin{pmatrix}	
+\varepsilon_1\\	
+\varepsilon_2\\	
+\vdots\\	
+\varepsilon_n	
+\end{pmatrix}	
+$$
+
+or simply: 	
+$$ \mathbf{Y}=\mathbf{X}\boldsymbol{\beta}+\boldsymbol{\varepsilon}$$
+
+ which is a  simpler way to write the same model equation.
+ 
+ As, the optimal solution is achieved when all residuals ($\epsilon_i$) are as small as possible (indicating a good model fit), the least squares (LS) solution to this matrix equation ($Y=X\beta+\epsilon$) can be obtained by minimizing the residual square error $$ <\epsilon^T, \epsilon> = (Y-X\beta)^T \times(Y-X\beta).$$ 	
+
+Let's define the objective function using cross-product notation:	
+ 	
+$$	
+f(\beta) = (\mathbf{Y}-\mathbf{X}\boldsymbol{\beta})^\top	
+(\mathbf{Y}-\mathbf{X}\boldsymbol{\beta})	
+$$
+
+We can determine the values of $\beta$ by minimizing this expression, using calculus to find the minimum of the cost (objective) function ($f(\beta)$). 	
+
+### Finding function extrema (min/max) using calculus
+
+There are a series of rules that permit us to solve partial derivative equations in matrix notation. By equating the derivative of a cost function to $0$ and solving for the unknown parameter $\beta$, we obtain candidate solution(s). The derivative of the above equation is:	
+
+$$2 \mathbf{X}^\top (\mathbf{Y} - \mathbf{X} \boldsymbol{\hat{\beta}})=0$$
+
+$$\mathbf{X}^\top \mathbf{X} \boldsymbol{\hat{\beta}} = \mathbf{X}^\top \mathbf{Y}$$
+
+$$\boldsymbol{\hat{\beta}} = (\mathbf{X}^\top \mathbf{X})^{-1} \mathbf{X}^\top \mathbf{Y},$$	
+
+which is the desired solution. Hat notation is used to denote estimates. For instance, the solution for the unknown $\beta$ parameters is denoted by the (data-driven) estimate $\hat{\beta}$.	
+
+The least squares minimization works because minimizing a function corresponds to finding the roots of it's (first) derivative. In the ordinary least squares (OLS) we square the residuals:	
+$$ (\mathbf{Y}-\mathbf{X}\boldsymbol{\beta})^\top	
+(\mathbf{Y}-\mathbf{X}\boldsymbol{\beta}).$$
+
+Notice that the minimum of $f(x)$ and $f^2(x)$ are achieved at the same roots of $f'(x)$, as the derivative of $f^2(x)$ is $2f(x)f'(x)$. 	
+
+### Least Square Estimation
+
+```{r}
+#x = cbind(data$Height, data$Age)	
+x = data$Height	
+y = data$Weight	
+X <- cbind(1, x) 	
+beta_hat <- solve(t(X) %*% X) %*% t(X) %*% y 	
+###or	
+beta_hat <- solve(crossprod(X)) %*% crossprod(X, y)
+```
+
+Now we can see the results of this by computing the estimated $\hat{\beta}_0+\hat{\beta}_1 x$ for any value of $x$:	
+
+```{r}
+newx <- seq(min(x), max(x), len=100)	
+X <- cbind(1, newx)	
+fitted <- X%*%beta_hat	
+plot(x, y, xlab="MLB Player's Height", ylab="Playeer's Weight")	
+lines(newx, fitted, col=2)
+```
+
+$\hat{\boldsymbol{\beta}}=(\mathbf{X}^\top \mathbf{X})^{-1} \mathbf{X}^\top \mathbf{Y}$ is one of the most widely used results in data analysis. One of the advantages of this approach is that we can use it in many different situations. 	
+
+### The R `lm` Function
+
+R has a very convenient function that fits these models. We will learn more about this function later, but here is a preview:	
+
+```{r}
+# X <- cbind(data$Height, data$Age) # more complicated model	
+X <- data$Height    # simple model	
+y <- data$Weight	
+fit <- lm(y ~ X)
+```
+
+Note that we obtain the same values as above.
+
+# Eigenvalues and Eigenvectors
+
+*Eigen-spectrum* decomposition of linear operators (matrices) into *eigen-values* and *eigen-vectors* enables us to easily understand linear transformations. The eigen-vectors represent the "axes" (directions) along which a linear transformation acts by *stretching, compressing* or *flipping*. And the eigenvalues represent the amounts of this linear transformation into the specified eigen-vector direction. In higher dimensions, there are more directions along which we need to understand the behavior of the linear transformation. The eigen-spectrum makes it easier to understand the linear transformation especially when many (all?) of the eigenvectors are linearly independent (orthogonal).	
+
+For matrix **A** if we have $A\vec{v}=\lambda \vec{v}$ then we say $\vec{v}$(a non-zero vector) is a right eigenvector of matrix A and the scale factor $\lambda$ is the eigenvalue corresponding to that eigenvector.	
+
+With some calculations we know that $A\vec{v}=\lambda \vec{v}$ is the same as $(\lambda I_n-A)\vec{v}=\vec{0}$. Here $I_n$ is the $n\times n$ identity matrix. So when we solve this equation we get our eigenvalues and eigenvectors. Thankfully, we don't need to do that by hand. `eigen()` function in R will help us to do the calculations.	
+
+```{r}
+m11 <- diag(nrow = 2, ncol=2)	
+m11	
+eigen(m11)
+```
+
+ We can use R to prove that $(\lambda I_n-A)\vec{v}=\vec{0}$.
+ 
+```{r}
+(eigen(m11)$values*diag(2) - m11) %*% eigen(m11)$vectors
+```
+ 
+ As we mentioned earlier, `diag(n)` creates a $n\times n$  identity matrix. Thus, `diag(2)` is the $I_2$ matrix in the equation. The output zero matrix proves that the equation $(\lambda I_n-A)\vec{v}=\vec{0}$ holds true.	
+
+Many interesting [applications of the eigen-spectrum are shown here](https://en.wikipedia.org/wiki/Eigenvalues_and_eigenvectors#Applications).	
+
+# Other important functions
+
+Other important functions about matrix operation are listed in the following table.	
+ 	
+Functions              | Math expression or explanation	
+-----------------------|---------------------------------------------	
+`crossprod(A, B)`       | $A^TB$ Where $A$, $B$ are matrices	
+`y<-svd(A)`            | the output has the following components 	
+  -`y$d`              | vector containing the singular values of A, 	
+  -`y$u`              | matrix with columns contain the left singular vectors of A, 	
+  -`y$v`              | matrix with columns contain the right singular vectors of A  	
+`k <- qr(A)`           | the output has the following components 	
+  -`k$qr`             | has an upper triangle that contains the decomposition and a lower triangle that contains information on the Q decomposition.	
+  -`k$rank`           |  is the rank of A. 	
+  -`k$qraux`          |  a vector which contains additional information on Q. 	
+  -`k$pivot`          |  contains information on the pivoting strategy used. 	
+`rowMeans(A)`/`colMeans(A)`|  returns vector of row/column means	
+`rowSums(A)`/`colSums(A)`   |  returns vector of row/column sums
+
+# Matrix notation
+
+Some flexible matrix operations can help us save time calculating row or column averages. For example, column averages can be calculated by the following matrix operation.	
+
+$$
+AX=	
+\left(\begin{array}{cccc} 	
+\frac{1}{N}&\frac{1}{N}&...&\frac{1}{N}	
+\end{array}\right)	
+\left(\begin{array}{cccc} 	
+X_{1, 1}&...&X_{1, p}\\	
+X_{2, 1}&...&X_{2, p}\\	
+...&...&...&...\\	
+X_{N, 1}&...&X_{N, p}	
+\end{array}\right)=	
+\left(\begin{array}{cccc} 	
+\bar{X}_1&\bar{X}_2&...&\bar{X}_N	
+\end{array}\right)	
+$$	
+While row averages can be calculated by the next operation:	
+$$	
+XB=	
+\left(\begin{array}{cccc} 	
+X_{1, 1}&...&X_{1, p}\\	
+X_{2, 1}&...&X_{2, p}\\	
+...&...&...&...\\	
+X_{N, 1}&...&X_{N, p}	
+\end{array}\right)	
+\left(\begin{array}{c} 	
+\frac{1}{p}\\	
+\frac{1}{p}\\	
+...\\	
+\frac{1}{p}	
+\end{array}\right)=	
+\left(\begin{array}{c} 	
+\bar{X}_1\\	
+\bar{X}_2\\	
+...\\	
+\bar{X}_q	
+\end{array}\right)	
+$$	
+We can see that fast calculations can be done by multiplying a matrix in the front or at the back of the original feature matrix. In general multiplying a vector in front can give us the following equation.	
+$$
+AX=	
+\left(\begin{array}{cccc} 	
+a_1&a_2&...&a_N	
+\end{array}\right)	
+\left(\begin{array}{cccc} 	
+X_{1, 1}&...&X_{1, p}\\	
+X_{2, 1}&...&X_{2, p}\\	
+...&...&...&...\\	
+X_{N, 1}&...&X_{N, p}	
+\end{array}\right)=	
+\left(\begin{array}{cccc} 	
+\sum_{i=1}^N a_i \bar{X}_{i, 1}&\sum_{i=1}^N a_i \bar{X}_{i, 2}&...&\sum_{i=1}^N a_i \bar{X}_{i, N}	
+\end{array}\right)	
+$$
+
+Now let's do an example to practice matrix notation. We use the genetic expression data including 8793 different genes and 208 subjects.	
+
+These gene expression data represents a microarray experiment - GSE5859 - comparing [Gene Expression Profiles from Lymphoblastoid cells](http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE5859). Specifically, the data compares the expression level of genes in lymphoblasts from individuals in three HapMap populations {CEU, CHB, JPT}. The study found that more than 1K genes were significantly different (a<0.05) in mean expression level between the {CEU} and {CHB+JPT} samples.	
+
+The [gene expression profiles data](https://umich.instructure.com/courses/38100/files/folder/Case_Studies/CaseStudy16_GeneExpression_GSE5859) has two components:	
+ 	
+* The [gene expression intensities](https://umich.instructure.com/files/2001417/download?download_frd=1) (exprs_GSE5859.csv): rows represent features on the microarray (e.g., genes), and columns represent different microarray samples, and 	
+* [Meta-data about each of the samples](https://umich.instructure.com/files/2001418/download?download_frd=1) (exprs_MetaData_GSE5859.csv) rows represent samples, and	columns represent meta-data (e.g., sex, age, treatment status, the date the sample processing).	
+
+```{r}
+gene <- read.csv("https://umich.instructure.com/files/2001417/download?download_frd=1", header = T) # exprs_GSE5859.csv	
+info <- read.csv("https://umich.instructure.com/files/2001418/download?download_frd=1", header=T)  # exprs_MetaData_GSE5859.csv
+```
+
+Like `lapply()` function that we will talk about in [Chapter 6](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/06_LazyLearning_kNN.html). `sapply()` function can be used to calculate column and row averages. Let's compare the output by `sapply` and the matrix.	
+
+```{r}
+colmeans <- sapply(gene[, -1], mean)	
+gene1 <- as.matrix(gene[, -1])	
+# can also use built in funcitons	
+# colMeans <- colMeans(gene1)	
+colmeans.matrix <- crossprod(rep(1/nrow(gene1), nrow(gene1)), gene1)	
+colmeans[1:15]	
+colmeans.matrix[1:15]
+```
+
+We got the same output. Here we use `rep(1/nrow(gene1), nrow(gene1))` to create the vector	
+$$	
+\left(\begin{array}{cccc} 	
+\frac{1}{N}&\frac{1}{N}&...&\frac{1}{N}	
+\end{array}\right)	
+$$	
+to get the column averages. We are able to visualize the column means too.
+
+```{r}
+colmeans <- as.matrix(colmeans)	
+hist(colmeans)
+```
+
+The histogram shows that the distribution is roughly normal.	
+
+We can address harder problems using matrix notation. For example, let's calculate the differences between genders for each gene. First, we need to get the gender information for each subject. 	
+
+```{r}
+gender <- info[, c(3, 4)]	
+rownames(gender) <- gender$filename	
+```
+
+Then we have to reorder the columns to make it consistent with the feature matrix `gene1`.	
+```{r}
+gender <- gender[colnames(gene1), ]
+```
+
+After that, we are going to design the matrix. We want to multiply it with the feature matrix. The plan is to multiply the following two matrices.	
+$$	
+\left(\begin{array}{cccc} 	
+X_{1, 1}&...&X_{1, p}\\	
+X_{2, 1}&...&X_{2, p}\\	
+...&...&...&...\\	
+X_{N, 1}&...&X_{N, p}	
+\end{array}\right)	
+\left(\begin{array}{cc} 	
+\frac{1}{p}&a_1\\	
+\frac{1}{p}&a_2\\	
+...&...\\	
+\frac{1}{p}&a_p	
+\end{array}\right)=	
+\left(\begin{array}{cc} 	
+\bar{X}_1&gender.diff_1\\	
+\bar{X}_2&gender.diff_2\\	
+...&...\\	
+\bar{X}_q&gender.diff_N	
+\end{array}\right)	
+$$
+```{r}
+table(gender$sex)	
+gender$vector <- ifelse(gender$sex=="F", -1/86, 1/122)	
+vec1 <- as.matrix(data.frame(rowavg=rep(1/ncol(gene1), ncol(gene1)), gender.diff=gender$vector))	
+gender.matrix <- gene1%*%vec1	
+gender.matrix[1:15, ]
+```
+
+Where $a_i=-1/N_F$ if the subject is female and  $a_i=1/N_M$ if the subject is male. Thus, we gave each female and male the same weight before the subtraction. We average each gender and get their difference. $\bar{X}_i$ is the average across both gender and $gender.diff_i$ represents the gender difference for the *i*-th gene.	
+
+# Linear regression
+
+As we mentioned earlier, the formula for linear regression can be written as	
+$$Y_i=\beta_0+X_{i, 1}\beta_1+...+X_{i, p}\beta_p +\epsilon_i, i=1, ..., N$$	
+We can rewrite this in matrix form.	
+$$	
+\left(\begin{array}{c} 	
+Y_1\\	
+Y_2\\	
+...\\	
+Y_N	
+\end{array}\right)=	
+\left(\begin{array}{c} 	
+1\\	
+1\\	
+...\\	
+1	
+\end{array}\right)\beta_0+	
+\left(\begin{array}{c} 	
+X_{1, 1}\\	
+X_{2, 1}\\	
+...\\	
+X_{N, 1}	
+\end{array}\right)\beta_1+...+	
+\left(\begin{array}{c} 	
+X_{1, p}\\	
+X_{2, p}\\	
+...\\	
+X_{N, p}	
+\end{array}\right)\beta_p+	
+\left(\begin{array}{c} 	
+\epsilon_1\\	
+\epsilon_2\\	
+...\\	
+\epsilon_N	
+\end{array}\right)	
+$$	
+Which is the same as $Y=X\beta +\epsilon$ or	
+$$	
+\left(\begin{array}{c} 	
+Y_1\\	
+Y_2\\	
+...\\	
+Y_N	
+\end{array}\right)=	
+\left(\begin{array}{cccc} 	
+1&X_{1, 1}&...&X_{1, p}\\	
+1&X_{2, 1}&...&X_{2, p}\\	
+...&...&...&...\\	
+1&X_{N, 1}&...&X_{N, p}	
+\end{array}\right)	
+\left(\begin{array}{c} 	
+\beta_o\\	
+\beta_1\\	
+...\\	
+\beta_p	
+\end{array}\right)+	
+\left(\begin{array}{c} 	
+\epsilon_1\\	
+\epsilon_2\\	
+...\\	
+\epsilon_N	
+\end{array}\right)	
+$$	
+
+As $Y=X\beta +\epsilon$ implies that $X^TY \sim X^T(X\beta)=(X^TX)\beta$, and thus the solution for $\beta$ is obtained by multiplying both hand sides by $(X^TX)^{-1}$:	
+$$\hat{\beta}=(X^TX)^{-1}X^TY$$
+
+Matrix calculation would be faster than fitting a regression. Let's apply this to the [Lahman baseball data](http://seanlahman.com/files/database/readme2014.txt) representing yearly stats and standings. Let's download it first via this link [baseball.data](https://umich.instructure.com/files/2018445/download?download_frd=1) and put it in the R working directory. We can use `load()` function to load local RData. For this example we subset the dataset by `G==162` and `yearID<2002`. Also, we create a new feature named `Singles` that is equal to `H(Hits by batters) - X2B(Doubles) - X3B(Tripples) - HR(Homeruns by batters)`. Finally, we only pick four features `R` (Runs scored), `Singles`, `HR` (Homeruns by batters) and `BB` (Walks by batters).	
+
+```{r}
+	
+#If you downloaded the .RData locally first, then you can easily load it into the R workspace by:	
+# load("Teams.RData")	
+	
+# Alternatively you can also download the data in CSV format from https://umich.instructure.com/courses/38100/files/folder/data (teamsData.csv)	
+Teams <- read.csv('https://umich.instructure.com/files/2798317/download?download_frd=1', header=T)	
+	
+dat <- Teams[Teams$G==162&Teams$yearID<2002, ]	
+dat$Singles <- dat$H - dat$X2B - dat$X3B - dat$HR	
+dat<-dat[, c("R", "Singles", "HR", "BB")]	
+head(dat)
+```
+
+Now let's do a simple example. We pick `R` as the response variable and `BB` as the independent variable. Here we need to add a column of *1*'s to the $X$ matrix. 	
+
+```{r}
+Y <- dat$R	
+X <- cbind(rep(1, n=nrow(dat)), dat$BB)	
+X[1:10, ]
+```
+
+Now we solve the betas by 	
+$$\hat{\beta}=(X^TX)^{-1}X^TY$$
+
+```{r}
+beta <- solve(t(X) %*% X) %*% t(X) %*% Y	
+beta
+```
+
+To examine this manual calculation, we refit the linear equation using `lm()` function. After comparing the time used for computations, we know that matrix calculation are more time efficient.	
+
+```{r}
+fit <- lm(R ~ BB, data=dat)	
+# fit<-lm(R ~., data=dat)
+# '.' indicates all other variables, very useful when fitting models with many predictors	
+fit
+summary(fit)	
+system.time(fit <- lm(R~BB, data=dat))	
+system.time(beta1 <- solve(t(X)%*%X)%*%t(X)%*%Y)
+```
+
+We can also expand the model to include several predictors and compare the resulting estimates.	
+
+```{r}
+X <- cbind(rep(1, n=nrow(dat)), dat$BB, dat$Singles, dat$HR)	
+X[1:10, ]	
+system.time(fit <- lm(R ~ BB + Singles + HR, data=dat))	
+system.time(beta2 <- solve(t(X) %*% X) %*% t(X) %*% Y)	
+	
+fit$coefficients; t(beta2)
+```
+
+We can visualize the relationship between `R` and `BB` by drawing a scatter plot.	
+
+```{r}
+plot(dat$BB, dat$R, xlab = "BB", ylab = "R",
+     main = "Scatter plot/regression for baseball data")	
+abline(beta1[1, 1], beta1[2, 1], lwd=4, col="red")
+```
+
+Here the red line is our regression line calculated by matrix calculation.	
+
+Matrix calculation can still work if we have multiple independent variables. Now we will add variable `HR` to the model.	
+
+```{r}
+X <- cbind(rep(1, n=nrow(dat)), dat$BB, dat$HR)	
+beta <- solve(t(X) %*% X) %*% t(X) %*% Y	
+beta	
+#install.packages("scatterplot3d")	
+library(scatterplot3d)	
+myScatter3D <- scatterplot3d(dat$BB, dat$HR, dat$R)	
+	
+fit = lm(dat$R ~ dat$BB + dat$HR, data = dat)	
+# Plot the linear model	
+# get the BB & HR ranges summary(dat$BB); summary(dat$HR)	
+cf = fit$coefficients	
+pltx = seq(344, 775,length.out = 100)	
+plty = seq(11,264,length.out = 100)	
+pltz = cf[1] + cf[2]*pltx + cf[3]*plty	
+#Add the line to the plot	
+myScatter3D$points3d(pltx,plty,pltz, type = "l", col = "red", lwd=3)	
+	
+# interactive *rgl* 3D plot	
+library(rgl)	
+fit <- lm(dat$R ~ dat$BB + dat$HR)	
+coefs <- coef(fit)	
+a <- coefs["dat$BB"]	
+b <- coefs["dat$HR"]	
+c <- -1	
+d <- coefs["(Intercept)"]	
+open3d()	
+plot3d(dat$BB,  dat$HR, dat$R, type = "s", col = "red", size = 1)	
+planes3d(a, b, c, d, alpha = 0.5)	
+# planes3d(b, a, -1.5, d, alpha = 0.5)	
+# planes3d draws planes using the parametrization a*x + b*y + c*z + d = 0.	
+# Multiple planes may be specified by giving multiple values for the normal	
+# vector (a, b, c) and the offset parameter d	
+	
+pca1 <- prcomp(as.matrix(cbind(dat$BB,  dat$HR, dat$R)), center = T); summary(pca1)	
+	
+# Given two vectors PCA1 and PCA2, the cross product V = PCA1 x PCA2 	
+# is orthogonal to both A and to B, and a normal vector to the 	
+# plane containing PCA1 and PCA2	
+# If PCA1 = (a,b,c) and PCA2 = (d, e, f), then the cross product is	
+# PCA1 x PCA2 =  (bf - ce, cd - af, ae - bd)	
+# PCA1 = pca1$rotation[,1] and PCAS2=pca1$rotation[,2]	
+# https://en.wikipedia.org/wiki/Cross_product#Names	
+# prcomp$rotation contains the matrix of variable loadings, 	
+# i.e., a matrix whose columns contain the eigenvectors	
+#normVec = c(pca1$rotation[,1][2]*pca1$rotation[,2][3]-	
+#              pca1$rotation[,1][3]*pca1$rotation[,2][2],	
+#            pca1$rotation[,1][3]*pca1$rotation[,2][1]-	
+#              pca1$rotation[,1][1]*pca1$rotation[,2][3],	
+#            pca1$rotation[,1][1]*pca1$rotation[,2][2]-	
+#              pca1$rotation[,1][2]*pca1$rotation[,2][1]	
+#            )	
+normVec = c(pca1$rotation[2,1]*pca1$rotation[3,2]-	
+                 pca1$rotation[3,1]*pca1$rotation[2,2],	
+             pca1$rotation[3,1]*pca1$rotation[1,2]-	
+                 pca1$rotation[1,1]*pca1$rotation[3,2],	
+             pca1$rotation[1,1]*pca1$rotation[2,2]-	
+                 pca1$rotation[2,1]*pca1$rotation[1,2]	
+)	
+	
+# Plot the PCA Plane	
+plot3d(dat$BB,  dat$HR, dat$R, type = "s", col = "red", size = 1)	
+planes3d(normVec[1], normVec[2], normVec[3], 90, alpha = 0.5)
+```
+
+# Sample covariance matrix
+
+
