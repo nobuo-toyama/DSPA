@@ -1,0 +1,407 @@
+---
+title: "07 Naive Bayes Class"
+author: "nobuo"
+date: "2021/4/23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Please review the introduction to [Chapter 6](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/06_LazyLearning_kNN.html), where we described the types of machine learning methods and presented lazy classification for numerical data. What about nominal features or textual data? In this chapter, we will begin to explore some classification techniques for categorical data. Specifically, we will (1) present the Naive Bayes algorithm, (2) review its assumptions, (3) discuss Laplace estimation, and (4) illustrate the naive Bayesian classifier on a Head and Neck Cancer Medication case-study.	
+
+Later, in [Chapter 19](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/19_NLP_TextMining.html), we will also discuss text mining and natural language processing of unstructured text data.	
+
+# Overview of the Naive Bayes Algorithm
+
+Start by reviewing the [basics of probability theory and Bayesian inference](https://wiki.socr.umich.edu/index.php/AP_Statistics_Curriculum_2007_Prob_Rules). 	
+Bayes classifiers use training data to calculate an observed probability of each class based on all the features. The probability links feature values to classes like a map. When labeling the test data, we utilize the feature values in the test data and the "map" to classify our test data with the most likely class. This idea seems simple but the corresponding algorithmic implementations might be very sophisticated.	
+
+The best scenario of accurately estimating the probability of an outcome-class map is when all features in Bayes classifiers attribute to the class simultaneously. The naive Bayes algorithm is frequently used for text classifications. The maximum *a posteriori* assignment to the class label is based on obtaining the conditional probability density function for each feature given the value of the class variable.	
+
+# Assumptions	
+ 	
+Naive Bayes is named for its "naive" assumptions. Its most important assumption is that all of the features are *equally important* and *independent.* This rarely happens in real world data. However, sometimes even when the assumptions are violated, naive Bayes still performs fairly accurate, particularly when the number of features $p$ is large. This is why the Naive Bayes algorithm may be used as a powerful text classifier.	
+
+There are interesting [relations between QDA (Quadratic Discriminant Analysis), LDA (Linear Discriminant Analysis) and Naive Bayes classification](http://www.wikicoursenote.com/wiki/Stat841f10#Linear_and_Quadratic_Discriminant_Analysis). Additional information about [LDA and QDA is available here ](https://wiki.socr.umich.edu/index.php/SMHS_BigDataBigSci_CrossVal_LDA_QDA).	
+
+# Bayes Formula
+
+Let's first define the set-theoretic Bayes formula. We assume that $B_i$'s are mutually exclusive events, for all $i= 1, 2, ..., n$, where *n* represents the number of features. If $A$ and $B$ are two events, the Bayes conditional probability formula is as follows:	
+$$Posterior\, Probability=\frac{likelihood\times Prior\, Probability}{Marginal\, Likelihood}$$	
+
+Symbolically,	
+ 	
+$$P(A|B)=\frac{P(B|A)P(A)}{P(B)}.$$	
+When $B_i's$ represent a partition of the event space, $S=\cup {B_i}$ and $B_i\cap B_j = \emptyset,\ \forall  i\not= j$. So we have:	
+
+$$P(A|B)=\frac{P(B|A)\times P(A)}{P(B|B_1)\times P(B_1) + P(B|B_2)\times P(B_2)  ... + P(B|B_n)\times P(B_n)}.$$	
+
+Now, let's represent the Bayes formula in terms of classification using observed features. Having observed $n$ features, $F_i$, for each of $K$ possible `class` outcomes, $C_k$. The Bayesian model may be reformulate to make it more tractable using the Bayes' theorem, by decomposing the conditional probability.	
+
+$$ P(C_k \mid F_1, \dots, F_n)= \frac{P(F_1, \dots, F_n|C_k)P(C_k)}{P(F_1, \dots, F_n)}.$$	
+ 	
+In the above expression, only the numerator depends on the class label, $C_k$, as the values of the features $F_i$ are observed (or imputed) making the denominator constant. Let's focus on the numerator.	
+ 	
+The numerator essentially represents the `joint probability model`:	
+
+$$P(F_1, \dots, F_n|C_k)P(C_k) = \underbrace{P(F_1, ..., F_n, C_k)}_{\text{joint model}}.$$	
+ 	
+Repeatedly using the chain rule and the definition of conditional probability simplifies this to:	
+
+$$P(F_1, \dots ,F_n, C_{k})=P(F_1| F_2, \dots ,F_n, C_{k})\times P(F_2, \dots ,F_n, C_{k})=$$ 	
+$$=P(F_1| F_2, \dots ,F_n, C_{k})\times P(F_2|F_3, \dots ,F_n, C_{k})\times P(F_3, \dots ,F_n, C_{k})=$$ 	
+$$=P(F_1| F_2, \dots ,F_n, C_{k})\times P(F_2|F_3, \dots ,F_n, C_{k})\times P(F_3|F_4, \dots ,F_n, C_{k})\times P(F_4, \dots ,F_n, C_{k})=$$ 	
+$$=...=$$	
+$$=P(F_1| F_2, \dots ,F_n, C_{k})\times P(F_2|F_3, \dots ,F_n, C_{k})\times P(F_3|F_4, \dots ,F_n, C_{k})\times \cdots \times P(F_n| C_{k})\times P(C_k)$$	
+
+Note that the "naive" qualifier in the *Naive Bayes classifier* name is attributed to the oversimplification of the conditional probability. Assuming each feature $F_i$ is conditionally statistical independent of every other feature 	
+$F_j, \ \forall j\neq i$, given the category $C_k$, we get:	
+ 	
+$$P(F_i | F_{i+1}, \dots , F_{n}, C_k ) = P(F_i | C_k).$$	
+
+This reduces the joint probability model to:	
+ 	
+$$P(F_1, \dots ,F_n, C_{k})=	
+P(F_1| C_{k})\times P(F_2| C_{k})\times P(F_3| C_{k})\times \cdots \times P(F_n| C_{k})\times P(C_k)$$	
+
+Therefore, the joint model is:	
+ 	
+$$
+P(F_1, \dots ,F_n, C_{k})=	
+P(C_k) \prod_{i=1}^n {P(F_i| C_{k})}	
+$$	
+
+Essentially, we express the probability of class level $L$ given an observation, represented as a set of *independent features* $F_1, F_2, ..., F_n$. Then the posterior probability that the observation is in class $L$ is equal to:	
+
+$$P(C_L|F_1, ..., F_n)=\frac{P(C_L)\prod_{i=1}^nP(F_i|C_L)}{\prod_{i=1}^nP(F_i)},$$	
+where the denominator, $\prod_{i=1}^nP(F_i)$, is a scaling factor that represents the marginal probability of observing all features jointly.	
+
+For a given case $X=(F_1, F_2, ..., F_n)$, i.e., given vector of *features*, the naive Bayes classifier assigns the **most likely class** $\hat{C}$ by calculating $\frac{P(C_L)\prod_{i=1}^nP(F_i|C_L)}{\prod_{i=1}^nP(F_i)}$ for all class labels $L$, and then assigning the class $\hat{C}$ corresponding to the maximum posterior probability. Analytically, $\hat{C}$ is defined by:	
+$$ \hat{C} = \arg\max_L{\frac{P(C_L)\prod_{i=1}^nP(F_i|C_L)}{\prod_{i=1}^nP(F_i)}}.$$	
+
+As the denominator is static for $L$, the posterior probability above is maximized when the numerator is maximized, i.e., 	
+$\hat{C} = \arg\max_L {P(C_L)\prod_{i=1}^nP(F_i|C_L)}.$	
+
+The contingency table below illustrates schematically how the Bayesian, marginal, conditional, and joint probabilities may be calculated for a finite number of features (columns) and classes (rows).	
+
+$Features\\Classes$ | $F_1$ | $F_2$ | $...$ | $F_n$ | Total	
+--------|-------|-------|-------|-------|------	
+$C_1$  | $...$ | $...$ | $...$ | $...$ | Marginal $P(C_1)$	
+$C_2$  | $...$ | $...$ | $...$ | Joint $P(C_2, F_n)$ |  $...$ 	
+$...$  | $...$ | $...$ | $...$ | $...$ | $...$ 	
+$C_L$  | Conditional $P(F_1\mid C_L)=\frac{P(F_1,C_L)}{P(C_L)}$ | $...$ | $...$ | $...$  | $...$ 	
+Total | | Marginal $P(F_2)$ | $...$ | $...$ | $N$	
+   	
+In the [DSPA Appendix](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/DSPA_Appendix_01_BayesianInference_MCMC_Gibbs.html), we provide additional technical details, code, and applications of Bayesian simulation, modeling and inference.	
+
+# The Laplace Estimator
+
+If at least one $P(F_i|C_L)=0$ then $P(C_L|F_1, ..., F_n)=0$, which means the probability of being in this class is 0. However, $P(F_i|C_L)=0$ could happen by random chance, e.g., when selecting the training data.	
+
+One of the solutions to this scenario is **Laplace estimation**, also known as **Laplace smoothing**, which can be accomplished in two ways. One is to add small number to each counts in the frequency table, which allows each class-feature combination to be at least one in the training data. Then $P(F_i|C_L)>0$ for all $i$ and we avoid degenerate cases. Another strategy is to add some small value, $\epsilon$, to the numerator and denominator when calculating the posterior probability. Note that these small perturbations of the denominator should be larger than the changes in the numerator to avoid trivial ($0$) posterior for another class.
+
+# Case Study: Head and Neck Cancer Medication
+
+## Step 1: Collecting Data
+
+We utilize the Inpatient Head and Neck Cancer Medication data for this case study, which is the case study 14 in our data archive.	
+ 	
+Variables:	
+ 	
+* **PID:** coded patient ID 	
+* **ENC_ID:** coded encounter ID 	
+* **Seer_stage:** SEER cancer stage (0 =In situ, 1=Localized, 2=Regional by direct extension, 3=Regional to lymph nodes, 4=Regional (both codes 2 and 3), 5=Regional, NOS, 7= Distant metastases/systemic disease, 8=Not applicable, 9=Unstaged, unknown, or unspecified). See: http://seer.cancer.gov/tools/ssm. 	
+* **Medication_desc:** description of the chemical composition of the medication 	
+* **Medication_summary:** brief description about medication brand and usage 	
+* **Dose:** the dosage in the medication summary 	
+* **Unit:** the unit for dosage in the Medication_summary	
+* **Frequency:** the frequency of use in the Medication_summary	
+* **Total_dose_count:** total dosage count according to the Medication_summary	
+
+## Step 2: Exploring and preparing the data	
+ 	
+Let's load our data first.
+
+```{r}
+hn_med <- read.csv("https://umich.instructure.com/files/1614350/download?download_frd=1", stringsAsFactors = FALSE)	
+str(hn_med)
+```
+
+Change the `seer_stage` (cancer stage indicator) variable into a factor.
+
+```{r}
+hn_med$seer_stage <- factor(hn_med$seer_stage)	
+str(hn_med$seer_stage)	
+table(hn_med$seer_stage)
+```
+
+### Data preparation - processing text data for analysis	
+ 	
+As you can see, the `medication_summary` contains a great amount of text. We should do some text mining to prepare the data for analysis. In R, the `tm` package is a good choice for text mining.	
+
+```{r}
+# install.packages("tm", repos = "http://cran.us.r-project.org")	
+# requires R V.3.3.1 +	
+library(tm)
+```
+
+First step for text mining is to convert text features (text elements) into a `corpus` object, which is a collection of text documents.	
+
+```{r}
+hn_med_corpus <- Corpus(VectorSource(hn_med$MEDICATION_SUMMARY))	
+print(hn_med_corpus)
+```
+
+After we construct the `corpus` object, we could see that we have 662 documents. Each document represents an encounter (e.g., notes on medical treatment) for a patient.	
+
+```{r}
+inspect(hn_med_corpus[1:3])
+hn_med_corpus[[1]]$content	
+hn_med_corpus[[2]]$content	
+hn_med_corpus[[3]]$content
+```
+
+There are unwanted punctuations and other symbols in the corpus document that we want to remove. We use `tm_map()` function for the cleaning.	
+
+```{r}
+corpus_clean <- tm_map(hn_med_corpus, tolower)	
+corpus_clean <- tm_map(corpus_clean, removePunctuation)	
+# corpus_clean <- tm_map(corpus_clean, stripWhitespace)	
+corpus_clean <- tm_map(corpus_clean, removeNumbers)	
+corpus_clean <- tm_map(corpus_clean, stripWhitespace)	
+# corpus_clean <- tm_map(corpus_clean, PlainTextDocument)
+```
+
+The above lines of code changed all the characters to lower case, removed all punctuations and extra white spaces (typically created by deleting punctuations), and removed numbers (we could also convert the corpus to plain text).	
+
+```{r}
+inspect(corpus_clean[1:3])	
+corpus_clean[[1]]$content	
+corpus_clean[[2]]$content	
+corpus_clean[[3]]$content	
+```
+
+`DocumentTermMatrix()` function can successfully tokenize the medication summary into words. It can count frequent terms in each document in the corpus object.	
+
+```{r}
+hn_med_dtm <- DocumentTermMatrix(corpus_clean)
+```
+
+### Data preparation - creating training and test datasets
+
+Just like in [Chapter 6](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/06_LazyLearning_kNN.html), we need to separate the dataset into training and test subsets. We have to subset the raw data with other features, the corpus object and the document term matrix.	
+
+```{r}
+set.seed(12345)	
+subset_int <- sample(nrow(hn_med), floor(nrow(hn_med)*0.8))  # 80% training + 20% testing	
+hn_med_train <- hn_med[subset_int, ]	
+hn_med_test <- hn_med[-subset_int, ]	
+hn_med_dtm_train <- hn_med_dtm[subset_int, ]	
+hn_med_dtm_test <- hn_med_dtm[-subset_int, ]	
+corpus_train <- corpus_clean[subset_int]	
+corpus_test <- corpus_clean[-subset_int]	
+	
+# hn_med_train<-hn_med[1:562, ]	
+#hn_med_test<-hn_med[563:662, ]	
+# hn_med_dtm_train<-hn_med_dtm[1:562, ]	
+# hn_med_dtm_test<-hn_med_dtm[563:662, ]	
+#corpus_train<-corpus_clean[1:562]	
+#corpus_test<-corpus_clean[563:662]
+```
+
+Let's examine the distribution of **seer stages** in the training and test datasets.	
+
+```{r}
+prop.table(table(hn_med_train$seer_stage))	
+prop.table(table(hn_med_test$seer_stage))
+```
+
+We can separate (dichotomize) the [seer_stage](https://seer.cancer.gov/tools/ssm/intro.pdf) into two categories: 	
+
+* *no stage* or *early stage* cancer (seer in [0;4]), and 	
+* *later stage* cancer (seer in [5;9]). 	
+ 	
+Of course, other binarizations are possible as well. Note that `a %in% b` is an intuitive interface to `match` and acts as a binary operator returning a logical vector (T or F) indicating if there is a match between the left and right operands. 	
+
+```{r}
+hn_med_train$stage <- hn_med_train$seer_stage %in% c(5:9)	
+hn_med_train$stage <- factor(hn_med_train$stage, levels=c(F, T), 
+                             labels = c("early_stage", "later_stage"))	
+hn_med_test$stage <- hn_med_test$seer_stage %in% c(5:9)	
+hn_med_test$stage <- factor(hn_med_test$stage, levels=c(F, T),
+                            labels = c("early_stage", "later_stage"))	
+prop.table(table(hn_med_train$stage))	
+prop.table(table(hn_med_test$stage))
+```
+
+### Visualizing text data - word clouds	
+ 	
+A word cloud can help us visualize text data. More frequent words would have larger fonts in the figure, while less common words are appearing in smaller fonts. There is a `wordcloud` package in R that is commonly used for creating these figures.	
+
+```{r}
+# install.packages("wordcloud", repos = "http://cran.us.r-project.org")	
+library(wordcloud)	
+wordcloud(corpus_train, min.freq = 40, random.order = FALSE)
+```
+
+The `random.order=FALSE` option makes more frequent words appear in the center of the word cloud. The `min.freq=40` option sets the cutoff word frequency to be at least 40 times in the corpus object. Therefore, the words must be appear in at least 40 medication summaries to be shown on the graph.  	
+
+We can also visualize the difference between early stages and later stages using this type of graph.	
+
+```{r}
+early <- subset(hn_med_train, stage=="early_stage")	
+later <- subset(hn_med_train, stage=="later_stage")	
+wordcloud(early$MEDICATION_SUMMARY, max.words = 20)	
+wordcloud(later$MEDICATION_SUMMARY, max.words = 20)
+```
+
+We can see that the frequent words are somewhat different in the medication summaries of the *early* and *later* stage patients.	
+
+### Data preparation - creating indicator features for frequent words	
+ 	
+For simplicity, we utilize the medication summary as the only feature to classify cancer stages. You may recall that in [Chapter 6](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/06_LazyLearning_kNN.html) we used features for classifications. **In this study, we are going to make frequencies of words into features**.	
+
+```{r}
+summary(findFreqTerms(hn_med_dtm_train, 5))	
+hn_med_dict <- as.character(findFreqTerms(hn_med_dtm_train, 5))	
+hn_train <- DocumentTermMatrix(corpus_train, list(dictionary=hn_med_dict))	
+hn_test <- DocumentTermMatrix(corpus_test, list(dictionary=hn_med_dict))
+```
+
+The above code limits the document term matrix with words that have appeared in at least 5 different documents. This created (about) 118 features for us to use.	
+
+The Naive Bayes classifier trains on data with categorical features, as it uses frequency tables for learning the data affinities. To create the combinations of *class* and *feature values* comprising the frequency-table (matrix), all feature must be categorical. For instance, numeric features have to be converted (binned) into categories. Thus, we need to transform our *word count features* into categorical data. One way to achieve this is to change the count into an indicator of whether this word appears in the document describing the patient encounter. We can create a simple function to convert presence of a specific word (column) in an encounter document (row) to a binary "Yes" (present) or "No" (not present).	
+
+```{r}
+convert_counts <- function(wordFreq) {	
+  wordFreq <- ifelse(wordFreq > 0, 1, 0)	
+  wordFreq <- factor(wordFreq, levels = c(0, 1), labels = c("No", "Yes"))	
+  return(wordFreq)	
+}
+```
+
+We employ hard-thresholding here `x <- ifelse(x>0, 1, 0)`. This is saying that if we have an `x` that is greater than 0, we assign value 1 to it, otherwise the value is set to 0.	
+ 	
+Now let's apply our own function `convert_counts()` on each column (`MARGIN = 2`) of the training and testing datasets.
+
+```{r}
+hn_train <- apply(hn_train, MARGIN = 2, convert_counts)	
+hn_test <- apply(hn_test, MARGIN = 2, convert_counts)	
+	
+# Check the structure of hn_train and hn_train:	
+# head(hn_train); dim(hn_train)
+```
+
+So far, we successfully created indicators for words that appeared at least in 5 different documents in the training data.	
+
+## Step 3 - training a model on the data	
+ 	
+The package we will use for Naive Bayes classifier is called `e1071`.	
+
+```{r}
+# install.packages("e1071", repos = "http://cran.us.r-project.org")	
+library(e1071)
+```
+
+The function `naiveBayes()` has following components:	
+ 	
+`m<-naiveBayes(train, class, laplace=0)`	
+ 	
+* train: data frame containing numeric training data (features)	
+* class: factor vector with the class for each row in the training data.	
+* laplace: positive double controlling Laplace smoothing; default is $0$ and disables Laplace smoothing,	
+
+Let's build our classifier first.
+
+```{r}
+hn_classifier <- naiveBayes(hn_train, hn_med_train$stage)
+```
+
+Then we can use the classifier to make predictions using `predict()`. Recall that when we presented the AdaBoost example in [Chapter 2](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/02_ManagingData.html), we saw the basic mechanism of machine-learning training, prediction and assessment.	
+
+The function `predict()` has the following components:	
+ 	
+`p<-predict(m, test, type="class")`	
+ 	
+* m: classifier trained by `naiveBayes()`	
+* test: test data frame or matrix	
+* type: either `"class"` or `"raw"` specifies whether the predictions should be the most likely class value or the raw predicted probabilities.	
+
+```{r}
+hn_test_pred <- predict(hn_classifier, hn_test)
+```
+
+## Step 4 - evaluating model performance	
+ 	
+Similarly to the approach in [Chapter 6](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/06_LazyLearning_kNN.html), we use *cross table* to compare predicted class and the true class of our test dataset.	
+
+```{r}
+library(gmodels)	
+CrossTable(hn_test_pred, hn_med_test$stage)	
+# caret::confusionMatrix(hn_test_pred, hn_med_test$stage)
+```
+
+It may be worth quickly looking forward in [Chapter 13](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/13_ModelEvaluation.html#31_binary_outcomes) where we present a summary table for the key measures used to evaluate the performance of binary tests, classifiers, or predictions.	
+ 	
+In this case, the prediction accuracy of the Naive Bayes classifier, assessed on the testing dataset, is:	
+$$ ACC = \frac{T P + T N}{T P + F P + F N + T N } = \frac{78}{133}=0.59.$$	
+
+From the cross table we can see that our testing-data prediction accuracy is $\frac{78}{133}=0.59$.	
+
+## Step 5 - improving model performance	
+ 	
+After setting `laplace=1`, the accuracy goes to $acc=\frac{75}{133}=0.56$. Although this is a small improvement in terms of accuracy, yet, we still fail to identify true *later stage* patients in the testing dataset.	
+
+```{r}
+set.seed(1234)	
+hn_classifier <- naiveBayes(hn_train, hn_med_train$stage, laplace = 1)	
+hn_test_pred <- predict(hn_classifier, hn_test)	
+CrossTable(hn_test_pred, hn_med_test$stage)
+```
+
+## Step 6 - compare Naive Bayesian vs. LDA	
+As mentioned earlier, Naive Bayes with normality assumption is a special case of Discriminant Analysis. It might be interesting to compare the prediction results of *Naive Bayes* and *LDA* classification. 	
+
+**Note**: LDA assumes the predictors are jointly approximately normally distributed.
+
+```{r}
+library(MASS)	
+# df_hn_train = data.frame(lapply(as.data.frame(hn_train),as.numeric), 	
+#                          stage = hn_med_train$stage)	
+# df_hn_test = data.frame(lapply(as.data.frame(hn_test),as.numeric), 	
+#                         stage = hn_med_test$stage)	
+	
+library("dplyr")	
+binarizeFunction <- function(x) { ifelse(x=="Yes", 1,0) }	
+	
+#  A function to Convert Categorical variables to numeric	
+cat2Numeric <- function (dfInput) {	
+  df = as.data.frame(lapply( as.data.frame(dfInput), factor)) %>%	
+                       mutate_all(binarizeFunction)	
+   return(df)	
+}	
+	
+# define the numeric DF of predictors (X) and outcome (Y=stage)	
+df_hn_train = data.frame(cat2Numeric(hn_train), stage = as.numeric(hn_med_train$stage))	
+df_hn_test = data.frame(cat2Numeric(hn_test), stage = as.numeric(hn_med_test$stage))	
+	
+# Remove the multicollinearity - this should be done via VIF assessment, 	
+#      but for now, just take the first few predictors	
+df_hn_train <- df_hn_train[ , c(1:34, 40:50, 60:70, 109)]	
+	
+# Fit LDA	
+set.seed(1234)	
+hn_lda <- lda(data=df_hn_train, stage~.)	
+# hn_pred = predict(hn_lda, df_hn_test[,-104])	
+hn_pred = predict(hn_lda, df_hn_test)	
+CrossTable(hn_pred$class, df_hn_test$stage)
+```
+
+There are differences in the performance of the Naive Bayesian ($acc=\frac{87}{133}=0.65$) and the LDA classifiers ($acc=\frac{94}{133}=0.7$) in terms of the overall accuracy. LDA has a lower type II error ($\frac{33}{133}=0.25$), which is clinically important to avoid missing later-stage cancer patients. 	
+ 	
+In later chapters, we will step deeper into the space of classification problems and see more sophisticated approaches.	
+
+# Practice Problems
+
