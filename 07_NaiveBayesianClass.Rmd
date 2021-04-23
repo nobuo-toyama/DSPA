@@ -405,3 +405,113 @@ In later chapters, we will step deeper into the space of classification problems
 
 # Practice Problems
 
+## Iris Species	
+The classification of the iris flowers represents an easy example of Naive Bayesian classifier.	
+
+```{r}
+data(iris)	
+nbc_model <- naiveBayes(Species ~ ., data = iris)	
+## alternatively:	
+nbc_model <- naiveBayes(iris[, c("Sepal.Length", "Sepal.Width", "Petal.Length", "Petal.Width")], iris[,"Species"])	
+predicted.nbcvalues <- predict(nbc_model, iris[,c("Sepal.Length", "Sepal.Width", "Petal.Length", "Petal.Width")])	
+table(predicted.nbcvalues, iris[, "Species"])
+```
+
+## Cancer Study	
+ 	
+In the previous cancer case study, we classified the patients with `seer_stage` of "not applicable"(`seer_stage`=8) and "unstaged, unknown or unspecified" (`seer_stage`=9) as no cancer or early cancer stages. Let's remove these two categories and replicate the Naive Bayes classifier case study again.	
+
+```{r}
+hn_med1 <- hn_med[!hn_med$seer_stage %in% c(8, 9), ]	
+str(hn_med1); dim(hn_med1)
+```
+
+Now we have only 580 observations. We can either use the first 480 of them as the training dataset and the last 100 as the test dataset, or select 80-20 (training-testing) split, and evaluate the prediction accuracy when `laplace=1`? 	
+
+```{r}
+hn_med1_corpus <- Corpus(VectorSource(hn_med1$MEDICATION_SUMMARY))	
+corpus_clean1 <- tm_map(hn_med1_corpus, tolower)	
+corpus_clean1 <- tm_map(corpus_clean1, removePunctuation)	
+corpus_clean1 <- tm_map(corpus_clean1, removeNumbers)	
+corpus_clean1 <- tm_map(corpus_clean1, stripWhitespace)	
+# corpus_clean1 <- tm_map(corpus_clean1, PlainTextDocument)	
+hn_med_dtm1 <- DocumentTermMatrix(corpus_clean1)	
+	
+set.seed(11)	
+subset_int1 <- sample(nrow(hn_med1),floor(nrow(hn_med1)*0.8))  # 80% training + 20% testing	
+hn_med_train1 <- hn_med1[subset_int1, ]	
+hn_med_test1 <- hn_med1[-subset_int1, ]	
+hn_med_dtm_train1 <- hn_med_dtm1[subset_int1, ]	
+hn_med_dtm_test1 <- hn_med_dtm1[-subset_int1, ]	
+corpus_train1 <- corpus_clean1[subset_int1]	
+corpus_test1 <- corpus_clean1[-subset_int1]	
+	
+#hn_med_train1<-hn_med1[1:480, ]	
+#hn_med_test1<-hn_med1[481:580, ]	
+#hn_med_dtm_train1<-hn_med_dtm1[1:480, ]	
+#hn_med_dtm_test1<-hn_med_dtm1[481:580, ]	
+#corpus_train1<-corpus_clean1[1:480]	
+#corpus_test1<-corpus_clean1[481:580]
+```
+
+We can use the same code for creating the classes in training and test dataset. Since the `seer_stage=8 or 9` is not in the data, we classify `seer_stage=0, 1, 2 or 3` as "early_stage" and `seer_stage=4, 5 or 7` as "later_stage".	
+
+```{r}
+hn_med_train1$stage <- hn_med_train1$seer_stage %in% c(4, 5, 7)	
+hn_med_train1$stage <- factor(hn_med_train1$stage, levels=c(F, T), 
+                              labels = c("early_stage", "later_stage"))	
+hn_med_test1$stage <- hn_med_test1$seer_stage %in% c(4, 5, 7)	
+hn_med_test1$stage <- factor(hn_med_test1$stage, levels=c(F, T), 
+                             labels = c("early_stage", "later_stage"))	
+prop.table(table(hn_med_train1$stage))	
+prop.table(table(hn_med_test1$stage))
+```
+
+Use terms that have appeared at least 5 documents in the training dataset to build the document term matrix.	
+
+```{r}
+summary(findFreqTerms(hn_med_dtm_train1, 5))	
+hn_med_dict1 <- as.character(findFreqTerms(hn_med_dtm_train1, 5))	
+hn_train1 <- DocumentTermMatrix(corpus_train1, list(dictionary=hn_med_dict1))	
+hn_test1 <- DocumentTermMatrix(corpus_test1, list(dictionary=hn_med_dict1))	
+hn_train1 <- apply(hn_train1, MARGIN = 2, convert_counts)	
+hn_test1 <- apply(hn_test1, MARGIN = 2, convert_counts)	
+hn_classifier1 <- naiveBayes(hn_train1, hn_med_train1$stage, laplace = 15)	
+hn_test_pred1 <- predict(hn_classifier1, hn_test1)	
+CrossTable(hn_test_pred1, hn_med_test1$stage)
+```
+
+$$ ACC = \frac{T P + T N}{T P + F P + F N + T N } = \frac{86}{116}=0.74.$$
+
+## Baseball Data	
+ 	
+Use the [MLB Data (01a_data.txt)](https://umich.instructure.com/courses/38100/files/folder/data) to predict the `Player's Position` (or perhaps the player's `Team`) using `naiveBayes` classifier. Compute and report the agreement between predicted and actual labels (for the  player's position). Below is some example code.	
+
+```{r}
+mydata <- read.table('https://umich.instructure.com/files/330381/download?download_frd=1',as.is=T, header=T)  # 01a_data.txt	
+# mydata <- read.table('data.txt',as.is=T, header=T)	
+sample_size <- floor(0.75 * nrow(mydata))	
+## set the seed to make your partition reproductible	
+set.seed(123)	
+train_ind <- sample(seq_len(nrow(mydata)), size = sample_size)	
+train <- mydata[train_ind, ]	
+# TESTING DATA	
+test <- mydata[-train_ind, ]	
+library("e1071")	
+nbc_model <- naiveBayes(train[ , c("Weight", "Height", "Age")],
+                        as.factor(train$Position), laplace = 15)	
+nbc_model	
+predicted.nbcvalues <- predict(nbc_model, as.data.frame(test))	
+	
+# report results	
+table(predicted.nbcvalues, test$Position)	
+	
+sum(diag(table(predicted.nbcvalues, test$Position)))	
+	
+# write.csv(file="./test.csv" , table(predicted.nbcvalues, test$Position))
+```
+
+Try to apply the Naive Bayesian classificaiton techniques to some [new data from the list of our Case-Studies](https://umich.instructure.com/courses/38100/files/).	
+
+
+
