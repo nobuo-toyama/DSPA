@@ -1,0 +1,39 @@
+---
+title: "06 Lazy Learning kNN"
+author: "nobuo"
+date: "2021/4/23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In the next several chapters we will concentrate of various progressively advanced machine learning, classification and clustering techniques. There are two categories of machine learning techniques - unsupervised and supervised (human-guided). In general, supervised *classification* methods aim to identify or predict predefined classes and label new objects as members of specific classes. Whereas, unsupervised *clustering* approaches attempt to group objects into subsets, without knowing a priori labels, and determine relationships between objects.	
+
+In the context of machine learning, classification is supervised learning and clustering is unsupervised learning.	
+
+**Unsupervised classification** refers to methods where the outcomes (groupings with common characteristics) are automatically derived based on intrinsic affinities and associations in the data without human indication of clustering. Unsupervised learning is purely based on input data ($X$) without corresponding output labels. The goal is to model the underlying structure, affinities, or distribution in the data in order to learn more about its intrinsic characteristics. It is called unsupervised learning because there are no *a priori* correct answers and there is no human guidance. Algorithms are left to their own devises to discover and present the interesting structure in the data. *Clustering* (discover the inherent groupings in the data) and *association* (discover association rules that describe the data) represent the core unsupervised learning problems. The **k-means** clustering and the **Apriori association rule** provide solutions to unsupervised learning problems.	
+
+<!--	
+<table>	
+     <TR>	
+         <TD COLSPAN="8">Unsupervised Clustering Approaches</TD>	
+     </TR>	
+     <TR>	
+         <TD COLSPAN="2">Bayesian</TD>	
+         <TD COLSPAN="2">Hierarchical</TD>	
+         <TD COLSPAN="4">Partitioning Based</TD>	
+     </TR>	
+     <TR>	
+         <TD>Decision Based</TD>	
+         <TD>Non-parametric</TD>	
+         <TD>Divisive</TD>	
+         <TD>Agglomerative</TD>	
+         <TD>Spectral</TD>	
+         <TD>K-Means/Centroid</TD>	
+         <TD>Graph-Theoretic</TD>	
+         <TD>Model Based</TD>	
+    </TR>	
+</table>	
+-->
