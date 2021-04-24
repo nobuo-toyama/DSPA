@@ -1,0 +1,745 @@
+---
+title: "08 Decision Tree Class"
+author: "nobuo"
+date: "2021/4/24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+When classification needs to be apparent, [kNN](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/06_LazyLearning_kNN.html) or [naive Bayes](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/07_NaiveBayesianClass.html) we presented earlier may not be useful as they do not have rigid rules for classification. In some cases, we need to specify well stated rules for our decision. Just like a scoring criterion for driving ability, credit scoring, or grading rubric. For instance, we can assign credit or deduct penalty for each driving operation task. In this case, we actually have a decision tree to judge whether this applicant is qualified to get a driver's license.    	
+
+In this chapter, we will (1) see a simple motivational example of decision trees based on the Iris data, (2) describe decision-tree divide and conquer methods, (3) examine certain measures quantifying classification accuracy, (4) show strategies for pruning decision trees, (5) work through a Quality of Life in Chronic Disease case-study, and (6) review the *One Rule* and *RIPPER* algorithms.	
+
+# Motivation	
+Decision tree learners enable classification via tree structures modeling the relationships among all features and potential outcomes in the data. All decision trees begin with a trunk representing all points are part of the same cohort. Iteratively, the trunk is split into narrower and narrower branches by forking-decisions based on the intrinsic data structure. At each step, splitting the data into branches may include binary or multinomial classification. The final decision is obtained when the tree branching process terminates. The terminal (leaf) nodes represent the action to be taken as the result of the series of branching decisions. For predictive models, the leaf nodes provide the expected forecasting results given the series of events in the decision tree.
+
+There are a number of `R` packages available for decision tree classification including `rpart`, `C5.0`, `party`, etc.	
+
+# Hands-on Example: Iris Data	
+ 	
+Let's start by seeing a simple example using the Iris dataset, which we saw in [Chapter 2](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/02_ManagingData.html). The data features or attributes include `Sepal.Length`, `Sepal.Width`, `Petal.Length`, and `Petal.Width`, and classes are represented by the `Species taxa` (setosa, versicolor, and virginica).	
+
+# Decision Tree Overview
+
+The decision tree algorithm represents an upside down tree with lots of branches where a series of logical decisions are encoded as branches between nodes of the tree. The classification begins at the root node and goes through many branches until it gets to the terminal nodes. This iterative process splits the data into different classes by a rigid criterion. 	
+
+## Divide and conquer	
+ 	
+Decision trees involve recursive partitioning that use data features and attributes to split the data into groups (nodes) of similar classes.	
+
+To make classification trees using data features, we need to observe the pattern between the data features and potential classes using training data. We can draw scatter plots and separate groups that are clearly bundled together. Each of the groups is considered a segment of the data. After getting the approximate range of each feature value within each group, we can make the decision tree.	
+
+$$	
+X = [X_1, X_2, X_3, ..., X_k] = \underbrace{	
+ \begin{pmatrix}	
+ x_{1, 1} & x_{1, 2} & ...  & x_{1, k} \\	
+ x_{2, 1} & x_{2, 2} & ...  & x_{2, k}  \\	
+ ... & ... & ...  & ...  \\	
+ x_{n, 1} & x_{n, 2} & ...  & x_{n, k} 	
+ \end{pmatrix}	
+}_{features/attributes}	
+\left\{	
+ \begin{array}{ll}	
+          & \\	
+          cases &  \\	
+          & 	
+       \end{array}	
+             \right.	
+$$
+The decision tree algorithms use a top-down recursive divide-and-conquer approach (sometimes they may also use bottom up or mixed splitting strategies) to divide and evaluate the splits of a dataset $D$ (input). The best split decision corresponds to the split with the **highest information gain**, reflecting a partition of the data into $K$ subsets (using divide-and-conquer). The iterative algorithm terminates when some stopping criteria are reached. Examples of stopping conditions used to terminate the recursive process include:	
+ 	
+* All the samples belong to the same class, that is they have the same label and the sample is already `pure`.	
+* Stop when majority of the points are already of the same class (relative to some error threshold).	
+* There are no remaining attributes on which the samples may be further partitioned.	
+
+One objective criteria for splitting or clustering data into groups is based on the **information gain measure**, or **impurity reduction**, which can be used to select the test attribute at each node in the decision tree. The attribute with the highest information gain (i.e., greatest entropy reduction) is selected as the test attribute for the current node. This attribute minimizes the information needed to classify the samples in the resulting partitions. There are three main measures to evaluate the impurity reduction: **Misclassification error**, **Gini index** and **Entropy**.	
+ 	
+For a given table containing pairs of attributes and their class labels, we can assess the homology of the classes in the table. A table is pure (homogeneous) if it only contains a single class. If a data table contains several classes, then we say that the table is impure or heterogeneous. This degree of impurity or heterogeneity can be quantitatively evaluated using impurity measures like entropy, Gini index, and misclassification error.	
+
+## Entropy	
+The `Entropy` is an information measure of the amount of disorder or uncertainty in a system. Suppose we have a data set $D=(X_1, X_2, ..., X_n)$ that includes $n$ features (variables) and suppose each of these features can take on any of $k$ possible values (states). Then the cardinality of the entire system is $k^n$ as each of the features are assumed to have $k$ independent states, thus the total number of different datasets that can be expected is $\underbrace{k\times k\times k \times ...\times k}_{n}=k^n$. Suppose ${\displaystyle p_{1},p_{2},..., p_k}$ represent the proportions of each class (note: $\sum_{i} {p_i}=1$) present in the child node that results from a split in a decision tree classifier. Then the entropy measure is defined by:	
+$$ Entropy(D)= - \sum_{i} {p_i \log_{2}{p_i}}.$$	
+If each of the $1\le i\leq k$ states for each feature is equally likely to be observed with probability $p_i=\frac{1}{k}$, then the entropy is *maximized*:	
+$$ Entropy(D)=- \sum_{i=1}^{k} {\frac{1}{k} \log{\frac{1}{k}}}=	
+\sum_{i=1}^{k} {\frac{1}{k} \log{k}}= k{\frac{1}{k} \log{k}}=\log{k} = O(1).$$
+
+In the other extreme, the entropy is *minimized* when the probability of one class is unitary and all other ones are trivial. Note that	
+by [L'Hopital's Rule](https://en.wikipedia.org/wiki/L%27H%C3%B4pital%27s_rule) $\lim_{x\longrightarrow 0} {x\times log(x)} =\lim_{x\longrightarrow 0} {\frac{\frac{1}{x}}{-\frac{1}{x^2}}}=\lim_{x\longrightarrow 0} {x}=0$ for a single class classification where the probability of one class is unitary ($p_{i_o}=1$) and the other ones are trivial ($p_{i\not= i_o}=0$):	
+ 	
+$$Entropy(D)=p_{i_o}\times \log{p_{i_o}} + \sum_{i\not=i_o}{p_i \log{p_i}}=$$	
+$$=1\times \log{1} + \lim_{x \longrightarrow 0}{\sum_{i\not=i_o}{x \log(x)}} = 0+0=0.$$	
+
+In classification settings, higher entropy (i.e., more disorder) corresponds to a sample that has a **mixed collection of labels**. Conversely, lower entropy corresponds to a classification where we have mostly pure partitions. In general, the entropy of a sample $D=\{X_1, X_2, ..., X_n\}$ is defined by:	
+ 	
+$$H(D) = - \sum_{i=1}^{k} {P(c_i|D) \log{P(c_i|D)}}, $$
+
+where $P(c_i|D)$ is the probability of a data point in $D$ being labeled with class $c_i$, and $k$ is the number of classes (clusters). $P(c_i|D)$ can be estimated from the observed data by:	
+ 	
+$$P(c_i|D) = \frac{P(D | c_i)P(c_i)}{P(D)} = \frac{|\{x_j \in D | x_j \text{ has label } y_j = c_i\}|}{|D|}.$$	
+
+Observe that if the observations are evenly split among all $k$ classes then $P(c_i|D)=\frac{1}{k}$ and 	
+$$H(D) = - \sum_{i=1}^{k} {\frac{1}{k} \log{\frac{1}{k}}}=\log{k}=O(1).$$	
+
+At the other extreme, if all the observations are from one class then:	
+$$H(D)=-1*\log(1)=0.$$	
+ 	
+Also note that the base of the log function is somewhat irrelevant and can be used to normalize (scale) the range of the entropy $\left ( log_b(x) = \frac{log_2(x)}{log_2(b)}\right )$.	
+ 	
+The `Information gain` is the expected reduction in entropy caused by knowing the value of an attribute.	
+
+## Misclassification Error and Gini Index	
+Similar to the `Entropy` measure, the `Misclassification error` and the `Gini index` are also applied to evaluate information gain. The Misclassification error is defined by the formula:	
+
+$$ME = 1-\max_k (p_k).$$	
+ 	
+And the Gini index is expressed as:	
+$$GI = \sum_{k}p_k(1-p_k)=1-\sum_{k}p_k^2.$$	
+
+## C5.0 Decision Tree Algorithm	
+ 	
+C5.0 algorithm is a popular implementation of decision trees. To begin with, let's consider the term `purity`. If the segments of data contains a single class, they are considered `pure`. The `entropy` represents a mathematical formalism measuring purity for data segments.	
+
+$$Entropy(S)=- \sum_{i=1}^c {p_i \log_2(p_i)},$$	
+ 	
+where `entropy` is the measurement, *c* is the number of total class levels, and $p_i$ refers to the proportion of observations that fall into each class (i.e., probability of a randomly selected data point to belong to the $i^{th}$ class level. For 2 possible classes, the `entropy` ranges from 0 to 1. For $n$ classes, the entropy ranges from $0$ to $\log_2(n)$, where the minimum entropy corresponds to data that is purely homogeneous (completely deterministic/predictable) and the maximum entropy represents completely disordered data (stochastic or extremely noisy). You might wonder what is the benefit of using the entropy? The answer is because the smaller the entropy the more information is contained in the corresponding decision node split. Systems (data) with high entropy indicate significant information content (randomness) and data with low entropy indicates highly-compressible data with structure in it.	
+
+If we only have one class in the segment then the entropy is trivial,  $Entropy(S)=(-1)\times \log_2(1)=0$. Let's try another example. If we have a segment of data that contains two classes, the first class contains 80% of the data and the second class contains the remaining 20%. Then, we have the following `entropy`: $Entropy(S)=-0.8\log_2(0.8)-0.2\log_2(0.2)=0.7219281.$	
+ 	
+For a two class problem, the relationship between class-proportions and entropy is illustrated in the following graph. Assume $x$ is the proportion for one of the classes.	
+
+```{r}
+set.seed(1234)	
+x <- runif(100)	
+curve(-x*log2(x)-(1-x)*log2(1-x), col="red", 
+      main="Entropy for Different Proportions", 
+      xlab = "x (proportion for class 1)", ylab = "Entropy", lwd=3)	
+segments(0.8, 0, 0.8, 0.7219281, lwd=2, col="blue", lty = 2)	
+points(0.8, 0.7219281, col = "blue", pch=21, cex=2, lwd=2)	
+text(-0.02, 0.3, pos=4, srt = 90, "High-Structure/Low-Entropy")	
+text(0.48, 0.3, pos=4, srt = 90, "Low-Structure/High-Entropy")	
+text(0.96, 0.3, pos=4, srt = 90, "High-Structure/Low-Entropy")	
+text(0.65, 0.8, pos=4, "(x=0.8,Entr=0.72)")
+```
+
+The closer the binary proportion split is to $0.5$ the greater the entropy. The more homogeneous the split (one class becomes the majority) the lower the entropy. **Decision trees** aim to find splits in the data that reduce the entropy, i.e., increasing the homogeneity of the elements within all classes.	
+ 	
+This measuring mechanism could be used to measure and compare the information we get using different features as data partitioning characteristics. Let's consider this scenario. Suppose $S$ and $S_1$ represent the entropy of the system before and after the splitting/partitioning of the data according to a specific data feature attribute ($F$). Denote the entropies of the original and the derived partition by $Entropy(S)$ and $Entropy(S_1)$, respectively. The **information we gained** from partitioning the data using this specific feature (F) is calculated as a change in the entropy:	
+ 	
+$$Gain(F) = Entropy(S)-Entropy(S_1)$$	
+
+Note that smaller entropy $Entropy(S_1)$ corresponds with better classification and more information gained. A more complicated case would be that the partitions create multiple segments. Then, the entropy for each partition method is calculated by the following formula:	
+ 	
+$$Entropy(S)=\sum_{i=1}^n w_i Entropy(P_i)=\sum_{i=1}^{n} w_i \left (-\sum_{j=1}^{c}p_i\log_2(p_i)\right )$$	
+
+Where $w_i$ is the proportion of examples falling in that segment and $P_i$ is segment *i*. Thus, the total entropy of a partition method is calculated by a weighted sum of entropies for each segment created by this method.	
+ 	
+When we get the maximum reduction in entropy with a feature ($F$) then the $Gain(F)=Entropy(S)$, since $Entropy(S_1)=0$. On the contrary, if we gain no information with this feature, we have $Gain(F)=0$.	
+
+## Pruning the Decision Tree	
+ 	
+While making a decision tree, we can classify those observations using as many splits as we want. This eventually might over classify our data. An extreme example of this would be that we make each observation as a class, which is meaningless.	
+ 	
+So how to control the size of the decision tree? One possible solution is to make a cutoff for the number of decisions that a decision tree could make. Similarly, we can control the minimum number of points in each segment. This method is called *early stopping*, or *pre-pruning*, the decision tree. However, this might terminate the decision procedure ahead of some important pending partition.	
+ 	
+Another solution *post-pruning* can be applied when we begin with growing a big decision tree and subsequently reduce the branches based on error rates with penalty at the nodes. This is often more effective than the pre-pruning solution.	
+ 	
+The `C5.0 algorithm` uses the *post-pruning* method to control the size of the decision tree. It first grows an overfitting large tree that contains all the possibilities of partitioning. Then, it cuts out nodes and branches with little effect on classification errors. 	
+
+# Case Study 1: Quality of Life and Chronic Disease	
+ 	
+## Step 1: Collecting Data	
+ 	
+In this chapter we are using the [Quality of life and chronic disease dataset](https://umich.instructure.com/files/481332/download?download_frd=1), `Case06_QoL_Symptom_ChronicIllness.csv`. This dataset has 41 variables. [Detailed description for each variable is provided here](https://umich.instructure.com/files/399150/download?download_frd=1).	
+
+Important variables:	
+ 	
+* **Charlson Comorbidity Index**: ranging from 0-10. A score of 0 indicates no comorbid conditions. Higher scores indicate a greater level of comorbidity.	
+* **Chronic Disease Score**: A summary score based on the presence and complexity of prescription medications for select chronic conditions. A high score in decades the patient has severe chronic diseases. -9 indicates a missing value.	
+ 	
+## Step 2 - exploring and preparing the data	
+ 	
+Let's load the data first.
+
+```{r}
+qol<-read.csv("https://umich.instructure.com/files/481332/download?download_frd=1")	
+str(qol)
+```
+
+Most of the coded variables like `QOL_Q_01`(health rating) have ordinal values (1=excellent, 2=very good, 3=good, 4=fair, 5= poor, 6=no answer). We can use the `table()` function to see its distribution. We also have some numerical variables in the dataset like `CHRONICDISEASESCORE`. We can take a look at it by using `summary()`.	
+ 	
+Our variable of interest `CHRONICDISEASESCORE` has some missing data. A simple way to address this is just deleting those observations with missing values. You could also try to impute the missing value using various imputation methods mentioned in [Chapter 2](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/02_ManagingData.html).	
+
+```{r}
+table(qol$QOL_Q_01)
+qol<-qol[!qol$CHRONICDISEASESCORE==-9, ]	
+summary(qol$CHRONICDISEASESCORE)
+```
+
+Let's create two classes using variable `CHRONICDISEASESCORE`. We classify the patients with `CHRONICDISEASESCORE < mean(CHRONICDISEASESCORE)` as having minor disease and the rest as having severe disease. This dichotomous classification (`qol$cd`) may not be perfect and we will talk about alternative classification strategies in the practice problem in the end of the chapter. 	
+
+```{r}
+qol$cd <- qol$CHRONICDISEASESCORE > 1.497	
+qol$cd <- factor(qol$cd, levels=c(F, T), labels = c("minor_disease", "severe_disease"))
+```
+
+### Data preparation - creating random training and test datasets	
+ 	
+To make the `qol` data more organized, we can order the data by the variable `ID`.	
+
+```{r}
+qol<-qol[order(qol$ID), ]
+	
+# Remove ID (col=1) # the clinical Diagnosis (col=41) will be handled later	
+qol <- qol[ , -1]
+```
+
+Then, we are able to subset *training* and *testing* datasets. Here is an example of a *non-random split* of the entire data into training ($2114$) and testing ($100$) sets:	
+
+```{r}
+qol_train <- qol[1:2114, ]	
+qol_test <- qol[2115:2214, ]
+```
+
+And here is an example of *random assignments* of cases into training and testing sets (80-20% slit):	
+
+```{r}
+set.seed(1234)	
+train_index <- sample(seq_len(nrow(qol)), size = 0.8*nrow(qol))	
+qol_train <- qol[train_index, ]	
+qol_test <- qol[-train_index, ]
+```
+
+We can quickly inspect the distributions of the training and testing data to ensure they are not vastly different. We can see that the classes are split fairly equal in training and test datasets.	
+
+```{r}
+prop.table(table(qol_train$cd))	
+prop.table(table(qol_test$cd))
+```
+
+## Step 3 - training a model on the data	
+ 	
+In this section we are using the `C5.0()` function from the `C50` package.	
+ 	
+The function `C5.0()` has following components:	
+ 	
+`m<-C5.0(train, class, trials=1, costs=NULL)`	
+ 	
+* train: data frame containing numeric training data (features)	
+* class: factor vector with the class for each row in the training data.	
+* trials: an optional number to control the boosting iterations (default=1).	
+* costs: an optional matrix to specify the costs of false positive and false negative.	
+ 	
+You could delete the `#` in the following code and run it in R to install and load the `C50` package.
+
+```{r}
+# install.packages("C50")	
+library(C50)
+```
+
+In the `qol` dataset (ID column is already removed), column 41 is the class vector (`qol$cd`) and column 40 is the numerical version of vector 41 (`qol$CHRONICDISEASESCORE`). We need to delete these two columns to create our training data that only contains features.  	
+
+```{r}
+summary(qol_train[,-c(40, 41)])	
+set.seed(1234)	
+qol_model <- C5.0(qol_train[,-c(40, 41)], qol_train$cd)	
+qol_model	
+summary(qol_model)	
+	
+# plot(qol_model, subtree = 17) # ?C50::plot.C5.0
+```
+
+The output of `qol_model` indicates that we have a tree that has 25 terminal nodes. `summary(qol_model)` suggests that the classification error for decision tree is 28% percent in the training data.	
+
+## Step 4 - evaluating model performance
+
+Now we can make predictions using the decision tree that we just build. The `predict()` function we will use is the same as the one we showed in earlier chapters, e.g., [Chapter 2](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/02_ManagingData.html) and [Chapter 7](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/07_NaiveBayesianClass.html). In general, `predict()` is extended by each specific type of regression, classification, clustering or forecasting machine learning technique. For example, `randomForest::predict.randomForest()` is invoked by:	
+ 	
+`predict(RF_model, newdata, type="response", norm.votes=TRUE, predict.all=FALSE, proximity=FALSE, nodes=FALSE, cutoff, ...),`	
+ 	
+where `type` represents type of prediction output to be generated - "response" (equivalent to "class"), "prob" or "votes". Thus, the predicted values are either predicted "response" class labels, matrix of class probabilities, or vote counts.	
+ 	
+This time we are going to introduce the `confusionMatrix()` function under package `caret` as the evaluation method. When we combine it with a `table()` function, the output of the evaluation is very straight forward.	
+
+```{r}
+# See docs for predict # ?C50::predict.C5.0	
+qol_pred <- predict(qol_model, qol_test[ ,-c(40, 41)])  # removing the last 2 columns CHRONICDISEASESCORE and cd, whjich represent the clinical outcomes we are predicting!	
+# install.packages("caret")	
+library(caret)	
+confusionMatrix(table(qol_pred, qol_test$cd))
+```
+
+The Confusion Matrix shows prediction accuracy is about 63%, however, this may vary (see the corresponding confidence interval).	
+ 	
+## Step 5 - trial option	
+ 	
+Recall the `C5.0` function, there is an option `trials=`, which is an integer specifying the number of boosting iterations. The default value of one indicates that a single model is used, and we can specify a larger number of iterations, for instance `trials=6`.	
+
+```{r}
+set.seed(1234)	
+qol_boost6 <- C5.0(qol_train[ , -c(40, 41)], qol_train$cd, trials=6) # try alternative values for the trials option	
+qol_boost6
+```
+
+We can see that the size of the tree reduced to about 12 (this may vary at each run).	
+ 	
+Since this is a fairly small tree we can visualize it by the function `plot()`. We also use the option `type="simple"` to make the tree look more condensed. You can also zoom in and display just a specific branch of the tree by using `subtree = `.	
+
+```{r}
+plot(qol_boost6, type="simple")
+```
+
+**Caution**: The plotting of decision trees will fail if you have columns that start with numbers or special characters (e.g., "*5variable*", "*!variable*"). In general, avoid spaces, special characters, and other non-terminal symbols in column/row names.	
+ 	
+Next step would be making predictions and testing its accuracy.	
+
+```{r}
+qol_boost_pred6 <- predict(qol_boost6, qol_test[ ,-c(40, 41)])	
+confusionMatrix(table(qol_boost_pred6, qol_test$cd))
+```
+
+The accuracy is about 64%. However, this may vary each time we run the experiment (mind the confidence interval). In some studies, the *trials* option provides significant improvement to the overall accuracy. A good choice for this option is `trials=10`.	
+ 	
+## Loading the misclassification error matrix	
+ 	
+Suppose we want to reduce the *false negative rate*, in this case, misclassifying a severe case as minor. False negative (failure to detect a severe disease case) may be more costly than false positive (misclassifying a minor disease case as severe). Misclassification errors can be expressed as a matrix:	
+
+```{r}
+error_cost <- matrix(c(0, 1, 4, 0), nrow = 2)	
+error_cost
+```
+
+Let's build a decision tree with the option `cpsts=error_cost`.
+
+```{r}
+set.seed(1234)	
+qol_cost <- C5.0(qol_train[-c(40, 41)], qol_train$cd, costs=error_cost)	
+qol_cost_pred <- predict(qol_cost, qol_test)	
+confusionMatrix(table(qol_cost_pred, qol_test$cd))
+```
+
+Although the overall accuracy decreased, the false negative cell labels were reduced from 75 (without specifying a cost matrix) to 17 (when specifying a non-trivial (loaded) cost matrix). This comes at the cost of increasing the rate of false-positive labeling (minor disease cases misclassified as severe).	
+ 	
+## Parameter Tuning	
+ 	
+There are multiple choices to plot trees fitted by `rpart` or `C5.0`. 	
+
+```{r}
+library("rpart") 	
+# remove CHRONICDISEASESCORE, but keep *cd* label	
+set.seed(1234)	
+qol_model <- rpart(cd ~ ., data=qol_train[, -40], cp=0.01) 	
+# here we use rpart::cp = *complexity parameter* = 0.01	
+qol_model
+```
+
+You can also plot directly using `rpart.plot
+
+```{r}
+library(rpart.plot)	
+rpart.plot(qol_model, type = 4, extra = 1, clip.right.labs = F)
+```
+We can use `fancyRpartPlot` to render a more colorful decision tree.	
+
+```{r}
+library("rattle")	
+fancyRpartPlot(qol_model, cex = 1, caption = "rattle::fancyRpartPlot (QoL Data)")	
+qol_pred <- predict(qol_model, qol_test,type = 'class')	
+confusionMatrix(table(qol_pred, qol_test$cd))
+```
+
+These results are consistent with their counterparts reported using `C5.0.` How can we tune the parameters to further improve the results?	
+
+```{r}
+set.seed(1234)	
+control = rpart.control(cp = 0.000, xxval = 100, minsplit = 2)	
+qol_model= rpart(cd ~ ., data = qol_train[ , -40], control = control)	
+plotcp(qol_model)	
+printcp(qol_model)
+```
+
+Now, we can prune the tree according to the optimal `cp`, *complexity parameter* to which the `rpart` object will be trimmed. Instead of using the *real error* (e.g., $1-R^2$, RMSE) to capture the discrepancy between the observed labels and the model-predicted labels, we will use the `xerror` which averages the discrepancy between observed and predicted classifications using *cross-validation*, see [Chapter 20](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/20_PredictionCrossValidation.html).	
+
+```{r}
+set.seed(1234)	
+selected_tr <- prune(qol_model,
+                     cp=qol_model$cptable[which.min(qol_model$cptable[,"xerror"]),"CP"])	
+fancyRpartPlot(selected_tr, cex = 1, caption = "rattle::fancyRpartPlot (QoL Data)")	
+qol_pred_tune <- predict(selected_tr, qol_test,type = 'class')	
+confusionMatrix(table(qol_pred_tune, qol_test$cd))
+```
+
+The result is roughly same as that of `C5.0`. Despite the fact that there is no substantial classification improvement, the tree-pruning process generates a graphical representation of the decision making protocol (`selected_tr`) that is much simpler and intuitive compared to the original (un-pruned) tree (`qol_model`):	
+
+```{r}
+fancyRpartPlot(qol_model, cex = 0.1, caption = "rattle::fancyRpartPlot (QoL Data)")
+```
+
+# Compare different impurity indices	
+ 	
+We can change *split="entropy"* to "error" or "gini" to apply an alternative information gain index. Experiment with these and compare the results.	
+
+```{r}
+set.seed(1234)	
+qol_model = rpart(cd ~ ., data=qol_train[ , -40], parms = list(split = "entropy"))	
+fancyRpartPlot(qol_model, cex = 1, caption = "rattle::fancyRpartPlot (QoL data)")	
+	
+# Modify and test using "error" and "gini"	
+# qol_pred<-predict(qol_model, qol_test,type = 'class')	
+# confusionMatrix(table(qol_pred, qol_test$cd))	
+```
+
+# Classification rules
+
+In addition to the classification trees we just saw, we can explore *classification rules* that utilize `if-else` logical statements to assign classes to unlabeled data. Below we review three classification rule strategies.	
+ 	
+## Separate and conquer	
+ 	
+Separate and conquer repeatedly splits the data (and subsets of the data) by rules that cover a subset of examples. This procedure is very similar to the *Divide and conquer* approach. However, a notable difference is that each rule can be independent, yet, each decision node in a tree has to be linked to past decisions. 	
+
+## The One Rule algorithm	
+ 	
+To understand `One Rule (OneR)` algorithm, we need to know about its "sibling" - `ZeroR` rule. `ZeroR` rule means that we assign the mode class to unlabeled test observations regardless of its feature value. The One Rule `(OneR)` algorithm is an improved version of `ZeroR` that uses a single rule for classification. In other words, `OneR` splits the training dataset into several segments based on feature values. Then, it assigns the mode of the classes in each segment to related observations in the unlabeled test data. In practice, we first test multiple rules and pick the rule with the smallest error rate to be our `One Rule`. Remember, the rules are subjective.	
+ 	
+## The RIPPER algorithm	
+ 	
+The *Repeated Incremental Pruning to Produce Error Reduction* algorithm is a combination of the ideas behind decision tree and classification rules. It consists of a three-step process:	
+ 	
+* **Grow**: add conditions to a rule until it cannot split the data into more segments.	
+* **Prune**: delete some of the conditions that have large error rates.	
+* **Optimize**: repeat the above two steps until we cannot add or delete any of the conditions.	
+
+# Case Study 2: QoL in Chronic Disease (Take 2)	
+ 	
+Let's take another look at the [same dataset as Case Study 1](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/08_DecisionTreeClass.html#4_case_study_1:_quality_of_life_and_chronic_disease) - this time applying *classification rules*. Naturally, we skip over the first two data handling steps and go directly to step three.	
+ 	
+## Step 3 - training a model on the data	
+ 	
+Let's start by using the `OneR()` function in `RWeka` package. Before installing the package you might want to check that the Java program in your computer is up to date. Also, its version has to match the version of R (i.e., 64bit R needs 64bit Java). 	
+ 	
+The function `OneR()` has the following components:	
+ 	
+`m <- OneR(class~predictors, data=mydata)`	
+ 	
+* class: factor vector with the class for each row **mydata**.	
+* predictors: feature variables in **mydata**. If we want to include $x_1$, $x_2$ as predictors and $y$ as the class label variable, we do $y\sim x_1+x_2$. When using a `y ~ .` instead, we include all of the column variables as predictors.	
+* mydata: the dataset where the features and labels could be find.	
+
+```{r}
+# install.packages("RWeka")	
+library(RWeka)	
+# just remove the CHRONICDISEASESCORE but keep cd	
+set.seed(1234)	
+qol_1R <- OneR(cd ~ ., data=qol[ , -40])	
+qol_1R
+```
+
+Note that 1,453 out of 2,214 cases are correctly classified, $66\%$, by the "one rule".	
+ 	
+## Step 4 - evaluating model performance
+
+```{r}
+summary(qol_1R)
+```
+
+We obtain a rule that correctly specifies 66% of the patients, which is in line with the prior decision tree classification results. Due to algorithmic stochasticity, it's normal that these results may vary each time you run the algorithm, albeit we used `set.seed(1234)` to ensure some result reproducibility.	
+ 	
+## Step 5 - Alternative model1	
+ 	
+Another possible option for the classification rules would be the `RIPPER` rule algorithm that we discussed earlier in the chapter. In R we use the `Java` based function `JRip()` to invoke this algorithm.	
+ 	
+`JRip()` function uses a similar invocation protocol as `OneR()`: 	
+ 	
+`m <- JRip(class ~ predictors, data=mydata)`
+
+```{r}
+set.seed(1234)	
+qol_jrip1 <- JRip(cd ~ ., data=qol[ , -40])	
+qol_jrip1	
+summary(qol_jrip1)
+```
+
+This `JRip()` classifier uses only 3 rules and has a relatively similar accuracy 66%. As each individual has unique characteristics, classification in real world data is rarely perfect (close to 100% accuracy).	
+ 	
+## Step 5 - Alternative model2	
+ 	
+Another idea is to repeat the generation of trees multiple times, predict according to each tree's performance, and finally ensemble those weighted votes into a combined classification result. This is precisely the idea behind `random forest` classification, see [Chapter 14](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/14_ImprovingModelPerformance.html).	
+
+```{r}
+# install.packages("randomForest")	
+require(randomForest)	
+set.seed(12)	
+# rf.fit <- tuneRF(qol_train[ , -40], qol_train[ , 40], stepFactor=1.5)	
+rf.fit <- randomForest(cd ~ . , data=qol_train[ , -40],
+                       importance=TRUE, ntree=2000, mtry=26)	
+varImpPlot(rf.fit, cex=0.5); print(rf.fit)	
+	
+rf.fit1 <- randomForest(cd ~ . , data=qol_train[ , -40],
+                        importance=TRUE, ntree=2000, mtry=26)	
+rf.fit2 <- randomForest(cd ~ . , data=qol_train[ , -40],
+                        importance=TRUE, nodesize=5, ntree=5000, mtry=26)	
+	
+plot(rf.fit,log="x", 
+     main="MSE Errors vs. Iterations: Three Models rf.fit, rf.fit1, rf.fit2")	
+points(1:5000, rf.fit1$mse, col="red", type="l")	
+points(1:5000, rf.fit2$mse, col="green", type="l")	
+legend("topright", col=c("black", "red", "green"),
+       lwd=c(2, 2, 2), legend=c("rf.fit", "rf.fit1", "rf.fit2"))	
+	
+qol_pred2 <- predict(rf.fit2, qol_test, type = 'class')	
+confusionMatrix(table(qol_pred2, qol_test$cd))
+```
+
+These variable importance plots (`varplot`) show the rank orders of importance of the features according to the specific index (Accuracy, left, and Gini, right). More information about random forests is available in [Chapter 14: Improving Model Performance](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/14_ImprovingModelPerformance.html).	
+ 	
+We can also use the `randomForest::partialPlot()` method to examine the relative impact of the top salient features (continuous or binary variables). For each feature, this method works by:	
+ 	
+* Creating a test data set identical to the training data, 	
+* Sequentially setting the variable of interest for all observations to a selected value,	
+* Computing the average value of the predicted response for each test set,	
+* Plotting the results against the selected value. 	
+ 	
+Note that for binary features, `partialPlot()` would result in only two values of the corresponding mass function. Whereas for continuous variables, it generates the marginal probability effect of the variable corresponding to the class probability (for classification problems) or the continuous response (for regression problems). Using the [QoL case-study](https://umich.instructure.com/files/481332/download?download_frd=1), (`Case06_QoL_Symptom_ChronicIllness.csv`), this example shows the partial plots of the *top six* rank-ordered features of the QoL dataset chosen by the random forest model.	
+
+```{r}
+imp <- randomForest::importance(rf.fit)	
+impvar <- rownames(imp)[order(imp[, 1], decreasing=TRUE)]	
+op <- par(mfrow=c(2, 3))	
+for (i in 1:6) {   # seq_along(impvar)) { # to plot the marginal probabilities for all features	
+    partialPlot(rf.fit, qol_train, impvar[i], xlab=impvar[i],	
+                main=paste("Partial Dependence of 'CD'\n on ", impvar[i]))	
+}
+```
+
+```{r}
+# reset the device plot canvas	
+par(op)
+```
+
+In random forest (RF) classification, the node size (`nodesize`) refers to the smallest node that can be split, i.e., nodes with fewer cases than the `nodesize` are never subdivided. Increasing the node size leads to smaller trees, which may compromise previous predictive power. On the flip side, increasing the tree size (`maxnodes`) and the number of trees (`ntree`) tends to increase the predictive accuracy. However, there are tradeoffs between increasing node-size and tree-size simultaneously. To optimize the RF predictive accuracy, try smaller node sizes and more trees. Ensembling (forest) results from a larger number of trees will likely generate better results.	
+ 	
+## Step 6 - Alternative model3	
+ 	
+Another decision three technique we can test is `Extra-Trees` (*extremely randomized trees*). Extra-trees are similar to `Random Forests` with the exception that at each node, Random Forest chooses the best-cutting threshold for the feature, whereas Extra-Tree selects a uniformly random cut so that a feature with the biggest gain (or best classification score). The `R` [`extraTrees` package](https://cran.r-project.org/web/packages/extraTrees/) provides one implementation of Extra-Trees where single random  cuts are extended to several random cuts for each feature. This extension improves performance as it reduce the probability of making very poor cuts and still maintains the designed extra-tree stochastic cutting. Below, we compare the results of four alternative classification methods - random forest, SVM, kNN, and extra-tree.	
+
+```{r}
+library(caret)	
+library(extraTrees)	
+# For direct Extra-Tree Call	
+# install.packages("extraTrees")	
+# library(extraTrees)	
+# set.seed(12)	
+# ## Request more memory to JVM (e.g., 5GB	
+# options( java.parameters = "-Xmx5g" )	
+# library(extraTrees)	
+# 	
+# system.time({	
+#   # call extraTrees with 3 CPU cores/threads and track exec-time	
+#   et.fit3 <- extraTrees(qol_train[ , -c(40,41)], qol_train[ , 41],	
+#                         numThreads=3, ntree=5000, mtry=26)	
+# })	
+# qol_pred3 <- predict(et.fit3, qol_test[ , -c(40,41)])	
+# confusionMatrix(table(qol_pred3, qol_test$cd))	
+# qol_pred<-predict(rf.fit, qol_test, type = 'class')	
+# qol_pred1<-predict(rf.fit1, qol_test, type = 'class')	
+# qol_pred2<-predict(rf.fit2, qol_test, type = 'class')	
+	
+control <- trainControl(method="repeatedcv", number=10, repeats=3)	
+	
+## Run all subsequent models in parallel	
+library(doParallel)	
+cl <- makePSOCKcluster(4)	
+registerDoParallel(cl)	
+system.time({	
+  rf.fit  <- train(cd~., data=qol_test[ , -40], method="rf", trControl=control);	
+  knn.fit <- train(cd~., data=qol_test[ , -40], method="knn", trControl=control);	
+  svm.fit <- train(cd~., data=qol_test[ , -40], method="svmRadial", trControl=control);	
+  et.fit  <- train(cd~., data=qol_test[ , -40], method="extraTrees", trControl=control)	
+})	
+stopCluster(cl) # close multi-core cluster	
+	
+results <- resamples(list(RF=rf.fit, kNN=knn.fit, SVM=svm.fit, ET=et.fit))	
+	
+# summary of model differences	
+summary(results)	
+	
+# plot summaries	
+scales <- list(x=list(relation="free"), y=list(relation="free"))	
+bwplot(results, scales=scales)                 # Box plots of 	
+densityplot(results, scales=scales, pch = "|") # Density plots of accuracy	
+dotplot(results, scales=scales)                # Dot plots of accuracy & Kappa	
+splom(results)      # contrast pair-wise model scatterplots of prediction accuracy
+```
+
+# Practice Problem	
+ 	
+In the previous case study, we classified the `CHRONICDISEASESCORE` into two groups. What will happen if we use three groups? Let's separate `CHRONICDISEASESCORE` evenly into three groups. Recall the `quantile()` function that we talked about in [Chapter 2](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/02_ManagingData.html). We can use it to get the cut-points for classification. Then, a `for` loop will help us split the variable `CHRONICDISEASESCORE` into three categories.  	
+
+```{r}
+quantile(qol$CHRONICDISEASESCORE, probs = c(1/3, 2/3))	
+for(i in 1:2214){	
+  if(qol$CHRONICDISEASESCORE[i] > 0.7 & qol$CHRONICDISEASESCORE[i] < 2.2){	
+    qol$cdthree[i]=2	
+  }	
+  else if(qol$CHRONICDISEASESCORE[i] >= 2.2){	
+    qol$cdthree[i]=3	
+  }	
+  else{	
+    qol$cdthree[i]=1	
+  }	
+}	
+	
+qol$cdthree<-factor(qol$cdthree, levels=c(1, 2, 3),
+                    labels = c("minor_disease", "mild_disease", "severe_disease"))	
+table(qol$cdthree)
+```
+
+After labeling the three categories in the new variable `cdthree`, our job of preparing the class variable is done. Let's follow along the earlier sections in the chapter to figure out how well does the tree classifiers and rule classifiers perform in the three-category case. First, try to build a tree classifier using `C5.0()` with 10 boost trials. One small tip is that in the training dataset, we cannot have column 40 (`CHRONICDISEASESCORE`), 41 (`cd`) and now 42 (`cdthree`) because they all contain class outcome related variables.	
+
+```{r}
+# qol_train1<-qol[1:2114, ]	
+# qol_test1<-qol[2115:2214, ]	
+train_index <- sample(seq_len(nrow(qol)), size = 0.8*nrow(qol))	
+qol_train1 <- qol[train_index, ]	
+qol_test1 <- qol[-train_index, ]	
+	
+prop.table(table(qol_train1$cdthree))	
+prop.table(table(qol_test1$cdthree))	
+	
+set.seed(1234)	
+qol_model1<-C5.0(qol_train1[ , -c(40, 41, 42)], qol_train1$cdthree, trials=10)	
+qol_model1	
+qol_pred1<-predict(qol_model1, qol_test1)	
+	
+confusionMatrix(table(qol_test1$cdthree, qol_pred1))
+```
+
+We can see that the prediction accuracy with three categories is way lower than the one we did with two categories.	
+ 	
+Secondly, try to build a rule classifier with `OneR()`.	
+
+```{r}
+set.seed(1234)	
+qol_1R1 <- OneR(cdthree ~ ., data=qol[ , -c(40, 41)])	
+qol_1R1	
+	
+summary(qol_1R1)	
+	
+qol_pred1 <- predict(qol_1R1, qol_test1)	
+	
+confusionMatrix(table(qol_test1$cdthree, qol_pred1))
+```
+
+The `OneRule` classifier that is purely based on the value of the `INTERVIEWDATE`. The internal classification accuracy is 65% and equal to the external (validation data) prediction accuracy. Although, the latter assessment is a bit misleading as the vast majority of external validation data are classified in only one class - *mild_disease*.	
+ 	
+Finally, let's revisit the `JRip()` classifier with the same three class labels according to `cdthree`.
+
+```{r}
+set.seed(1234)	
+qol_jrip1 <- JRip(cdthree ~ ., data=qol[ , -c(40, 41)])	
+qol_jrip1	
+	
+summary(qol_jrip1)	
+	
+qol_pred1 <- predict(qol_jrip1, qol_test1)	
+	
+confusionMatrix(table(qol_test1$cdthree, qol_pred1))
+```
+
+In terms of the predictive accuracy on the testing data (`qol_test1$cdthree`), we can see from these outputs that the `RIPPER` algorithm performed better (67%) compared to the `C5.0` decision tree (60%) and similarly to the `OneR` algorithm (65%). This suggests that simple algorithms might outperform complex methods for certain real world case-studies. Later, in [Chapter 14](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/14_ImprovingModelPerformance.html), we will provide more details about optimizing and improving classification and prediction performance.	
+ 	
+```{r}
+# this is one end-to-end solution	
+# read the data in	
+qol<-read.csv("https://umich.instructure.com/files/481332/download?download_frd=1")	
+	
+# split the clinical outcome CHRONICDISEASESCORE into 3-levels	
+quantile(qol$CHRONICDISEASESCORE, probs = c(1/3, 2/3))	
+for(i in 1:2214){	
+  if(qol$CHRONICDISEASESCORE[i]>0.7&qol$CHRONICDISEASESCORE[i]<2.2){	
+    qol$cdthree[i]=2	
+  }	
+  else if(qol$CHRONICDISEASESCORE[i]>=2.2){	
+    qol$cdthree[i]=3	
+  }	
+  else{	
+    qol$cdthree[i]=1	
+  }	
+}	
+	
+# factorize the 3-level outcome	
+qol$cdthree<-factor(qol$cdthree, levels=c(1, 2, 3), labels = c("minor_disease", "mild_disease", "severe_disease"))	
+table(qol$cdthree)	
+	
+# split data into training & testing sets	
+set.seed(1234)	
+train_index <- sample(seq_len(nrow(qol)), size = 0.8*nrow(qol))	
+qol_train1<-qol[train_index, ]	
+qol_test1<-qol[-train_index, ]	
+	
+prop.table(table(qol_train1$cdthree))	
+prop.table(table(qol_test1$cdthree))	
+	
+### C50 ###	
+library(libcoin)	
+library(C50)	
+qol_model1<-C5.0(qol_train1[ , -c(40, 41, 42)], qol_train1$cdthree, trials=10)	
+qol_model1	
+	
+library(caret)	
+qol_pred1<-predict(qol_model1, qol_test1)	
+C50.result = confusionMatrix(table(qol_test1$cdthree, qol_pred1))	
+C50.result	
+	
+### OneR	
+library(RWeka)	
+qol_1R1<-OneR(cdthree~., data=qol[ , -c(40, 41)])	
+qol_1R1	
+	
+summary(qol_1R1)	
+	
+qol_pred1<-predict(qol_1R1, qol_test1)	
+OneR.result = confusionMatrix(table(qol_test1$cdthree, qol_pred1))	
+OneR.result	
+	
+### Jrip ###	
+qol_jrip1<-JRip(cdthree~., data=qol[ , -c(40, 41)])	
+qol_jrip1	
+	
+summary(qol_jrip1)	
+	
+qol_pred1<-predict(qol_jrip1, qol_test1)	
+JRip.result = confusionMatrix(table(qol_test1$cdthree, qol_pred1))	
+	
+# aggregate the results of the 3 predictors evaluated on testsing data	
+result1 = rbind(C50.result$overall[1], 	
+               OneR.result$overall[1], 	
+               JRip.result$overall[1])	
+result2 = rbind(C50.result$byClass[1,1:2], 	
+               OneR.result$byClass[1,1:2], 	
+               JRip.result$byClass[1,1:2])	
+result3 = rbind(C50.result$byClass[2,1:2], 	
+               OneR.result$byClass[2,1:2], 	
+               JRip.result$byClass[2,1:2])	
+result4 = rbind(C50.result$byClass[3,1:2], 	
+               OneR.result$byClass[3,1:2], 	
+               JRip.result$byClass[3,1:2])	
+resultAggregate = cbind(result1, result2, result3, result4)	
+resultAggregate = as.data.frame(resultAggregate)	
+rownames(resultAggregate) = c("C50", "OneR", "JRip")	
+colnames(resultAggregate) = c("Accuracy",	
+                     "Minor.Sensi.", "Minor.Speci.",	
+                     "Mild.Sensi.", "Mild.Speci.",	
+                     "Severe.Sensi.", "Severe.Speci.")	
+# Report the aggregate results # View(result)	
+knitr::kable(resultAggregate)
+```
+
+Try these techniques with [other data from the list of our Case-Studies](https://umich.instructure.com/courses/38100/files/).	
+
+
+
+
+
