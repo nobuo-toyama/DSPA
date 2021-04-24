@@ -1,0 +1,437 @@
+---
+title: "09 Forecasting Regression"
+author: "nobuo"
+date: "2021/4/24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Motivation	
+ 	
+In previous the previous [Chapter 6](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/06_LazyLearning_kNN.html), [Chapter 7](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/07_NaiveBayesianClass.html), and [Chapter 8](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/08_DecisionTreeClass.html), we covered some classification methods that use mathematical formalism to address everyday life prediction problems. In this chapter, we will focus on specific model-based statistical methods providing forecasting and classification functionality. Specifically, we will (1) demonstrate the predictive power of multiple linear regression, (2) show the foundation of regression trees and model trees, and (3) examine two complementary case-studies (Baseball Players and Heart Attack).	
+ 	
+It may be helpful to first review [Chapter 4 (Linear Algebra/Matrix Manipulations)](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/04_LinearAlgebraMatrixComputing.html) and [Chapter 6 (Introduction to Machine Learning)](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/06_LazyLearning_kNN.html).	
+ 	
+# Understanding Regression	
+ 	
+Regression represents a model of a relationship between a *dependent variable* (value to be predicted) and a group of *independent variables* (predictors or features), see [Chapter 6](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/06_LazyLearning_kNN.html). We assume the relationships between the outcome dependent variable and the independent variables is linear.	
+ 	
+## Simple linear regression	
+ 	
+First review the material in [Chapter 4: Linear Algebra & Matrix Computing](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/04_LinearAlgebraMatrixComputing.html).	
+ 	
+The straightforward case of regression is simple linear regression, which involves a single predictor. 	
+$$y=a+bx.$$ 	
+ 	
+This formula would be familiar, as we showed examples in previous chapters. In this *slope-intercept* formula, `a` is the model *intercept* and `b` is the model *slope*. Thus, simple linear regression may be expressed as a bivariate equation. If we know `a` and `b`, for any given `x` we can estimate, or predict, `y` via the regression formula. If we plot `x` against `y` in a 2D coordinate system, where the two variables are exactly linearly related, the results will be a straight line.	
+ 	
+However, this is the ideal case. Bivariate scatterplots using real world data may show patterns that are not necessarily precisely linear, see [Chapter 2](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/02_ManagingData.html). Let's look at a bivariate scatterplot and try to fit a simple linear regression line using two variables, e.g., `hospital charges` or `CHARGES` as a dependent variable, and `length of stay` in the hospital or `LOS` as an independent predictor. The data is available in the [DSPA Data folder](https://umich.instructure.com/courses/38100/files/folder/Case_Studies) as `CaseStudy12_AdultsHeartAttack_Data`. We can remove the pair of observations with missing values using the command `heart_attack<-heart_attack[complete.cases(heart_attack), ]`. 	
+
+```{r}
+heart_attack<-read.csv("https://umich.instructure.com/files/1644953/download?download_frd=1", stringsAsFactors = F)	
+heart_attack$CHARGES <- as.numeric(heart_attack$CHARGES)	
+heart_attack <- heart_attack[complete.cases(heart_attack), ]	
+	
+fit1 <- lm(CHARGES ~ LOS, data=heart_attack)	
+par(cex=.8)	
+plot(heart_attack$LOS, heart_attack$CHARGES, xlab="LOS", ylab = "CHARGES")	
+abline(fit1, lwd=2, col="red")
+```
+
+As expected, longer hospital stays are expected to be associated with higher medical costs, or hospital charges. The scatterplot shows dots for each pair of observed measurements ($x=LOS$ and $y=CHARGES$), and an increasing linear trend. 	
+ 	
+The estimated expression for this regression line is:	
+$$\hat{y}=4582.70+212.29\times x$$	
+or equivalently	
+$$CHARGES=4582.70+212.29\times LOS$$	
+Once the linear model is fit, i.e., its coefficients are estimated, we can make predictions using this `explicit` regression model. Assume we have a patient that spent 10 days in hospital, then we have `LOS=10`. The predicted charge is likely to be $\$ 4582.70 + \$ 212.29 \times 10= \$ 6705.6$. Plugging `x` into the expression equation automatically gives us an estimated value of the outcome `y`. This [chapter of the Probability and statistics EBook provides an introduction to linear modeling](https://wiki.socr.umich.edu/index.php/EBook#Chapter_X:_Correlation_and_Regression).	
+ 	
+## Ordinary least squares estimation	
+ 	
+How did we get the estimated expression? The most common estimating method in statistics is *ordinary least squares* (OLS). OLS estimators are obtained by minimizing sum of the squared errors - that is the sum of squared vertical distance from each dot on the scatter plot to the regression line. 	
+
+```{r}
+plot(heart_attack$LOS, heart_attack$CHARGES, xlab="LOS", ylab = "CHARGES")	
+abline(fit1, lwd=2, col="red")	
+segments(15, 7767.05, 15, 10959, col = 'blue', lwd=2)	
+text(18, 9363.025, "error", cex=1.5)	
+text(16, 9363.025, '}', cex = 7)	
+text(15, 10959, '.', col = "green", cex=5)	
+text(16, 11500, "true value(y)", cex = 1.5)	
+text(15, 7767.05, '.', col = "green", cex=5)	
+text(15, 7400.05, "estimated value(y.hat)", cex = 1.5)
+```
+
+
+OLS is minimizing the following expression:	
+$$\sum_{i=1}^{n}(y_i-\hat{y}_i)^2=\sum_{i=1}^{n}\left (\underbrace{y_i}_{\text{observed outcome}}-\underbrace{(a+b\times x_i)}_{\text{predicted outcome}}\right )^2=\sum_{i=1}^{n}\underbrace{e_i^2}_{\text{squared residual}}.$$	
+Some calculus-based calculations suggest that the value `b` minimizing the squared error is:	
+$$b=\frac{\sum(x_i-\bar x)(y_i-\bar y)}{\sum(x_i-\bar x)^2}.$$	
+Then, the corresponding constant term (y-intercept) `a` is:	
+$$a=\bar y-b\bar x.$$	
+ 	
+These expressions wold become apparent if you review the material in [Chapter 2](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/02_ManagingData.html). Recall that the variance is obtained by averaging sums of squared deviations ($var(x)=\frac{1}{n}\sum^{n}_{i=1} (x_i-\mu)^2$). When we use $\bar{x}$ to estimate the mean of $x$, we have the following formula for variance: $var(x)=\frac{1}{n-1}\sum^{n}_{i=1} (x_i-\bar{x})^2$. Note that this is $\frac{1}{n-1}$ times the denominator of *b*. Similar to the variance, the covariance of *x* and *y* is measuring the average sum of the deviance of *x* times the deviance of *y*:	
+$$Cov(x, y)=\frac{1}{n}\sum^{n}_{i=1} (x_i-\mu_x)(y_i-\mu_y).$$	
+If we utilize the sample averages ($\bar{x}$, $\bar{y}$) as estimates of the corresponding population means, we have:  	
+$$Cov(x, y)=\frac{1}{n-1}\sum^{n}_{i=1} (x_i-\bar{x})(y_i-\bar{y}).$$	
+ 	
+This is $\frac{1}{n-1}$ times the numerator of *b*. Thus, combining the above 2 expressions, we get an estimate of the slope coefficient (effect-size of LOS on Charge) expressed as: 	
+$$b=\frac{Cov(x, y)}{var(x)}.$$	
+Let's use the *heart attack data* to demonstrate these calculations.	
+
+```{r}
+b <- cov(heart_attack$LOS, heart_attack$CHARGES) / var(heart_attack$LOS)	
+b	
+a <- mean(heart_attack$CHARGES )- b * mean(heart_attack$LOS)	
+a	
+# compare to the lm() estimate:	
+fit1$coefficients[1]	
+# we can do the same for the slope paraameter (b==fit1$coefficients[2]
+```
+
+ We can see that this is exactly the same as previously computed estimate of the constant intercept terms using `lm()`.	
+	
+## Model Assumptions	
+Regression modeling has five key assumptions:	
+ 	
+* Linear relationship between dependent outcome and the independent predictor(s),	
+* [Multivariate normality](https://en.wikipedia.org/wiki/Multivariate_normal_distribution),	
+* No or little [multicollinearity](https://en.wikipedia.org/wiki/Multicollinearity),	
+* No auto-correlation, independence, 	
+* [Homoscedasticity](https://en.wikipedia.org/wiki/Homoscedasticity).	
+ 	
+## Correlations	
+ 	
+*Note*: The [SOCR Interactive Scatterplot Game (requires Java enabled browser)](https://socr.umich.edu/html/gam/SOCR_Games.html) provides a dynamic interface demonstrating linear models, trends, correlations, slopes and residuals.	
+ 	
+Based on covariance we can calculate correlation, which indicates how closely that the relationship between two variables follows a straight line.	
+$$\rho_{x, y}=Corr(x, y)=\frac{Cov(x, y)}{\sigma_x\sigma_y}=\frac{Cov(x, y)}{\sqrt{Var(x)Var(y)}}.$$	
+In R, correlation is given by `cor()` while square root of variance or standard deviation is given by `sd()`.	
+
+```{r}
+r<-cov(heart_attack$LOS, heart_attack$CHARGES) / (sd(heart_attack$LOS) * sd(heart_attack$CHARGES))	
+r	
+cor(heart_attack$LOS, heart_attack$CHARGES)
+```
+
+Same outputs are obtained. This correlation is a positive number that is relatively small. We can say there is a weak positive linear association between these two variables. If we have a negative number then it is a negative linear association. We have a weak association when $0.1 \leq Cor < 0.3$, a moderate association for $0.3 \leq Cor < 0.5$, and a strong association for $0.5 \leq Cor \leq 1.0$. If the correlation is below $0.1$ then it suggests little to no linear relation between the variables.	
+ 	
+## Multiple Linear Regression	
+ 	
+In practice, we usually have more situations with multiple predictors and one dependent variable, which may follow a multiple linear model.  That is:	
+$$y=\alpha+\beta_1x_1+\beta_2x_2+...+\beta_kx_k+\epsilon,$$	
+or equivalently	
+$$y=\beta_0+\beta_1x_1+\beta_2x_2+ ... +\beta_kx_k+\epsilon .$$	
+We usually use the second notation method in statistics. This equation shows the linear relationship between *k* predictors and a dependent variable. In total we have *k+1* coefficients to estimate.	
+ 	
+The matrix notation for the above equation is:	
+$$Y=X\beta+\epsilon,$$	
+where 	
+$$Y=\left(\begin{array}{c} 	
+y_1 \\	
+y_2\\	
+...\\	
+y_n	
+\end{array}\right)$$	
+ 	
+$$X=\left(\begin{array}{ccccc} 	
+1 & x_{11}&x_{21}&...&x_{k1} \\	
+1 & x_{12}&x_{22}&...&x_{k2} \\	
+.&.&.&.&.\\	
+1 & x_{1n}&x_{2n}&...&x_{kn} 	
+\end{array}\right)	
+$$	
+$$\beta=\left(\begin{array}{c} 	
+\beta_0 \\	
+\beta_1\\	
+...\\	
+\beta_k	
+\end{array}\right)$$	
+ 	
+and	
+ 	
+$$\epsilon=\left(\begin{array}{c} 	
+\epsilon_1 \\	
+\epsilon_2\\	
+...\\	
+\epsilon_n	
+\end{array}\right)	
+$$ 	
+is the error term.	
+
+Similar to simple linear regression, our goal is to minimize sum of squared errors. Solving the matrix equation for $\beta$, we get the OLS solution for the parameter vector:	
+$$\hat{\beta}=(X^TX)^{-1}X^TY .$$	
+The solution is presented in a matrix form, where $X^{-1}$ and $X^T$ are the inverse and the transpose matrices of the original design matrix $X$.	
+ 	
+Let's make a function of our own using this matrix formula.
+
+```{r}
+reg <- function(y, x){	
+  x <- as.matrix(x)	
+  x <- cbind(Intercept=1, x)	
+  solve(t(x) %*% x) %*% t(x) %*% y	
+}
+```
+
+We saw earlier that a clever use of matrix multiplication (`%*%`) and `solve()` can help with the explicit OLS solution.	
+ 	
+Next, we will apply our function `reg()` to the heart attack data. To begin with, let's check if the simple linear regression (`lm()`) output coincides with the `reg()` result.	
+
+```{r}
+reg(y=heart_attack$CHARGES, x=heart_attack$LOS)	
+fit1
+```
+
+The results agree and we can now include additional variables as predictors. As an example, we just add `age` into the model. 	
+
+```{r}
+str(heart_attack)	
+reg(y=heart_attack$CHARGES, x=heart_attack[, c(7, 8)])	
+# and compare the result to lm()	
+fit2 <- lm(CHARGES ~ LOS + AGE, data=heart_attack); fit2
+```
+
+# Case Study 1: Baseball Players	
+ 	
+## Step 1 - collecting data	
+ 	
+We utilize the [mlb data "01a_data.txt"](https://umich.instructure.com/files/330381/download?download_frd=1). The dataset contains 1034 records of heights and weights for some current and recent Major League Baseball (MLB) Players. These data were obtained from different resources (e.g., IBM Many Eyes). 	
+ 	
+Variables:	
+ 	
+* **Name**: MLB Player Name 	
+* **Team**: The Baseball team the player was a member of at the time the data was acquired	
+* **Position**: Player field position	
+* **Height**: Player height in inch 	
+* **Weight**: Player weight in pounds	
+* **Age**: Player age at time of record.	
+ 	
+## Step 2 - exploring and preparing the data	
+Let's load this dataset first. We use `as.is=T` to make non-numerical vectors into characters. Also, we delete the `Name` variable because we don't need players' names in this case study. 	
+
+```{r}
+mlb<- read.table('https://umich.instructure.com/files/330381/download?download_frd=1', as.is=T, header=T)	
+str(mlb)	
+mlb <- mlb[, -1]
+```
+
+By looking at the `str()` output we notice that the variable `TEAM`  and `Position` are misspecified as characters. To fix this we can use function `as.factor()` that convert numerical or character vectors to factors.	
+
+```{r}
+mlb$Team <- as.factor(mlb$Team)	
+mlb$Position <- as.factor(mlb$Position)
+```
+
+The data is good to go. Let's explore it using some summary statistics and plots.	
+
+```{r}
+summary(mlb$Weight)	
+hist(mlb$Weight, main = "Histogram for Weights")
+```
+
+The above plot illustrates our dependent variable `Weight`. As we learned from [Chapter 2](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/02_ManagingData.html), we know this is somewhat right-skewed.	
+ 	
+Applying `GGpairs` to obtain a compact dataset summary we can mark heavy weight and light weight players (according to $light \lt median \lt heavy$) by different colors in the plot:	
+
+```{r}
+require(GGally)	
+	
+mlb_binary = mlb	
+	
+mlb_binary$bi_weight = as.factor(ifelse(mlb_binary$Weight>median(mlb_binary$Weight),1,0))	
+	
+g_weight <- ggpairs(data=mlb_binary[-1], title="MLB Light/Heavy Weights",	
+            mapping=ggplot2::aes(colour = bi_weight),	
+            lower=list(combo=wrap("facethist",binwidth=1)),	
+            # upper = list(continuous = wrap("cor", size = 4.75, alignPercent = 1))	
+            )	
+g_weight
+```
+
+Next, we may also mark player positions by different colors in the plot.
+
+```{r}
+g_position <- ggpairs(data=mlb[-1], title="MLB by Position",	
+              mapping=ggplot2::aes(colour = Position),	
+              lower=list(combo=wrap("facethist",binwidth=1)))	
+g_position
+```
+
+What about our potential predictors?
+
+```{r}
+table(mlb$Team)	
+table(mlb$Position)	
+summary(mlb$Height)	
+summary(mlb$Age)
+```
+
+Here we have two numerical predictors, two categorical predictors and $1034$ observations. Let's see how R treats these three different classes of variables.	
+ 	
+## Exploring relationships among features - the correlation matrix	
+ 	
+Before fitting a model, let's examine the independence of our potential predictors and the dependent variable. Multiple linear regressions assume that predictors are all independent with each other. Is this assumption valid? As we mentioned earlier, `cor()` function can answer this question in pairwise manner. Note we only look at numerical variables.	
+
+```{r}
+cor(mlb[c("Weight", "Height", "Age")])
+```
+
+Here we can see $cor(y, x)=cor(x, y)$ and $cov(x, x)=1$. Also, our `Height` variable is weakly (negatively) related to the players' age. This looks very good and wouldn't cause any multi-collinearity problem. If two of our predictors are highly correlated, they both provide almost the same information. Then that could cause multi-collinearity. A common practice is to delete one of them in the model.	
+ 	
+In general multivariate regression analysis, we can use the `variance inflation factors (VIFs)` to detect potential multicollinearity between many covariates. The variance inflation factor (VIF) quantifies the amount of artificial inflation of the variance due to multicollinearity of the covariates. The $VIF_k$'s represent the expected inflation of the corresponding estimated variances. In a simple linear regression model with a single predictor $x_k$, $y_i=\beta_o + \beta_1 x_{i,k}+\epsilon_i,$ relative to the baseline variance, $\sigma$, the lower bound (min) of the variance of the estimated effect-size, $\beta_k$, is:	
+ 	
+$$Var(\beta_k)_{min}=\frac{\sigma^2}{\sum_{i=1}^n{\left ( x_{i,k}-\bar{x}_k\right )^2}}.$$	
+
+This allows us to track the inflation of the $\beta_k$ variance in the presence of correlated predictors in the regression model. Suppose the linear model includes $l$ covariates with some of them multicollinear/correlated:	
+ 	
+$$y_i=\beta_o+\beta_1x_{i,1} + \beta_2 x_{i,2} + \cdots + {\bf{\beta_k x_{i,k}}} + \cdots + \beta_l x_{i,l} +\epsilon_i.$$	
+
+Assume some of the predictors are correlated with the feature $\bf{x_k}$, then the variance of it's effect, $\bf{\beta_k}$, will be inflated as follows:	
+ 	
+$$Var(\beta_k)=\frac{\sigma^2}{\sum_{i=1}^n{\left ( x_{i,k}-\bar{x}_k\right )^2}}\times \frac{1}{1-R_k^2},$$	
+
+where $R_k^2$ is the $R^2$ value computed by regressing the $k^{th}$ feature on the remaining predictors. The stronger the *linear dependence* between the $k^{th}$ feature and the remaining predictors, the larger the corresponding $R_k^2$ value will be, and the smaller the denominator in the inflation factor ($VIF_k$) and the larger the variance estimate of $\beta_k$.	
+ 	
+The variance inflation factor ($VIF_k$) is the ratio of the two variances:	
+ 	
+$$\frac{Var(\beta_k)}{Var(\beta_k)_{min}}=	
+\frac{\frac{\sigma^2}{\sum_{i=1}^n{\left ( x_{i,k}-\bar{x}_k\right )^2}}\times \frac{1}{1-R_k^2}}{\frac{\sigma^2}{\sum_{i=1}^n{\left ( x_{i,k}-\bar{x}_k\right )^2}}}=\frac{1}{1-R_k^2}.$$	
+
+The regression model's VIFs measure of how much the variance of the estimated regression coefficients, $\beta_k$, may be "inflated" by unavoidable presence of multicollinearity among the model predictor features. $VIF_k\sim 1$ implies that there is no multicollinearity involving the $k^{th}$ predictor and the remaining features and hence the variance estimate of $\beta_k$ is not inflated. On the other hand side, if $VIF_k > 4$ suggests potential multicollinearity and $VIF_k> 10$ suggests serious multicollinearity requiring some model correction may be necessary as the variance estimates may be significantly biased.	
+ 	
+We can use the function `car::vif()` to compute and report the VIF factors:	
+
+```{r}
+car::vif(lm(Weight ~ Height + Age, data=mlb))
+```
+
+## Multi-colinearity and feature-selection in high-dimensional data	
+ 	
+In Chapters [16 (Feature Selection)](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/16_FeatureSelection.html) and [17 (Controlled variable Selection)](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/17_RegularizedLinModel_KnockoffFilter.html), we will discuss the methods and computational strategies to identify salient features in high-dimensional datasets. Let's briefly identify some practical approaches to address multi-colinearity problems and challenges related to large numbers of inter-dependencies in the data. Data that contains a large number of predictors is likely to include completely unrelated variables having high sample correlation. To see the nature of this problem assume we are generating a random Gaussian $n\times k$ matrix, $X=(X_1,X_2, \cdots, X_k)$ of $k$ feature vectors, $X_i, 1\leq i\leq k$, using IID standard normal random samples. Then, the expected maximum correlation between any pair of columns, $\rho(X_{i_1},X_{i_2})$, can be large as $k\gg n$. 	
+Even in this IID sampling problem, we still expect high rate of intrinsic and strong feature correlations. In general, this phenomenon is amplified for high-dimensional observational data, which would be expected to have high degree of colinearity. This problem presents a number of computational (e.g., function singularities and negative definite Hessian matrices), model-fitting, model-interpretation, and selection of salient predictors challenges.	
+ 	
+There are some techniques that allow us to resolve such multi-colinearity issues in high-dimensional data. Let's denote $n$ to be the number of cases (samples, subjects, units, etc.) and and $k$ be the number of features. Using divide-and-conquer, we can split the problem into two special cases:	
+ 	
+* When $n \geq k$, we can use the [VIF](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/09_RegressionForecasting.html#33_exploring_relationships_among_features_-_the_correlation_matrix), to solve the problem parametrically, 	
+* When $n \ll k$, VIF does not apply and we need to be more creative. In this case, some solution include:	
+   + Use a [dimensionality-reduction (PCA, ICA, FA, SVD, PLSR, t-SNE)](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/05_DimensionalityReduction.html) to reduce the problem to $n \geq k'$ (using only the top $k'$ bases, functions, or directions).	
+   + Compute the (Spearman's rank-order based) pair correlation (matrix) and do [some kind of feature selection](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/16_FeatureSelection.html), e.g., choosing only features with lower paired-correlations.	
+   + The [Sure Independence Screening (SIS) technique](https://orfe.princeton.edu/~jqfan/papers/06/SIS.pdf) is based on correlation learning utilizing the sample correlation between a response and a given predictor. SIS reduces the feature-dimension ($k$) to a moderate dimension $O(n)$.	
+   + The basic SIS method estimates marginal linear correlations between predictor and responses, which can be done by fitting a simple linear model. [Non-parametric Independence Screening (NIS)](https://amstat.tandfonline.com/doi/abs/10.1198/jasa.2011.tm09779#.XTngc0cpCw4) expands this model-based SIS strategy to use non-parametric models and allow more flexibility for the predictor ranking. Models' diagnostics for predictor-ranking may use the magnitude of the marginal  estimators,  non-parametric  marginal-correlations, or marginal residual sum of squares.	
+   + [Generalized Correlation screening](https://www.tandfonline.com/doi/abs/10.1198/jcgs.2009.08041) employs an empirical sample-driven estimate of a generalized correlation to rank the individual predictors. 	
+   + [Forward Regression using best subset regression](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/09_RegressionForecasting.html#37_step_5_-_improving_model_performance) is computationally very expensive because of the large combinatoric space, as the utility of each predictor depends on many other predictors.  It generates a nested sequence of models, each having one additional predictor than the prior model.  The model expansion adds new variables to the model based on their effect improve the model quality, e.g., the largest decrease of the regression sum of squares, compared to the prior model. 	
+   + [Model-Free Screening](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3384506/) strategy basically uses  empirical  estimates  for  conditional  densities  of  the  response  given the predictors.  Most methods have  [consistency  in  ranking  (CIR) property](https://pdfs.semanticscholar.org/b2c8/4fca280bbdc4a895450687c979a528a91245.pdf), which ensures that the objective utility function ranks unimportant predictors lower than important predictors with high probability ($p \rightarrow 1$).	
+ 	
+## Visualizing relationships among features - the scatterplot matrix	
+ 	
+To visualize pairwise correlations, we could use scatterplot matrix. In R, `pairs()` function will give use these outputs. 	
+
+```{r}
+pairs(mlb[c("Weight", "Height", "Age")])
+```
+
+You might get a sense of it but it is difficult to see any linear pattern. We can make an more sophisticated graph using `pairs.panels()` in the `psych` package.	
+
+```{r}
+# install.packages("psych")	
+library(psych)	
+pairs.panels(mlb[, c("Weight", "Height", "Age")])
+```
+
+This plot give us much more information about the three variables. Above the diagonal, we have our correlation coefficients in numerical form. On the diagonal, there are histograms of variables. Below the diagonal, more visual information are presented to help us understand the trend. This specific graph shows us height and weight are positively and strongly correlated. Also the relationships between age and height, age and weight are very weak (horizontal red line in the below diagonal graphs indicates weak relationships). 	
+ 	
+## Step 3 - training a model on the data	
+ 	
+The function we are going to use for this section is `lm()`. No extra package is needed when using this function.	
+ 	
+The `lm()` function has the following components:	
+ 	
+**m<-lm(dv ~ iv, data=mydata)**	
+ 	
+* dv: dependent variable	
+* iv: independent variables. Just like `OneR()` in [Chapter 8](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/08_DecisionTreeClass.html). If we use `.` as `iv`, all of the variables, except the dependent variable ($dv$), are included as predictors.	
+* data: specifies the data containing both dependent viable and independent variables	
+
+```{r}
+fit <- lm(Weight ~ ., data=mlb)	
+fit
+```
+
+As we can see from the output, factors are included in the model by creating several indicators, one coefficient for each factor level (except for all reference factor levels). Each numerical variables just have one coefficient.	
+ 	
+## Step 4 - evaluating model performance	
+ 	
+As we did in previous case studies, let's examine model performance.	
+
+```{r}
+summary(fit)	
+plot(fit, which = 1:2)
+```
+
+The **summary** shows us how well does the model fits the dataset.	
+ 	
+*Residuals*: This tells us about the residuals. If we have extremely large or extremely small residuals for some observations compared to the rest of residuals, either they are outliers due to reporting error or the model fits data poorly. We have $73.649$ as our maximum and $-48.692$ as our minimum. Their extremeness could be examined by residual diagnostic plot.	
+ 	
+*Coefficients*: In this section, we look at the very right column that has stars. Stars or dots next to variables show if the variable is significant and should be included in the model. However, if nothing is next to a variable then it means this estimated covariance could be 0 in the linear model. Another thing we can look at is the `Pr(>|t|)` column. A number closed to 0 in this column indicates the row variable is significant, otherwise it could be deleted from the model.	
+ 	
+Here only some of the teams and positions are not significant. `Age` and `Height` are significant.	
+ 	
+*R-squared*: What percent in `y` is explained by included predictors. Here we have 38.58%, which indicates the model is not bad but could be improved. Usually a well-fitted linear regression would have over 70%.	
+ 	
+The **diagnostic plots** also helps us understanding the situation.	
+ 	
+*Residual vs Fitted*: This is the residual diagnostic plot. We can see that the residuals of observations indexed $65$, $160$ and $237$ are relatively far apart from the rest. They are potential influential points or outliers.	
+ 	
+*Normal Q-Q*: This plot examines the normality assumption of the model. If these dots follows the line on the graph, the normality assumption is valid. In our case, it is relatively close to the line. So, we can say that our model is valid in terms of normality.	
+ 	
+## Step 5 - improving model performance	
+ 	
+We can employ the `step` function to perform forward or backward selection of important features/predictors. It works for both `lm` and `glm` models. In most cases, backward-selection is preferable because it tends to retain much larger models. On the other hand, there are various criteria to evaluate a model. Commonly used criteria include *AIC*, *BIC*, Adjusted $R^2$, etc. Let's compare the backward and forward model selection approaches. The `step` function argument `direction` allows this control (default is `both`, which will select the better result from either backward or forward selection). Later, in [Chapter 16](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/16_FeatureSelection.html) and [Chapter 17](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/17_RegularizedLinModel_KnockoffFilter.html), we will present details about alternative feature selection approaches.	
+
+```{r}
+step(fit, direction = "backward")
+step(fit, direction = "forward")	
+step(fit, direction = "both")
+```
+
+We can observe that `forward` selection retains the whole model. The better feature selection model uses `backward` step-wise selection.	
+ 	
+Both backward and forward feature selection methods utilize greedy algorithms and do not guarantees an optimal model selection result. Identifying the best feature selection requires exploring every possible combination of the predictors, which is practically not feasible, due to computational complexity associated with model selection using $n \choose k$ combinations of features.	
+ 	
+Alternatively, we can choose models based on various **information criteria**. 	
+
+```{r}
+step(fit, k=2)
+step(fit, k=log(nrow(mlb)))
+```
+
+$k = 2$ yields the genuine AIC criterion, and $k = log(n)$ refers to BIC. Let's try to evaluate model performance again.	
+
+```{r}
+fit2 = step(fit, k=2, direction = "backward")	
+summary(fit2)	
+plot(fit2, which = 1:2)
+```
+
+Sometimes, simpler models are preferable even if there is a little bit loss of performance. In this case, we have a simpler model and $R^2=0.365$. The whole model is still very significant. We can see that observations $65$, $160$ and $237$ are relatively far from other residuals. They are potential influential points or outliers. 	
+ 	
+Also, we can observe the leverage points. Leverage points are those either outliers or influential points or both.	
+
+```{r}
+# Half-normal plot for leverages	
+# install.packages("faraway")	
+library(faraway)
+halfnorm(lm.influence(fit)$hat, nlab = 2, ylab="Leverages")	
+mlb[c(226,879),]	
+summary(mlb)
+```
+
+A deeper discussion of variable selection, controlling the false discovery rate, is provided in Chapters [16](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/16_FeatureSelection.html) and [17](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/17_RegularizedLinModel_KnockoffFilter.html).	
+ 	
+### Model specification - adding non-linear relationships	
+In linear regression, the relationship between independent and dependent variables is assumed to be linear. However, this might not be the case. The relationship between age and weight could be quadratic, since middle-aged people might gain weight dramatically.	
+
+
