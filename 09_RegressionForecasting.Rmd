@@ -434,4 +434,536 @@ A deeper discussion of variable selection, controlling the false discovery rate,
 ### Model specification - adding non-linear relationships	
 In linear regression, the relationship between independent and dependent variables is assumed to be linear. However, this might not be the case. The relationship between age and weight could be quadratic, since middle-aged people might gain weight dramatically.	
 
+```{r}
+mlb$age2 <- (mlb$Age)^2	
+fit2 <- lm(Weight ~ ., data=mlb)	
+summary(fit2)
+```
+
+This actually brought up the overall $R^2$ up to $0.3889$.	
+ 	
+## Transformation - converting a numeric variable to a binary indicator	
+ 	
+As discussed earlier, middle-aged people might have a different pattern in weight increase compared to younger people. The overall pattern could be not cumulative, but rather two separate lines for young and middle-aged people. We assume 30 is the threshold. People over 30 have a steeper line for weight increase than under 30. Here we use the `ifelse()` function that we mentioned in [Chapter 7](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/07_NaiveBayesianClass.html) to create the indicator of the threshold. 	
+
+```{r}
+mlb$age30 <- ifelse(mlb$Age>=30, 1, 0)	
+fit3 <- lm(Weight ~ Team + Position + Age + age30 + Height, data=mlb)	
+summary(fit3)
+```
+
+This model performs worse than the quadratic model in terms of $R^2$. Moreover, `age30` is not significant. So, we will stick with the quadratic model.	
+ 	
+## Model specification - adding interaction effects	
+ 	
+So far, each feature's individual effect has considered in our model. It is possible that features act in pairs to affect our independent variable. Let's examine that deeper. 	
+ 	
+Interaction is a combined effect by two features. If we are not sure whether two features interact, we could test by adding an interaction term into the model. If the interaction is significant then we confirmed an interaction between two features.	
+
+```{r}
+fit4 <- lm(Weight ~ Team + Height + Age*Position + age2, data=mlb)	
+summary(fit4)
+```
+
+Here we can see the overall $R^2$ improved and some of the interactions are significant under 0.1 level.	
+ 	
+# Understanding regression trees and model trees	
+ 	
+## Motivation	
+ 	
+As we saw in [Chapter 8](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/08_DecisionTreeClass.html), a decision tree builds by multiple `if-else` logical decisions and can classify observations. We could add regression into decision trees so that a decision tree can make numerical predictions.	
+ 	
+## Adding regression to trees	
+ 	
+Numeric prediction trees are built in the same way as classification trees. Recall the discussion in [Chapter 8](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/08_DecisionTreeClass.html) where the data are partitioned first via a  *divide-and-conquer* strategy based on features. The homogeneity of the resulting classification trees is measured by various metrics, e.g., entropy. **In regression-tree prediction, node homogeneity is measured by various statistics such as variance, standard deviation or absolute deviation from the mean**.	
+ 	
+A common splitting criterion for decision trees is the **standard deviation reduction (SDR)**.	
+ 	
+$$SDR=sd(T)-\sum_{i=1}^n \left | \frac{T_i}{T} \right | \times sd(T_i),$$	
+ 	
+where `sd(T)` is the standard deviation for the original data. After the summation of all segments, $|\frac{T_i}{T}|$ is the proportion of observations in $i^{th}$ segment compared to total number of observations, and $sd(T_i)$ is the standard deviation for the $i^{th}$ segment.	
+ 	
+An example for this would be:	
+$$Original\, data:\{1, 2, 3, 3, 4, 5, 6, 6, 7, 8\}$$	
+$$Split\, method\, 1:\{1, 2, 3|3, 4, 5, 6, 6, 7, 8\}$$	
+$$Split\, method\, 2:\{1, 2, 3, 3, 4, 5|6, 6, 7, 8\}$$	
+In split method 1, $T_1=\{1, 2, 3\}$, $T_2=\{3, 4, 5, 6, 6, 7, 8\}$.	
+In split method 2, $T_1=\{1, 2, 3, 3, 4, 5\}$, $T_2=\{6, 6, 7, 8\}$.	
+
+```{r}
+ori <- c(1, 2, 3, 3, 4, 5, 6, 6, 7, 8)	
+at1 <- c(1, 2, 3)	
+at2 <- c(3, 4, 5, 6, 6, 7, 8)	
+bt1 <- c(1, 2, 3, 3, 4, 5)	
+bt2 <- c(6, 6, 7, 8)	
+sdr_a <- sd(ori)-(length(at1)/length(ori)*sd(at1)+length(at2)/length(ori)*sd(at2))	
+sdr_b <- sd(ori)-(length(bt1)/length(ori)*sd(bt1)+length(bt2)/length(ori)*sd(bt2))	
+sdr_a	
+sdr_b
+```
+
+`length()` is used in the above R codes to get the number of elements in a specific vector.	
+ 	
+*Larger SDR indicates greater reduction in standard deviation after splitting*. Here we have split method 2 yielding greater SDR, so the tree splitting decision would prefer the *second method*, which is expected to produce more homogeneous sub-sets (children nodes), compared to *method 1*. 	
+ 	
+Now, the tree will be split under `bt1` and `bt2` following same rules (greater SDR wins). Assume we cannot split further (`bt1` and `bt2` are terminal nodes). The observations classified into `bt1` will be predicted with $mean(bt1)=3$ and those classified as `bt2` with $mean(bt2)=6.75$.	
+ 	
+# Bayesian Additive Regression Trees (BART)	
+ 	
+Bayesian Additive Regression Trees (BART) represent sums of regression trees models that rely on boosting the constituent Bayesian regularized trees.	
+ 	
+The R packages `BayesTree` and `BART` provide computational implementation of fitting BART models to data. In supervised setting where $x$ and $y$ represent the predictors and the outcome, the BART model is mathematically represented as:	
+$$y=f(x)+\epsilon = \sum_{j=1}^m{f_j(x)} +\epsilon.$$	
+More specifically,	
+$$y_i=f(x_i)+\epsilon = \sum_{j=1}^m{f_j(x_i)} +\epsilon,\  \forall 1\leq i\leq n.$$	
+The residuals are typically assumed to be white noise, $\epsilon_i \sim N(o,\sigma^2), \ iid$.	
+The function $f$ represents the boosted ensemble of weaker regression trees, $f_i=g( . | T_j, M_j)$, where $T_j$ and $M_j$ represent the $j^{th}$ tree and the set of values, $\mu_{k,j}$,	
+assigned to each terminal node $k$ in $T_j$, respectively.	
+ 	
+The BART model may be estimated via Gibbs sampling, e.g., Bayesian backfitting Markov chain Monte Carlo (MCMC) algorithm. For instance, iteratively sampling $(T_j ,M_j)$ and $\sigma$, conditional on all other variables, $(x,y)$, for each $j$ until meeting certain convergence criterion. Given $\sigma$, conditional sampling of $(T_j ,M_j)$ may be accomplished via the partial residual 	
+$$\epsilon_{j_o} = \sum_{i=1}^n{\left (y_i - \sum_{j\not= j_o}^m{g( x_i | T_j, M_j)} \right )}.$$	
+
+For prediction on *new data*, $X$, data-driven priors on $\sigma$ and the parameters defining $(T_j ,M_j)$ may be used to allow sampling a model from the posterior distribution:	
+$$p\left (\sigma, \{(T_1 ,M_1), (T_2 ,M_2), ..., (T_2 ,M_2)\} | X, Y \right )=$$	
+$$= p(\sigma) \prod_{(tree)j=1}^m{\left ( \left ( \prod_{(node)k} {p(\mu_{k,j}|T_j)} \right )p(T_j)   \right )}  .$$	
+In this posterior factorization, model regularization is achieved by four criteria:	
+ 	
+* Enforcing reasonable marginal probabilities, $p(T_j)$, to ensure that the probability of a depth $d$ node in the tree $T_j$ has children decrease as $d$ increases. That is, the probability a current bottom node, at depth $l$, is split into a left and right child nodes is $\frac{\alpha}{(1+l)^{\beta}}$, where the base ($\alpha$) and power ($\beta$) parameters are selected to optimize the fit (including regularization);	
+* For each interior (non-terminal) node, the distribution on the splitting variable assignments is uniform over the range of values taken by a variable;	
+* For each interior (non-terminal) node, the distribution on the splitting rule assignment, conditional on the splitting variable, is uniform over the discrete set of splitting values;	
+* All other priors are chosen as $p(\mu_{k,j} |T_j) = N(\mu_{k,j} |\mu, \sigma)$ and $p(\sigma)$ where $\sigma^2$ is inverse chi-square distributed. To facilitate the calculations, this introduces prior conjugate structure with the corresponding hyper-parameters estimated using the observed data.	
+ 	
+Using the BART model to forecast a response corresponding to newly observed data $x$ is achieved by using one individual (or ensembling/averaging multiple) prediction models near algorithmic convergence.	
+ 	
+The BART algorithm involves three steps:	
+ 	
+* Initialize a prior on the model parameters $(f,\sigma)$, where $f=\{f_i=g( . | T_j, M_j)\}_i$,	
+* Run a Markov chain with state $(f,\sigma)$ where the stationary distribution is the posterior $p \left ((f,\sigma)|Data=\{(x_i,y_i)\}_{i=1}^n\right )$,	
+* Examine the draws as a representation of the full posterior. Even though $f$ is complex and changes its dimensional structure, for a given $x$, we can explore the marginals of $\sigma$ and $f(x)$ by selecting a set of data $\{x_j\}_{j}$ and computing $f(x_j)$. If $f_l$ represents the $l^{th}$ MCMC draw, then the homologous Bayesian tree structures at every draw will yield results of the same dimensions $\left ( f_l(x_i), f_l(x_2), ...\right )$.	
+ 	
+## 1D Simulation	
+ 	
+This example illustrates a simple 1D BART simulation, based on $h(x)=x^3\sin(x)$, where we can nicely plot the performance of the BART classifier.	
+
+```{r}
+# simulate training data	
+sig = 0.2  # sigma	
+func = function(x) {	
+  return (sin(x) * (x^(3)))	
+}	
+	
+set.seed(1234)	
+n = 300	
+x = sort(2*runif(n)-1)        # define the input	
+y = func(x) + sig * rnorm(n)  # define the output	
+	
+# xtest: values we want to estimate func(x) at; this is also our prior prediction for y.	
+xtest = seq(-pi, pi, by=0.2)	
+	
+##plot simulated data	
+plot(x, y, cex=1.0, col="gray")	
+points(xtest, rep(0, length(xtest)), col="blue", pch=1, cex=1.5)	
+legend("top", legend=c("Data", "(Conjugate) Flat Prior"),	
+   col=c("gray", "blue"), lwd=c(2,2), lty=c(3,3), bty="n", cex=0.9, seg.len=3)	
+	
+# run the weighted BART (BART::wbart) on the simulated data  	
+# install.packages("BART")	
+library(BART)	
+set.seed(1234) # set seed for reproducibility of MCMC	
+# nskip=Number of burn-in MCMC iterations; ndpost=number of posterior draws to return	
+model_bart <- wbart(x.train=as.data.frame(x), y.train=y,
+                    x.test=as.data.frame(xtest), nskip=300, ndpost=1000) 	
+# result is a list containing the BART run 	
+	
+# explore the BART model fit	
+names(model_bart)	
+dim(model_bart$yhat.test)	
+	
+# The (l,j) element of the matrix `yhat.test` represents the l^{th} draw of `func` evaluated at the j^{th} value of x.test	
+# A matrix with ndpost rows and nrow(x.train) columns. Each row corresponds to a draw f* from the posterior of f	
+# and each column corresponds to a row of x.train. The (i,j) value is f*(x) for the i^th kept draw of f 	
+# and the j^th row of x.train	
+	
+# plot the data, the BART Fit, and the uncertainty	
+plot(x, y, cex=1.2, cex.axis=0.8, cex.lab=0.8, mgp=c(1.3,.3,0), tcl=-0.2, col="gray")	
+lines(xtest, func(xtest), col="blue", lty=1, lwd=2)	
+lines(xtest, apply(model_bart$yhat.test, 2, mean), col="green", lwd=2, lty=2) # show the mean of f(x_j)	
+quant_marg = apply(model_bart$yhat.test, 2, quantile, probs=c(0.025, 0.975)) # plot the 2.5% and 97.5% quantiles	
+lines(xtest, quant_marg[1,], col="red", lty=1, lwd=2)	
+lines(xtest, quant_marg[2,], col="red", lty=1,lwd=2)	
+legend("top", legend=c("Data", "True Signal","Posterior Mean","95% CI"),	
+   col=c("black", "blue","green","red"), lwd=c(2, 2,2,2), lty=c(3, 1,1,1), bty="n", cex=0.9, seg.len=3)	
+	
+names(model_bart)	
+dim(model_bart$yhat.train)	
+summary(model_bart$yhat.train.mean-apply(model_bart$yhat.train, 2, mean))	
+summary(model_bart$yhat.test.mean-apply(model_bart$yhat.test, 2, mean))	
+# yhat.train(test).mean: Average the draws to get the estimate of the posterior mean of func(x)	
+```
+
+If we increase the sample size, n, the computational complexity increases and the BART model bounds should get tighter.	
+
+```{r}
+n = 3000 # 200 --> 3,000	
+set.seed(1234)	
+x = sort(2*runif(n)-1)	
+y = func(x) + sig*rnorm(n)	
+	
+model_bart_2 <- wbart(x.train=as.data.frame(x), y.train=y, x.test=as.data.frame(xtest), nskip=300, ndpost=1000)	
+	
+plot(x, y, cex=1.2, cex.axis=0.8, cex.lab=0.8, mgp=c(1.3,.3,0), tcl=-0.2, col="gray")	
+lines(xtest, func(xtest), col="blue", lty=1, lwd=2)	
+lines(xtest, apply(model_bart_2$yhat.test, 2, mean), col="green", lwd=2, lty=2) # show the mean of f(x_j)	
+quant_marg = apply(model_bart_2$yhat.test, 2, quantile, probs=c(0.025, 0.975)) # plot the 2.5% and 97.5% CI	
+lines(xtest, quant_marg[1,], col="red", lty=1, lwd=2)	
+lines(xtest, quant_marg[2,], col="red", lty=1,lwd=2)	
+legend("top",legend=c("Data (n=3,000)", "True Signal", "Posterior Mean","95% CI"),	
+   col=c("gray", "blue","green","red"), lwd=c(2, 2,2,2), lty=c(3, 1,1,1), bty="n", cex=0.9, seg.len=3)	
+```
+
+## Higher-Dimensional Simulation	
+ 	
+In this second example, we will simulate $n=5,000$ cases and $p=20$ features.	
+
+```{r}
+# simulate data	
+set.seed(1234)	
+n=5000; p=20	
+beta = 3*(1:p)/p	
+sig=1.0	
+X = matrix(rnorm(n*p), ncol=p) # design matrix)	
+y = 10 + X %*% matrix(beta, ncol=1) + sig*rnorm(n) # outcome	
+y=as.double(y)	
+	
+np=100000	
+Xp = matrix(rnorm(np*p), ncol=p)	
+set.seed(1234)	
+t1 <- system.time(model_bart_MD <- wbart(x.train=as.data.frame(X), y.train=y, x.test=as.data.frame(Xp),	
+                      nkeeptrain=200, nkeeptest=100, nkeeptestmean=500, nkeeptreedraws=100)	
+      )	
+	
+dim(model_bart_MD$yhat.train)	
+dim(model_bart_MD$yhat.test)	
+names(model_bart_MD$treedraws)	
+# str(model_bart_MD$treedraws$trees)	
+	
+# The trees are stored in a long character string and there are 100 draws each consisting of 200 trees.	
+	
+# To predict using the Multi-Dimensional BART model (MD)	
+t2 <- system.time({pred_model_bart_MD2 <- predict(model_bart_MD, as.data.frame(Xp), mc.cores=6)})	
+	
+dim(pred_model_bart_MD2)	
+t1	
+t2	
+	
+# pred_model_bart_MD2 has row dimension equal to the number of kept tree draws (100) and	
+# column dimension equal to the number of row in Xp (100,000).  	
+	
+# Compare the BART predictions using 1K trees vs. 100 kept trees (very similar results)	
+plot(model_bart_MD$yhat.test.mean, apply(pred_model_bart_MD2, 2, mean),	
+      xlab="BART Prediction using 1,000 Trees", ylab="BART Prediction using 100 Kept Trees")	
+abline(0,1, col="red", lwd=2)	
+	
+# Compare BART Prediction to a linear fit  	
+lm_func = lm(y ~ ., data.frame(X,y))	
+pred_lm = predict(lm_func, data.frame(Xp))	
+	
+plot(pred_lm, model_bart_MD$yhat.test.mean, xlab="Linear Model Predictions", ylab="BART Predictions",	
+        cex=0.5, cex.axis=1.0, cex.lab=0.8, mgp=c(1.3,.3,0), tcl=-0.2)	
+abline(0,1, col="red", lwd=2)
+```
+
+##  Heart Attack Hospitalization Case-Study	
+ 	
+Let's use BART to model the [heart attack dataset (CaseStudy12_ AdultsHeartAttack_Data.csv)](https://umich.instructure.com/courses/38100/files/folder/Case_Studies). The data includes about 150 observations and 8 features, including hospital charges (`CHARGES`), which will be used as a response variable.	
+
+```{r}
+heart_attack <- read.csv("https://umich.instructure.com/files/1644953/download?download_frd=1", 	
+                       stringsAsFactors = F)	
+str(heart_attack)	
+	
+# convert the CHARGES (independent variable) to numerical form. 	
+# NA's are created so let's remain only the complete cases 	
+heart_attack$CHARGES <- as.numeric(heart_attack$CHARGES)	
+heart_attack <- heart_attack[complete.cases(heart_attack), ]	
+heart_attack$gender <- ifelse(heart_attack$SEX=="F", 1, 0)	
+heart_attack <- heart_attack[, -c(1,2,3)]	
+dim(heart_attack); colnames(heart_attack)	
+	
+x.train <- as.matrix(heart_attack[ , -3]) # x training, excluding the charges (output)	
+y.train = heart_attack$CHARGES # y=output for modeling (BART, lm, lasso, etc.)	
+	
+# Data should be standardized for all model-based predictions (e.g., lm, lasso/glmnet), but	
+# this is not critical for BART	
+	
+# We'll just do some random train/test splits and report the out of sample performance of BART and lasso	
+RMSE <- function(y, yhat) {	
+  return(sqrt(mean((y - yhat)^2)))	
+}	
+	
+nd <- 10 # number of train/test splits (ala CV validation)	
+n <- length(y.train)	
+ntrain <- floor(0.8*n) # 80:20 train:test split each time	
+	
+RMSE_BART <- rep(0, nd) # initialize BART and LASSO RMSE vectors 	
+RMSE_LASSO <- rep(0, nd) 	
+	
+pred_BART <- matrix(0.0, n-ntrain,nd) # Initialize the BART and LASSO out-of-sample predictions	
+pred_LASSO <- matrix(0.0, n-ntrain,nd)
+```
+
+```{r}
+library(glmnet)	
+for(i in 1:nd) {	
+   set.seed(1234*i)  	
+   # train/test split index	
+   train_ind <- sample(1:n, ntrain)	
+   	
+   # Outcome (CHARGES)	
+   yTrain <- y.train[train_ind]; yTest <- y.train[-train_ind]	
+   	
+   # Features for BART	
+   xBTrain <- x.train[train_ind, ]; xBTest <- x.train[-train_ind, ]	
+   	
+   # Features for LASSO (scale)	
+   xLTrain <- apply(x.train[train_ind, ], 2, scale)	
+   xLTest <- apply(x.train[-train_ind, ], 2, scale)	
+	
+   # BART: parallel version of mc.wbart, same arguments as in wbart	
+   # model_BART <- mc.wbart(xBTrain, yTrain, xBTest, mc.cores=6, keeptrainfits=FALSE)	
+   model_BART <- wbart(xBTrain, yTrain, xBTest)	
+   	
+   # LASSO	
+   cv_LASSO <- cv.glmnet(xLTrain, yTrain, family="gaussian", standardize=TRUE)	
+   best_lambda <- cv_LASSO$lambda.min	
+   model_LASSO <- glmnet(xLTrain, yTrain, family="gaussian", lambda=c(best_lambda), standardize=TRUE)	
+	
+   #get predictions on testing data	
+   pred_BART1 <- model_BART$yhat.test.mean	
+   pred_LASSO1 <- predict(model_LASSO, xLTest, s=best_lambda, type="response")[, 1]	
+  	
+    #store results	
+   RMSE_BART[i] <- RMSE(yTest, pred_BART1); pred_BART[, i] <- pred_BART1	
+   RMSE_LASSO[i] <- RMSE(yTest, pred_LASSO1);   pred_LASSO[, i] <- pred_LASSO1; 	
+}
+```
+```{r}
+# compare the out of sample RMSE measures	
+	
+qqplot(RMSE_BART, RMSE_LASSO)	
+abline(0, 1, col="red", lwd=2)	
+	
+# Next compare the out of sample predictions	
+	
+plot(as.double(pred_BART), as.double(pred_LASSO),xlab="BART Predictions",ylab="LASSO Predictions", col="gray")	
+abline(0, 1, col="red", lwd=2)	
+model_lm <- lm(B ~ L, data.frame(B=as.double(pred_BART), L=as.double(pred_LASSO)))	
+abline(model_lm$coef, col="blue", lty=2, lwd=3)	
+legend("topleft",legend=c("Scatterplot Predictions (BART vs. LASSO)", "Ideal Agreement", "LM (BART~LASSO)"),	
+   col=c("gray", "red","blue"), lwd=c(2,2,2), lty=c(3,1,1), bty="n", cex=0.9, seg.len=3)	
+```
+
+If the default prior yields reasonable results, we can try longer BART runs.	
+
+```{r}
+model_BART_long <- wbart(x.train, y.train, nskip=1000, ndpost=5000) 	
+plot(model_BART_long$sigma, xlab="Number of Posterior Draws Returned")	
+	
+plot(model_BART_long$yhat.train.mean, y.train, xlab="BART Predicted Charges", ylab="Observed Charges",	
+     main=sprintf("Correlation (Observed,Predicted)=%f", 	
+                         round(cor(model_BART_long$yhat.train.mean, y.train), digits=2)))	
+abline(0, 1, col="red", lty=2)	
+legend("topleft",legend=c("BART Predictions", "LM (BART~LASSO)"),	
+   col=c("gray", "red","blue"), lwd=c(2,2,2), lty=c(3,1,1), bty="n", cex=0.9, seg.len=3)	
+	
+ind <- order(model_BART_long$yhat.train.mean)	
+boxplot(model_BART_long$yhat.train[ , ind], ylim=range(y.train), xlab="case", ylab="BART Hospitalization Charge Prediction Range")	
+```
+
+The BART model indicates there is quite a bit of uncertainty in predicting the outcome (`CHARGES`) for each of the 148 cases using the other four features in the heart attack hospitalization data.	
+
+# Case study 2: Baseball Players (Take 2)	
+ 	
+## Step 2 - exploring and preparing the data	
+ 	
+We still use the [mlb dataset](https://umich.instructure.com/files/330381/download?download_frd=1) for this section. This dataset has 1034 observations. Let's try to separate them into training and test datasets first.	
+
+```{r}
+set.seed(1234)	
+train_index <- sample(seq_len(nrow(mlb)), size = 0.75*nrow(mlb))	
+mlb_train <- mlb[train_index, ]	
+mlb_test <- mlb[-train_index, ]
+```
+
+Here we use a randomized split (75%-25%) to divide the training and test datasets.	
+ 	
+## Step 3 - training a model on the data	
+ 	
+In R, the `rpart::rpart()` function provides an implementation for prediction using regression-tree modeling.	
+ 	
+**m <- rpart(dv ~ iv, data=mydata)**	
+ 	
+* dv: dependent variable	
+* iv: independent variable	
+* mydata: training data containing `dv` and `iv`	
+ 	
+We use two numerical features in the [mlb data "01a_data.txt"](https://umich.instructure.com/files/330381/download?download_frd=1) `Age` and `Height` as features.	
+
+```{r}
+#install.packages("rpart")	
+library(rpart)	
+mlb.rpart <- rpart(Weight ~ Height + Age, data=mlb_train)	
+mlb.rpart
+```
+
+ The output contains rich information. `split` indicates the method to split; `n` is the number of observations that falls in this segment; `yval` is the predicted value if the test data falls into the specific segment (tree node decision cluster).	
+ 	
+## Visualizing decision trees	
+ 	
+A fancy way of drawing the `rpart` decision tree is by `rpart.plot()` function under `rpart.plot` package.	
+
+```{r}
+# install.packages("rpart.plot")	
+library(rpart.plot)	
+rpart.plot(mlb.rpart, digits=3)
+```
+A more detailed graph can be obtained stating more options in the function.	
+
+```{r}
+rpart.plot(mlb.rpart, digits = 4, fallen.leaves = T, type=3, extra=101)
+```
+
+Also, you can use a more fancy tree plot from package `rattle`. From the fancy plot, you can observe the order and rules of splits.	
+
+```{r}
+library(rattle)	
+fancyRpartPlot(mlb.rpart, cex = 0.8)
+```
+
+## Step 4 - evaluating model performance	
+ 	
+Let's make predictions with the prediction tree. `predict()` command is used in this section.	
+
+```{r}
+mlb.p <- predict(mlb.rpart, mlb_test)	
+summary(mlb.p)	
+summary(mlb_test$Weight)
+```
+
+After comparing five-number statistics for the predicted and true `Weight`, we can see that the model cannot precisely identify extreme cases such as the maximum. However, within IQR, the predictions are relatively accurate. 	
+ 	
+Correlation could be used to measure the correspondence of two equal length numeric variables. Let's use `cor()` to examine the prediction accuracy.	
+
+```{r}
+cor(mlb.p, mlb_test$Weight)
+```
+
+The predicted values ($Weights$) are moderately correlated with their true value counterparts. [Chapter 13](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/13_ModelEvaluation.html) provides additional strategies for model quality assessment.	
+ 	
+## Measuring performance with mean absolute error	
+ 	
+To measure the distance between predicted value and the true value, we can use a measurement called mean absolute error (MAE). MAE follows the following formula:	
+$$MAE=\frac{1}{n}\sum_{i=1}^{n}|pred_i-obs_i|,$$	
+where the `pred_i` is the $i^{th}$ predicted value and `obs_i` is the $i^{th}$ observed value. Let's make a corresponding MAE function in R and evaluate our model performance.	
+
+```{r}
+MAE<-function(obs, pred){	
+  mean(abs(obs - pred))	
+}	
+MAE(mlb_test$Weight, mlb.p)
+```
+
+This implies that *on average*, the difference between the predicted value and the observed value is $15.1$. Considering that the `Weight` variable in our test dataset ranges from 150 to 260, the model performs well.	
+ 	
+For comparison, suppose we used the most primitive method for prediction - the **sample mean**. How much larger would the MAE be?	
+
+```{r}
+mean(mlb_test$Weight)	
+MAE(mlb_test$Weight, mean(mlb_test$Weight))   # 202.556
+```
+
+This proves that the predictive decision tree is better than using the **over all mean** to predict every observation in the test dataset. However, it is not dramatically better. There might be room for improvement.	
+ 	
+## Step 5 - improving model performance	
+ 	
+To improve the performance of our regression-tree forecasting, we are going to use a model tree instead of a regression tree. The `RWeka::M5P()` function implements the `M5` algorithm and uses a similar syntax as `rpart::rpart()`.	
+ 	
+**m <- M5P(dv ~ iv, data=mydata)**	
+
+```{r}
+#install.packages("RWeka")	
+	
+# Sometimes RWeka installations may be off a bit, see:	
+# http://stackoverflow.com/questions/41878226/using-rweka-m5p-in-rstudio-yields-java-lang-noclassdeffounderror-no-uib-cipr-ma	
+	
+Sys.getenv("WEKA_HOME") # where does it point to? Maybe some obscure path? 	
+# if yes, correct the variable:	
+Sys.setenv(WEKA_HOME="C:\\MY\\PATH\\WEKA_WPM")	
+library(RWeka)	
+# WPM("list-packages", "installed")	
+	
+mlb.m5 <- M5P(Weight ~ Height + Age, data=mlb_train)	
+mlb.m5
+```
+
+Instead of using segment averages to predict, the `M5` model uses a linear regression (`LM1`) as the terminal node. In some datasets with more variables, `M5P` could give us multiple linear models under different terminal nodes.	
+ 	
+Much like the general regression trees, `M5` builds tree-based models. The difference is that regression trees produce univariate forecasts (values) at each terminal node, whereas `M5` model-based regression trees generate multivariate linear models at each node. These model-based forecasts represent piece-wise linear functional models that can be used to numerically estimate outcomes at every node based on very high dimensional data (rich feature spaces).	
+
+```{r}
+summary(mlb.m5)	
+mlb.p.m5 <- predict(mlb.m5, mlb_test)	
+summary(mlb.p.m5)	
+cor(mlb.p.m5, mlb_test$Weight)	
+MAE(mlb_test$Weight, mlb.p.m5)
+```
+
+We can use `summary(mlb.m5)` to report some rough diagnostic statistics of the model. Notice that the correlation and MAE for the `M5` model are better compared to the results of the previous `rpart()` model.	
+ 	
+# Practice Problem: Heart Attack Data	
+ 	
+Let's use the heart attack dataset for practice.	
+
+```{r}
+heart_attack<-read.csv("https://umich.instructure.com/files/1644953/download?download_frd=1", stringsAsFactors = F)	
+str(heart_attack)
+```
+
+To begin with, we need to convert the `CHARGES` (independent variable) to numerical form. NA's are created so let's remain only the complete cases as mentioned in the beginning of this chapter. Also, let's create a gender variable as an indicator for female patients using `ifelse()` and delete the previous `SEX` column.	
+
+```{r}
+heart_attack$CHARGES <- as.numeric(heart_attack$CHARGES)	
+heart_attack <- heart_attack[complete.cases(heart_attack), ]	
+heart_attack$gender <- ifelse(heart_attack$SEX=="F", 1, 0)	
+heart_attack <- heart_attack[, -3]
+```
+
+Now we can build a model tree using `M5P()` with all the features in the model. As usual, we need to separate the `heart_attack` data in to training and test datasets (use the 75%-25% way of separation).	
+ 	
+After using the model to predict `CHARGES` in the test dataset we can obtain the following correlation and MAE.	
+
+```{r}
+#' 	
+set.seed(1234)	
+train_index <- sample(seq_len(nrow(heart_attack)), size = 0.75*nrow(heart_attack))	
+ha_train <- heart_attack[train_index, ]	
+ha_test <- heart_attack[-train_index, ]	
+	
+ha.m5 <- M5P(CHARGES ~ ., data=ha_train)	
+ha.pred <- predict(ha.m5, ha_test)	
+cor(ha.pred, ha_test$CHARGES)	
+MAE(ha_test$CHARGES, ha.pred)
+```
+
+We can see that the predicted values and observed values are strongly correlated. In terms of MAE, it may seem very large at first glance.	
+
+```{r}
+range(ha_test$CHARGES)	
+# 17137- 815	
+# 2867.884/16322
+```
+
+However, the test data itself has a wide range and the MAE is within 20% of the range. With only 148 observations, the model did a fairly good job in prediction. Can you reproduce or perhaps improve these results?	
+ 	
+Try to replicate these results with [other data from the list of our Case-Studies](https://umich.instructure.com/courses/38100/files/).	
 
