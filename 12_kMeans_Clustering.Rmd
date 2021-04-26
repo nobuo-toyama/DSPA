@@ -401,5 +401,475 @@ The dataset we will interrogate now includes [Services Utilization by Trauma-Exp
  	
 First, we need to load the dataset into R and report its summary and dimensions.	
 
+```{r}
+trauma<-read.csv("https://umich.instructure.com/files/399129/download?download_frd=1", sep = " ")	
+summary(trauma); dim(trauma)
+```
 
+In the summary we see two factors `race` and `traumatype`. `Traumatype` codes the real classes we are interested in. If the clusters created by the model are quite similar to the trauma types, our model may have a quite reasonable interpretation. Let's also create a dummy variable for each racial category.	
 
+```{r}
+trauma$black <- ifelse(trauma$race=="black", 1, 0)	
+trauma$hispanic <- ifelse(trauma$race=="hispanic", 1, 0)	
+trauma$other <- ifelse(trauma$race=="other", 1, 0)	
+trauma$white <- ifelse(trauma$race=="white", 1, 0)
+```
+
+Then, we will remove the (outcome-type) class variable, `traumatype`, from the dataset to avoid biasing the clustering algorithm. Thus, we are simulating a real biomedical case-study where we do not necessarily have the actual class information available, i.e., classes are latent features. 	
+
+```{r}
+trauma_notype <- trauma[, -c(1, 5, 6)]
+```
+
+## Step 3 - training a model on the data	
+ 	
+Similar to case-study 1, let's standardize the dataset and fit a k-means model.
+
+```{r}
+tr_z <- as.data.frame(lapply(trauma_notype, scale))	
+str(tr_z)	
+set.seed(1234)	
+trauma_clusters <- kmeans(tr_z, 5)
+```
+
+Here we use *k=5* in the hope that we have similar 5 clusters that match the 5 trauma types. In this case study, we have 1,000 observations and *k=5* may be a reasonable option.	
+ 	
+## Step 4 - evaluating model performance	
+ 	
+To assess the clustering model results, we can examine the resulting clusters.
+
+```{r}
+trauma_clusters$centers	
+	
+myColors <- c("darkblue", "red", "green", "brown", "pink",
+              "purple", "lightblue", "orange", "grey", "yellow")	
+barplot(t(trauma_clusters$centers), beside = TRUE, 
+        xlab="cluster", ylab="value", col = myColors)	
+legend("topleft", ncol=4, legend = c("sex", "age", "ses", "ptsd", "dissoc",
+                                     "service", "black", "hispanic", "other", "white"), fill = myColors)
+```
+
+On this barplot, the bars in each cluster represents `sex, age, ses, ptsd, dissoc, service, black, hispanic, other,` and `white`, respectively. It is quite obvious that each cluster has some unique features.	
+ 	
+Next, we can compare the *k-means* computed cluster labels to the *original labels*. Let's evaluate the similarities between the automated cluster labels and their real class counterparts using a confusion matrix table, where rows represent the k-means clusters, columns show the actual labels, and the cell values include the frequencies of the corresponding pairings.	
+
+```{r}
+trauma$clusters <- trauma_clusters$cluster	
+table(trauma$clusters, trauma$traumatype)
+```
+
+We can see that all of the children in cluster 4 belongs to `dvexp` (exposure to domestic violence or intimate partner violence). The model groups all `physabuse` and `sexabuse` cases into *cluster1* but can;t distinguish between them. Majority (200/250) of all `dvexp` children are grouped in *clusters 4 and 5*. Finally, `neglect` and `psychabuse` types are mixed in *clusters 2 and 3*.	
+ 	
+Let's review the output Silhouette value summary. It works well as only a small portion of samples appear mis-clustered.	
+
+```{r}
+dis_tra = dist(tr_z)	
+sil_tra = silhouette(trauma_clusters$cluster, dis_tra)	
+summary(sil_tra)	
+#plot(sil_tra)	
+# report the overall mean silhouette value	
+mean(sil_tra[,"sil_width"])	
+# The sil object colnames  are ("cluster", "neighbor", "sil_width")	
+```
+
+Next, let's try to tune $k$ with **k-means++** and see if $k=5$ appears to be optimal. 	
+
+```{r}
+mat = matrix(0,nrow = 11)	
+for (i in 2:11){	
+  set.seed(321)	
+  clust_kpp = kmeans(tr_z, kpp_init(tr_z, i), iter.max=100, algorithm='Lloyd')	
+  sil = silhouette(clust_kpp$cluster, dis_tra)	
+  mat[i] = mean(as.matrix(sil)[,3])	
+}	
+mat	
+ggplot(data.frame(k=2:11, sil=mat[2:11]), aes(x=k, y=sil)) + 
+  geom_line() + 
+  scale_x_continuous(breaks = 2:11)	
+
+```
+
+Finally, let's use **k-means++** with $k=6$ and set the algorithm's maximal iteration before rerunning the experiment:	
+
+```{r}
+set.seed(1234)	
+clust_kpp = kmeans(tr_z, kpp_init(tr_z, 6), iter.max=100, algorithm='Lloyd')	
+sil = silhouette(clust_kpp$cluster, dis_tra)	
+summary(sil)	
+# plot(sil)	
+# report the overall mean silhouette value	
+mean(sil[,"sil_width"])
+```
+As we showed earlier, we can interpret the resulting `kmeans` clusters in the context of this pediatric trauma study, by examining `clust_kpp$centers`.	
+ 	
+# Feature selection for k-Means clustering	
+ 	
+A very active area of research involves feature selection for unsupervised machine-learning clustering, including k-means clustering. We won't go into details here, but we list some of the current strategies to chose salient features in situations where we don't have ground-truth labels.	
+ 	
+* For Gaussian model-based clustering, the ['mclust' package](https://cran.r-project.org/web/packages/mclust) provides the functionality to learn and report the clusters, as well as perform variable selection using ['clustvarsel'](https://cran.r-project.org/web/packages/clustvarsel/index.html).	
+* a [feature selection for clustering article](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.295.8115&rep=rep1&type=pdf) provides a review of possible strategies.	
+* [Unsupervised Feature Selection for k-means Clustering](https://www.researchgate.net/profile/Christos_Boutsidis/publication/221620396_Unsupervised_Feature_Selection_for_the_k-means_Clustering_Problem/links/02e7e52aea2e9b9923000000/Unsupervised-Feature-Selection-for-the-k-means-Clustering-Problem.pdf) provides specifics for variable selection for the k-means algorithm.	
+* A [Feature Selection for Clustering](https://link.springer.com/chapter/10.1007/3-540-45571-X_13) paper presents an approach where features are ranked according to their importance on clustering and then a subset of important features are chosen.	
+ 	
+# Practice Problem: Youth Development	
+ 	
+Use [Boys Town Study of Youth Development data](https://umich.instructure.com/courses/38100/files/folder/Case_Studies),  second case study, CaseStudy02_Boystown_Data.csv, we used in [Chapter 6](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/06_LazyLearning_kNN.html), to find clusters using variables about GPA, alcohol abuse, attitudes on drinking, social status, parent closeness and delinquency for clustering(all variables other than gender and ID).	
+ 	
+First we must load the data and transfer `sex`, `dadjob` and `momjob` into dummy variables.	
+
+```{r}
+boystown <- read.csv("https://umich.instructure.com/files/399119/download?download_frd=1", sep=" ")	
+boystown$sex <- boystown$sex - 1	
+boystown$dadjob <- (-1)*(boystown$dadjob - 2)	
+boystown$momjob <- (-1)*(boystown$momjob - 2)	
+str(boystown)
+```
+Then, extract all the variables, except the first two columns (subject identifiers and genders).	
+
+```{r}
+boystown_sub <- boystown[, -c(1, 2)]
+```
+
+Next, we need to standardize and clustering the data with `k=3`. You may have the following centers (numbers could be a little different).	
+
+```{r}
+boystown_z <- as.data.frame(lapply(boystown_sub, scale))	
+set.seed(1234)	
+bt_cluster <- kmeans(boystown_z, 3)	
+bt_cluster$centers	
+	
+myColors <- c("darkblue", "red", "green", "brown", "pink",
+              "purple", "lightblue", "orange", "grey")	
+barplot(t(bt_cluster$centers), beside = TRUE,
+        xlab="cluster", ylab="value", col = myColors)	
+legend("topleft", ncol=4, legend = c("gpa","Alcoholuse","alcatt",
+                                     "dadjob","momjob","dadclose",
+                                     "momclose", "larceny","vandalism"),
+       fill = myColors)	
+```
+
+Add *k-means* cluster labels as a new (last) column back in the original dataset.	
+
+```{r}
+boystown$clusters <- bt_cluster$cluster
+```
+
+To investigate the gender distribution within different clusters we may use `aggregate()`.	
+
+```{r}
+# Compute the averages for the variable 'sex', grouped by cluster	
+aggregate(data=boystown, sex ~ clusters, mean)
+```
+
+Here `clusters` is the new vector indicating cluster labels. The gender distribution does not vary much between different cluster labels.	
+ 	
+# Hierarchical Clustering	
+ 	
+Recall from [Chapter 6 (Lazy Learning)](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/06_LazyLearning_kNN.html) that there are three large classes of unsupervised clustering methods - Bayesian, partitioning-based, and hierarchical. Hierarchical clustering represents a family of techniques that build hierarchies of clusters using one of two complementary strategies:	
+ 	
+* *Generative* methods (also known as agglomerative) represent bottom-up approaches that are initialized with each individual observation being its own cluster, and the iterative protocol aggregates observations (i.e., merges clusters) by pairing similar clusters, which results in higher hierarchy levels.	
+* *Discriminative* methods (also known as divisive) represent a reversed top-down techniques that are initialized by all observations belonging to a single cluster, which is recursively split into higher hierarchical levels.	
+ 	
+In both situations, cluster splits and merges are determined by minimizing some objective function using a greedy algorithm (e.g., gradient descent). It's common to illustrate hierarchical clustering results as dendrograms. One example of genomics data hierarchical clustering using probability distributions is available [here (DOI: 10.1016/j.jtbi.2016.07.032)](https://doi.org/10.1016/j.jtbi.2016.07.032).	
+ 	
+Decisions about merging or splitting nodes in the hierarchy heavily depend the specific a distance metric used to measure the dissimilarity between sets of observations in the original cluster and the candidate children (sub)clusters. It's common to employ standard metrics ($d$) for measuring distances between pairs of observations (e.g., Euclidean, Manhattan, Mahalanobis) and a linkage criterion connecting cluster-dissimilarity of sets to the paired distances of observations in the cluster sets (e.g., maximum/complete linkage clustering 	$\max \{ d ( a , b ) : a \in A , b \in B \}$, minimum/single linkage clustering 	$\min \{ d ( a , b ) : a \in A , b \in B \}$, mean linkage clustering $\frac {1}{|A|.|B|} \sum_{a\in A} {\sum _{b\in B}d(a,b)}$).	
+ 	
+There are a number of `R` **hierarchical clustering** packages, including:	
+ 	
+* `hclust` in base R.	
+* `agnes` in the `cluster` package.	
+ 	
+Alternative distance measures (or linkages) can be used in all Hierarchical Clustering, e.g., *single*, *complete* and *ward*.	
+ 	
+We will demonstrate hierarchical clustering using case-study 1 ([Divorce and Consequences on Young Adults](https://umich.instructure.com/files/399121/download?download_frd=1)). Pre-set $k=3$ and notice that we have to use normalized data for hierarchical clustering.	
+
+```{r}
+library(cluster)	
+pitch_sing = agnes(di_z, diss=FALSE, method='single')	
+pitch_comp = agnes(di_z, diss=FALSE, method='complete')	
+pitch_ward = agnes(di_z, diss=FALSE, method='ward')	
+sil_sing = silhouette(cutree(pitch_sing, k=3), dis)	
+sil_comp = silhouette(cutree(pitch_comp, k=3), dis)	
+# try 10 clusters, see plot above	
+sil_ward = silhouette(cutree(pitch_ward, k=10), dis)
+```
+
+You can generate the hierarchical plot by `ggdendrogram` in the package `ggdendro`.
+
+```{r}
+# install.packages("ggdendro")	
+library(ggdendro)	
+ggdendrogram(as.dendrogram(pitch_ward), leaf_labels=FALSE, labels=FALSE)	
+	
+mean(sil_ward[,"sil_width"])	
+ggdendrogram(as.dendrogram(pitch_ward), leaf_labels=TRUE, labels=T, size=10)
+```
+
+Generally speaking, the best result should come from **wald** linkage, but you should also try complete linkage (method='complete'). We can see that the hierarchical clustering result (average silhouette value $\sim 0.24$) mostly agrees with the prior *k-means* ($0.2$) and *k-means++* ($0.2$) results.	
+
+```{r}
+summary(sil_ward)	
+plot(sil_ward)
+```
+
+# Spectral Clustering	
+ 	
+Spectral clustering relies on decomposition of the similarity-matrix   in terms of its spectrum of eigenvalues. The similarity matrix of the data is computed using some pairwise distances between all observations in the dataset. This spectral decomposition is used to reduce the data dimensionality prior to clustering. Typically, one precomputes the distance matrix first and feeds it as an input to the clustering method.	
+ 	
+For a dataset of records, the similarity matrix is a symmetric matrix $A=\{a_{ij}\geq 0\}_{ij}$ encoding the similarity measures between pairs of data points indexed by $1\leq i,j \leq n$. Most spectral clustering methods employ a traditional *cluster method* like $k$-means clustering applied on the eigenvectors of the *Laplacian* similarity matrix. There are alternative approaches to define a Laplacian that lead to different mathematical interpretations of the spectral clustering protocol. The *relevant eigenvectors* correspond to the few *smallest eigenvalues* of the Laplacian. The exception is that the smallest eigenvalue, which will have a value of $0$. This process (finding the smallest eigenvalues) is analogous to computing the *largest* few eigenvalues of an operator representing a *function* of the original Laplacian.	
+ 	
+The underlying philosophy of spectral clustering has roots in physics, e.g., partitioning of a mass-spring system. The analytical concept corresponding to physical mass is data point and mass-characteristics (e.g., stiffness parameter) relates to weights of edges describing pairwise similarity of related data points. The eigenvalue problem in spectral clustering analytics maps to physical transversal vibration modes of mass-spring systems. Mathematically, the eigenvalue problem for the Laplacian matrix is $L=D-A$, where 	
+$D=\{ d_{i,i} = \sum_j a_{i,j};\ d_{i\not= j}=0 \}$ is a diagonal matrix.	
+ 	
+Tightly coupled spring masses in the physical system jointly move in space from the equilibrium state in low-frequency vibration modes. Eigenvector components that correspond to the smallest eigenvalues of the Laplacian can be used to derive clustering of the masses (data points). 	
+ 	
+For instance, the *normalized cuts* spectral clustering algorithm partitions points in $B$ into two sets $B_1$ and $B_2$ based on the eigenvector $v$ corresponding to the *second-smallest* Laplacian eigenvalue, where the *symmetrized-and-normalized* Laplacian matrix is defined by:	
+ 	
+$$L^\text{norm} = I-\left (D^{-1/2} A D^{-1/2}\right ).$$	
+ 	
+Similarly, we can take the eigenvector corresponding to the *largest eigenvalue* of the adjacency matrix 	
+ 	
+$$P = D^{-1}A.$$ 	
+ 	
+The key is to obtain the spectrum of the Laplacian. Then using the eigenvectors, we can cluster the observations in many alternative ways. For instance, the cases can be partitioned by computing the median $m$ of the components of the *second smallest eigenvector* $v$ and mapping all points whose component in $v$ is greater than $m$ in $B_1$ and the remaining cases in its complement, $B_2$. Repeated partitioning of the data into the subsets using this protocol will induce a classification scheme (spectral clustering) of the data.	
+ 	
+The unnormalized spectral clustering pseudo algorithm is listed below.	
+ 	
+*Input*:  *Similarity matrix*, $A\in R^n\times R^n$, $k=$ number of clusters	
+Construct a *similarity graph* modeling the local neighborhood relationships, where the similarity function encodes mainly local neighborhoods. For instance, a Gaussian similarity function $a(x_i,x_j)=\exp{\left (-\frac{||x_i-x_j||^2}{2\sigma^2}\right )}$, where $\sigma$ controls the width of the neighborhoods.	
+Let $W$ be its *weighted adjacency matrix*, corresponding to the similarity graph, $W= (w_{i,j})_{i,j}$, where $w_{i,j}=w_{j,i}$ and $w_{i,j}= 0$ implies that the vertices $x_i$ and $x_j$ are not connected. 	
+Compute the unnormalized Laplacian $L$.	
+Compute the first $k$ eigenvectors of $L$ and let $V\in R^{n\times k}$ be the matrix containing these $k$ vectors as columns.	
+For $1\leq i\leq n$, let $y_i\in R^k$ be the vector corresponding to the $i^{th}$ row of $V$.	
+Cluster the points $\{y_i \}_{1\leq i\leq n}$ in $k$-clusters, $\{C_i\}_{i=1}^k$ in $R^k$ using $k$-means clustering.	
+*Output*:  Clusters $\{A_i\}_{i=1}^k$, where $A_i=\{j | y_i \in C_i\}$.	
+ 	
+Let's look at one specific implementation of spectral clustering for segmenting/classifying a region of interest (ROI) representing [brain hematoma](https://en.wikipedia.org/wiki/Subdural_hematoma) in a 2D MRI image ([MRI_ImageHematoma.jpg](https://umich.instructure.com/files/1627149/download?download_frd=1)).	
+
+```{r}
+# Import the Brain 2D image MRI_ImageHematoma.jpg	
+library(jpeg)	
+img_url <- "https://umich.instructure.com/files/1627149/download?download_frd=1"		
+img_file <- tempfile(); download.file(img_url, img_file, mode="wb")		
+img <- readJPEG(img_file)		
+	
+# To expedite the calculaitons, reduce the size of 2D image	
+# install.packages("BiocManager")	
+# BiocManager::install("EBImage")	
+library("EBImage")	
+img <- t(apply(img[ , , 1], 2, rev)) # take the first RGB-color channel; transpose to get it anatomically correct Viz	
+# width and height of the original image	
+dim(img)[1:2]	
+olddim <- c(dim(img)[1], dim(img)[2])	
+newdim <- c(64, 64)  # new smaller image dimensions	
+img1 <- resize(img, w = newdim[1], h = newdim[2])	
+image(img, main="Original (high) resolution", xaxt = "n", yaxt = "n", asp=1)	
+image(img1, main="Downsample (low) resolution)", xaxt = "n", yaxt = "n", asp=1)	
+	
+# Convert image matrix to long vector (i,j, value)	
+imgvec <- matrix(NA, prod(dim(img1)),3)	
+counter <- 1	
+for (r in 1:nrow(img1)) {	
+  for (c in 1:ncol(img1)) {	
+    imgvec[counter,1] <- r	
+    imgvec[counter,2] <- c	
+    imgvec[counter,3] <- img1[r,c]	
+    counter <- counter+1	
+  }	
+}	
+	
+# Compute the Similarity Matrix A	
+pixdiff <- 2	
+sigma2 <- 0.01 	
+simmatrix <- matrix(0, counter-1, counter-1)	
+	
+for(r in 1:nrow(imgvec)) {	
+  # Verbose	
+  # cat(r, "out of", nrow(imgvec), "\n")	
+  simmatrix[r,] <- ifelse(abs(imgvec[r,1]-imgvec[,1])<=pixdiff & abs(imgvec[r,2]-imgvec[,2])<=pixdiff,exp(-(imgvec[r,3]-imgvec[,3])^2/sigma2),0)	
+}	
+ 	
+# Compute the graph Laplacians	
+# U: unnormalized graph Laplacian (U=D-A) 	
+# L: normalized graph Laplacian, which can be computed in different ways:	
+## L1:   Simple Laplacian: I - D^{-1} A, which can be seen as a random walk, where D^{-1} A is the transition matrix, which yields spectral clustering with groups of nodes such that the random walk seldom transitions from one group to another.	
+## L2:   Normalized Laplacian D^{-1/2} A D^{-1/2}, or	
+## L3:   Generalized Laplacian: D^{-1} A.	
+	
+D <- diag(rowSums(simmatrix))	
+Dinv <- diag(1/rowSums(simmatrix))	
+L <- diag(rep(1,nrow(simmatrix)))-Dinv %*% simmatrix	
+U <- D-simmatrix	
+	
+# Compute the eigen-spectra for the normalized and unnormalized Laplacians 	
+evL <- eigen(L, symmetric=TRUE)	
+evU <- eigen(U, symmetric=TRUE)	
+	
+# Apply k-means clustering on the eigenspectra of both Laplacians	
+kmL <- kmeans(evL$vectors[,(ncol(simmatrix)-1):(ncol(simmatrix)-0)],	
+              centers=2,nstart=5)	
+segmatL <- matrix(kmL$cluster-1, newdim[1], newdim[2], byrow=T)	
+	
+kmU <- kmeans(evU$vectors[,(ncol(simmatrix)-1):(ncol(simmatrix)-0)],	
+              centers=2,nstart=5)	
+segmatU <- matrix(kmU$cluster-1, newdim[1], newdim[2], byrow=T)	
+	
+# Plot the pair of spectral clusters (hematoma and normal brain areas)	
+image(segmatL, col=grey((0:15)/15), 
+      main="Normalized Laplacian", xaxt = "n", yaxt = "n", asp=1)	
+image(segmatU, col=grey((0:15)/15),
+      main="Unnormalized Laplacian", xaxt = "n", yaxt = "n", asp=1)	
+	
+# Overlay the outline of the ROI-segmentaiton region on top of original image	
+image(seq(0, 1, length.out=olddim[1]), seq(0, 1, length.out=olddim[2]),	
+      img, col = grey((0:15)/15), xlab="",ylab="", asp=1, xaxt = "n", yaxt = "n",	
+      main="Original MRI with Overlay of the Boundaries of the \n Unnormalized (red) and Normalized (green) Laplacian Labels")	
+	
+# Compute the outline of the spectral segmentation and plot it as piecewise polygon - line segments	
+segmat <- segmatU	
+linecol <- "red"	
+linew <- 3	
+for(r in 2:newdim[1]) {	
+  for (c in 2:newdim[2]) {	
+    if(abs(segmat[r-1,c]-segmat[r,c])>0) {	
+      xloc <- (r-1)/(newdim[1])	
+      ymin <- (c-1)/(newdim[2])	
+      ymax <- (c-0)/(newdim[2])	
+      segments(xloc, ymin, xloc, ymax, col=linecol,lwd=linew)	
+    }	
+    if(abs(segmat[r,c-1]-segmat[r,c])>0) {	
+      yloc <- (c-1)/(newdim[2])	
+      xmin <- (r-1)/(newdim[1])	
+      xmax <- (r-0)/(newdim[1])	
+      segments(xmin, yloc, xmax, yloc, col=linecol,lwd=linew)	
+    }	
+  }	
+}	
+	
+# Add the normalized Laplacian contour	
+segmat <- segmatL	
+linecol <- "green"	
+linew <- 3	
+for(r in 2:newdim[1]) {	
+  for (c in 2:newdim[2]) {	
+    if(abs(segmat[r-1,c]-segmat[r,c])>0) {	
+      xloc <- (r-1)/(newdim[1])	
+      ymin <- (c-1)/(newdim[2])	
+      ymax <- (c-0)/(newdim[2])	
+      segments(xloc, ymin, xloc, ymax, col=linecol,lwd=linew)	
+    }	
+    if(abs(segmat[r,c-1]-segmat[r,c])>0) {	
+      yloc <- (c-1)/(newdim[2])	
+      xmin <- (r-1)/(newdim[1])	
+      xmax <- (r-0)/(newdim[1])	
+      segments(xmin, yloc, xmax, yloc, col=linecol,lwd=linew)	
+    }	
+  }	
+}
+```
+
+Let's try spectral clustering on the [Knee Pain Dataset](https://wiki.socr.umich.edu/index.php/SOCR_Data_KneePainData_041409) using the `kernlab::specc()` method.	
+
+```{r}
+#Get the data first	
+library("XML"); library("xml2"); library("rvest")	
+	
+wiki_url <- read_html("https://wiki.socr.umich.edu/index.php/SOCR_Data_KneePainData_041409")	
+html_nodes(wiki_url, "#content")	
+	
+kneeRawData <- html_table(html_nodes(wiki_url, "table")[[2]])	
+normalize<-function(x){	
+  return((x-min(x))/(max(x)-min(x)))	
+}	
+kneeRawData_df <- as.data.frame(cbind(normalize(kneeRawData$x), normalize(kneeRawData$Y), as.factor(kneeRawData$View)))	
+colnames(kneeRawData_df) <- c("X", "Y", "Label")	
+	
+# randomize the rows of the DF as RF, RB, LF and LB labels of classes	
+# which are by default sequentially ordered	
+set.seed(1234)	
+kneeRawData_df <- kneeRawData_df[sample(nrow(kneeRawData_df)), ]	
+# summary(kneeRawData_df)	
+# View(kneeRawData_df)	
+	
+# Artificially reduce the size of hte data from 8K to 1K to get results faster 	
+kneeDF <- data.frame(x=kneeRawData_df[1:1000, 1], 	
+                     y=kneeRawData_df[1:1000, 2], 	
+                     class=as.factor(kneeRawData_df[1:1000, 3]))	
+head(kneeDF)  	
+	
+# Do the spectral clustering	
+library(kernlab)	
+knee_data <- cbind(kneeDF$x, kneeDF$y); dim(knee_data)	
+spectral_knee <- specc(knee_data, iterations=10, centers=4)	
+plot(knee_data, col=spectral_knee, pch=1)    # estimated clusters	
+# points(knee_data, col=kneeDF$class, pch=0)
+```
+
+# Gaussian mixture models	
+ 	
+More [details about Gaussian mixture models (GMM) are provided here](http://escholarship.org/uc/item/1rb70972). Also see the [SOCR Gaussian Mixture Model (Java) interactive activity](http://wiki.stat.ucla.edu/socr/index.php/SOCR_EduMaterials_Activities_2D_PointSegmentation_EM_Mixture). Below is a brief introduction to GMM using the `Mclust` function in the *R* package `mclust`.	
+ 	
+For multivariate mixture, there are totally 14 possible models:	
+ 	
+* "EII"    =    spherical, equal volume	
+* "VII"    =    spherical, unequal volume	
+* "EEI"    =    diagonal, equal volume and shape	
+* "VEI"    =    diagonal, varying volume, equal shape	
+* "EVI"    =    diagonal, equal volume, varying shape	
+* "VVI"    =    diagonal, varying volume and shape	
+* "EEE"    =    ellipsoidal, equal volume, shape, and orientation	
+* "EVE"    =    ellipsoidal, equal volume and orientation (*)	
+* "VEE"    =    ellipsoidal, equal shape and orientation (*)	
+* "VVE"    =    ellipsoidal, equal orientation (*)	
+* "EEV"    =    ellipsoidal, equal volume and equal shape	
+* "VEV"    =    ellipsoidal, equal shape	
+* "EVV"    =    ellipsoidal, equal volume (*)	
+* "VVV"    =    ellipsoidal, varying volume, shape, and orientation	
+ 	
+For more practical details, you may refer to [`Mclust`](https://cran.r-project.org/web/packages/mclust/mclust.pdf) and its [vignettes](https://cran.r-project.org/web/packages/mclust/vignettes/mclust.html).  Additional theoretical details are available in [C. Fraley and A. E. Raftery (2002). Model-based clustering, discriminant analysis, and density estimation. Journal of the American Statistical Association 97:611:631](http://dx.doi.org/10.1198/016214502760047131).	
+ 	
+Let's use the [Divorce and Consequences on Young Adults dataset](https://umich.instructure.com/files/399121/download?download_frd=1) for a demonstration.	
+
+```{r}
+library(mclust)	
+set.seed(1234)	
+gmm_clust <- Mclust(di_z)	
+summary(gmm_clust, parameters = TRUE)	
+gmm_clust$modelName
+```
+
+Thus, the optimal model, `VEI`, has 3 components.
+
+```{r}
+plot(gmm_clust$BIC, legendArgs = list(x = "bottom", ncol = 2, cex = 1))	
+plot(gmm_clust, what = "density")	
+plot(gmm_clust, what = "classification")	
+plot(gmm_clust, what = "uncertainty", dimens = c(6,7), main = "livewithmom vs. gethitched")	
+	
+# Mclust Dimention Reduction clustering	
+gmm_clustDR <- MclustDR(gmm_clust, lambda=1)	
+summary(gmm_clustDR)	
+	
+plot(gmm_clustDR, what = "boundaries", ngrid = 200)	
+plot(gmm_clustDR, what = "pairs")	
+plot(gmm_clustDR, what = "scatterplot")	
+	
+# Plot the Silhouette plot to assess the quality of	
+# the clustering based on the Mixture of 3 Gaussians	
+silGauss = silhouette(as.numeric(gmm_clustDR$classification), dis)	
+plot(silGauss, col=1:length(gmm_clustDR$class2mixcomp), border=NA)
+```
+
+To assess the model, we can print the confusion matrix comparing, say, the `Mclust` clustering labels and `divorce$depression` categories:	
+
+```{r}
+table(divorce$depression, gmm_clust$classification)
+```
+
+# Summary	
+ 	
+* K-means clustering may be most appropriate for exploratory data analytics. It is highly flexible and fairly efficient in terms of tessellating data into groups.	
+* It can be used for data that has no *Apriori* classes (labels).	
+* Generated clusters may lead to phenotype stratification and/or be compared against known clinical traits.	
+ 	
+Try to replicate these results with [other data from the list of our Case-Studies](https://umich.instructure.com/courses/38100/files/).	
