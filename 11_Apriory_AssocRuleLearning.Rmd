@@ -1,0 +1,335 @@
+---
+title: "11 Apriori Association Rules Learning"
+author: "nobuo"
+date: "2021/4/25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Motivation	
+ 	
+[HTTP cookies](https://en.wikipedia.org/wiki/HTTP_cookie) are used to track web-surfing and Internet traffic. We often notice that promotions (ads) on websites tend to match our needs, reveal our prior browsing history, or may reflect our interests. That is not an accident. Nowadays, [recommendation systems](https://en.wikipedia.org/wiki/Recommender_system) are highly based on machine learning methods that can learn the behavior, e.g., purchasing patterns, of individual consumers. In this chapter, we will uncover some of the mystery behind recommendation systems like market basket analysis. Specifically, we will (1) discuss association rules and their support and confidence, (2) present the *Apriori algorithm* for association rule learning, and (3) cover step-by-step a set of case-studies, including a toy example, Head and Neck Cancer Medications, and Grocery purchases.	
+ 	
+# Association Rules	
+ 	
+Association rules are the result of process analytics (e.g., market basket analysis) that specify patterns of relationships among items. One specific example would be:	
+$$\{charcoal, \, lighter, \, chicken\, wings\}\rightarrow\{barbecue\, sauce\}$$	
+In words, charcoal, lighter and chicken wings imply barbecue sauce. The curly brackets indicate that we have a set of items and the arrow suggest a direction of the association. Items in a set are called *elements.* When an item-set like $\{charcoal, \, lighter, \, chicken\, wings, \, barbecue\, sauce\}$ appears in our dataset with some regularity, we can mine and discover pattern of association with other item-sets.	
+ 	
+Association rules are commonly used for unsupervised discovery of knowledge rather than prediction of pre-specified outcomes. In biomedical research, association rules are widely used to:	
+ 	
+* searching for interesting or frequently occurring patterns of DNA,	
+* searching for protein sequences in an analysis of cancer data,	
+* finding patterns of medical claims that occur in combination with credit card or insurance fraud.	
+
+# The Apriori algorithm for association rule learning	
+ 	
+Association rules are mostly applied to *transactional data*, which is usually records of trade, exchange, or arrangement, e.g., medical records. These datasets are typically very large in number of transactions and features, e.g., [electronic health record (EHR)](https://en.wikipedia.org/wiki/Electronic_health_record). In such data archives, the number and complexity of transactions is high, which complicates efforts to extract patterns, conduct market analysis, or predict basket purchases. 	
+ 	
+**Apriori association rules** help untangle such difficult modeling problems. If we have a simple prior belief about the properties of frequent elements, we may be able to efficiently reduce the number of features or combinations that we need to look at.	
+ 	
+The Apriori algorithm is based on a simple `apriori` belief that *all subsets of a frequent item-set must also be frequent*. This is known as the **Apriori property**. In the last example, the full set $\{charcoal, \, lighter, \, chicken\, wings, \, barbecue\, sauce\}$ is *frequent* if and only if itself and all of its subsets, including single elements, pairs, and triples, occur frequently. Naturally, the apriori rule is designed for finding patterns in large datasets where patterns that appear frequently are considered "interesting", "valuable", or "important".	
+ 	
+# Rule **support** and **confidence**	
+ 	
+We can measure rule's importance by computing its **support** and **confidence** metrics. The support and confidence represent two criteria useful in deciding whether a pattern is "valuable". By setting thresholds for these two criteria, we can easily limit the number of interesting rules or item-sets reported.	
+ 	
+For item-sets $X$ and $Y$, the `support` of an item-set measures how (relatively) frequently it appears in the data:	
+$$support(X)=\frac{count(X)}{N},$$	
+where *N* is the total number of transactions in the database and *count(X)* is the number of observations (transactions) containing the item-set *X*. 	
+ 	
+In a set-theoretic sense, the union of item-sets is an item-set itself. In other words, if $Z={X,Y}={X}\cup{Y}$, then $$support(Z)=support(X,Y).$$	
+ 	
+For a given rule $X \rightarrow Y$, the `rule's confidence`  measures the relative accuracy of the rule:	
+$$confidence(X \rightarrow Y)=\frac{support(X, Y)}{support(X)}.$$	
+ 	
+The `confidence` measures the joint occurrence of *X* and *Y* over the *X* domain. If whenever *X* appears *Y* tends to also be present, then we will have a high $confidence(X\rightarrow Y)$. 	
+ 	
+Note that the ranges of the support and the confidence are $0 \leq support,\ confidence \leq 1$.	
+ 	
+One intuitive example of a strong association rule is $\{peanut\, butter\}\rightarrow\{bread\}$, because it has high *support* as well as high *confidence* in grocery store transactions. Shoppers tend to purchase bread when they get peanut butter. These items tend to appear in the same baskets, which yields high confidence for the rule $\{peanut\, butter\}\rightarrow\{bread\}$. Of course, there may be cases where $\{peanut\, butter\}\rightarrow\{celery\}$. These recommendation systems may not be perfect and can fail in unexpected ways, see the ["How Target Figured Out A Teen Girl Was Pregnant Before Her Father Did?" article](https://www.forbes.com/sites/kashmirhill/2012/02/16/how-target-figured-out-a-teen-girl-was-pregnant-before-her-father-did).	
+
+# Building a set of rules with the Apriori principle	
+ 	
+Remember that the number of arrangements of $n$ elements taken $k$ at a time, i.e., the [number of combinations](https://en.wikipedia.org/wiki/Combination), increases exponentially with the size of the item inventory ($n$), see [this SOCR activity](http://wiki.stat.ucla.edu/socr/index.php/AP_Statistics_Curriculum_2007_Prob_Count). This is precisely why if a restaurant only uses 10 ingredients, there are ${10\choose 5}=253$ possible menu items for customers to order. clearly the complexity of the number of "baskets" rapidly increases with the inventory of the available items or ingredients. For instance,	
+ 	
++ $n=100$ (ingredients) and $k=50$ (menus of 50 ingredients), yields ${100\choose 50}=100891344545564193334812497256\gt 10^{29}$ possible orders, and 	
++ $n=100$ (ingredients) and $k=5$ (menus of only 5 ingredients), yields ${100\choose 5}=75287520\gt 7M$ possible orders. 	
+ 	
+To avoid this complexity, we will introduce a two-step process of building few, simple, and informative sets of rules:	
+ 	
+* **Step 1**: Filter all item-sets with a minimum *support* threshold. This is accomplished iteratively by increasing the size of the item-sets. In the first iteration, we compute the support of singletons, 1-item-sets. Next iteration, we compute the support of pairs of items, then, triples of items, etc. Item-sets passing iteration *i* could be considered as candidates for the next iteration, *i+1*. If *{A}*, *{B}*, *{C}* are all frequent singletons, but *D* is not frequent in the first singleton-selection round, then in the second iteration we only consider the support of these pairs *{A, B}*, *{A,C}*, *{B,C}*, ignoring all pairs including *D*. This substantially reduces the cardinality of the potential item-sets and ensures the feasibility of the algorithm. At the third iteration, if *{A,C}*, and *{B,C}* are frequently occurring, but *{A, B}* is not, then the algorithm may terminate, as the support of *{A,B,C}* is trivial (does not pass the support threshold), given that *{A, B}* was not frequent enough.	
+ 	
+* **Step 2**: Using the item-sets selected in step 1, generate new rules with *confidence* larger than a predefined minimum confidence threshold. The candidate item-sets that passed step 1 would include all frequent item-sets. For the highly-supported item-set *{A, C}*, we would compute the confidence measures for $\{A\}\rightarrow\{C\}$ as well as $\{C\}\rightarrow\{A\}$ and compare these against the minimum confidence threshold. The *surviving rules are the ones with confidence levels exceeding that minimum threshold*.	
+ 	
+# A toy example	
+Assume that a large supermarket tracks sales data by stock-keeping unit (SKU) for each item, i.e., each item, such as "butter" or "bread", is identified by an SKU number. The supermarket has a database of transactions where each transaction is a set of SKUs that were bought together.	
+ 	
+Suppose the database of transactions consist of following item-sets, each representing a purchasing order:	
+
+```{r}
+require(knitr)	
+item_table = as.data.frame(t(c("{1,2,3,4}","{1,2,4}","{1,2}","{2,3,4}",
+                               "{2,3}","{3,4}","{2,4}")))	
+colnames(item_table) <- c("choice1","choice2","choice3","choice4","choice5","choice6","choice7")	
+kable(item_table, caption = "Item table")
+```
+We will use *Apriori* to determine the frequent item-sets of this database. To do so, we will say that an item-set is frequent if it appears in at least $3$ transactions of the database, i.e., the value $3$ is the support threshold.	
+ 	
+The first step of Apriori is to count up the number of occurrences, i.e., the support, of each member item separately. By scanning the database for the first time, we obtain get:	
+
+```{r}
+item_table = as.data.frame(t(c(3,6,4,5)))	
+colnames(item_table) <- c("items: {1}","{2}","{3}","{4}")	
+rownames(item_table) <- "(N=7)*support"	
+kable(item_table, caption = "Size 1 Support")
+```
+
+All the singletons, item-sets of size 1, have a support of at least 3, so they are all frequent. The next step is to generate a list of all pairs of frequent items.	
+ 	
+For example, regarding the pair $\{1,2\}$: the first table of Example 2 shows items 1 and 2 appearing together in three of the item-sets; therefore, we say that the support of the item $\{1,2\}$ is $3$.	
+
+```{r}
+item_table = as.data.frame(t(c(3,1,2,3,4,3)))	
+colnames(item_table) <- c("{1,2}","{1,3}","{1,4}","{2,3}","{2,4}","{3,4}")	
+rownames(item_table) <- "N*support"	
+kable(item_table,caption = "Size 2 Support")
+```
+
+The pairs $\{1,2\}$, $\{2,3\}$, $\{2,4\}$, and $\{3,4\}$ all meet or exceed the minimum support of $3$, so they are *frequent*. The pairs $\{1,3\}$ and	
+$\{1,4\}$ are not and any larger set which contains $\{1,3\}$ or $\{1,4\}$ cannot be frequent. In this way, we can prune sets: we will now look for frequent triples in the database, but we can already exclude all the triples that contain one of these two pairs:	
+
+```{r}
+item_table = as.data.frame(t(c(2)))	
+colnames(item_table) <- c("{2,3,4}")	
+rownames(item_table) <- "N*support"	
+kable(item_table,caption = "Size 3 Support")
+```
+
+In the example, there are no frequent triplets -- the support of the item-set $\{2,3,4\}$ is below the minimal threshold, and the other triplets were excluded because they were super sets of pairs that were already below the threshold. We have thus determined the frequent sets of items in the database, and illustrated how some items were not counted because some of their subsets were already known to be below the threshold.	
+ 	
+# Case Study 1: Head and Neck Cancer Medications	
+ 	
+## Step 1 - collecting data	
+ 	
+To demonstrate the *Apriori* algorithm in a real biomedical case-study, we will use a transactional healthcare data representing [a subset of the Head and Neck Cancer Medication data](https://umich.instructure.com/files/1678540/download?download_frd=1), which it is available in [our case-studies collection](https://umich.instructure.com/courses/38100/files/folder/data) as `10_medication_descriptions.csv`. It consists of inpatient medications for head and neck cancer patients.	
+ 	
+The data is a wide format, see [Chapter 1](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/01_Foundation.html), where each row represents a patient. During the study period, each patient had records for a maximum of 5 encounters. *NA* represents no medication administration records in this specific time point for the specific patient. This dataset contains a total of 528 patients.	
+
+## Step 2 - exploring and preparing the data	
+ 	
+Different from our data imports in the previous chapters, transactional data need to be ingested in R using the `read.transactions()` function. This function will store data as a matrix with each row representing a basket (or transaction example) and each column representing items in the transaction.	
+ 	
+Let's load the dataset and delete the irrelevant *index* column. Using the `write.csv(R data, "path")` function, we can output our R data file into a local CSV file. To avoid generating another index column in the output CSV file, we can use the `row.names=F` option.	
+
+```{r}
+med <- read.csv("https://umich.instructure.com/files/1678540/download?download_frd=1", stringsAsFactors = FALSE)	
+med<-med[, -1]	
+write.csv(med, "medication.csv", row.names=F)	
+library(knitr)	
+kable(med[1:5, ])
+```
+Now we can use `read.transactions()` in the `arules` package to read the CSV file we just outputted.	
+
+```{r}
+# install.packages("arules")	
+library(arules)	
+med <- read.transactions("medication.csv", sep = ",", skip = 1, rm.duplicates=TRUE)	
+summary(med)
+```
+
+Here we use the option `rm.duplicates=T` because we may have similar medication administration records for two different patients. The option `skip=1` means we skip the heading line in the CSV file. Now we get a transactional data with unique rows.	
+ 	
+The summary of a transactional data contains rich information. The first block of information tells us that we have 528 rows and 88 different medicines in this matrix. Using the density number we can calculate how many non *NA* medication records are in the data. In total, we have $528\times 88=46,464$ positions in the matrix. Thus, there are $46,464\times 0.0209=971$ medicines prescribed during the study period. 	
+ 	
+The second block lists the most frequent medicines and their frequencies in the matrix. For example `fentanyl injection uh` appeared 211 times, which represents a proportion of $211/528=0.4$ of the (treatment) transactions. Since [fentanyl](https://en.wikipedia.org/wiki/Fentanyl) is frequently used to help prevent pain after surgery or other medical treatments, we can see that many of these patients may have undergone some significant medical procedures that require post-operative pain management.	
+ 	
+The last block shows statistics about the size of the transaction. 248 patients had only one medicine in the study period, while 12 of them had 5 medication records one for each time point. On average, the patients are having 1.8 different medicines. 	
+ 	
+### Visualizing item support - item frequency plots	
+ 	
+The summary might may still be fairly abstract, so we can visualize the information.	
+
+```{r}
+inspect(med[1:5,])
+```
+
+The `inspect()` call shows the transactional dataset. We can see that the medication records of each patient are nicely formatted as item-sets.	
+ 	
+We can further analyze the frequent terms using `itemFrequency()`. This will show all item frequencies alphabetically ordered from the first five outputs.	
+
+```{r}
+itemFrequency(med[, 1:5])
+# itemFrequencyPlot(med, topN=20)
+```
+
+The above graph shows the top 20 medicines that are most frequently present in this dataset. Consistent with the prior `summary()` output, `fentanyl` is still the most frequent item. You can also try to plot the items with a threshold for support. Instead of `topN=20`, just use the option `support=0.1`, which will give you all the items have a support greater or equal to $0.1$. 	
+ 	
+### Visualizing transaction data - plotting the sparse matrix	
+ 	
+The sparse matrix will show what medications were prescribed for each patient.	
+
+```{r}
+# image(med[1:5, ])
+```
+This images has 5 rows (we only requested the first 5 patients) and 88 columns (88 different medicines). Although the picture may be a little hard to interpret, it gives a sense of what kind of medicine is prescribed for each patient in the study.	
+ 	
+Let's see an expanded graph including 100 randomly chosen patients.	
+
+```{r}
+subset_int <- sample(nrow(med), 100, replace = F)  	
+# image(med[subset_int, ])	
+```
+
+It shows us clearly that some medications are more popular than others. Now, let's fit the *Apriori* model.	
+ 	
+## Step 3 - training a model on the data	
+ 	
+With the data in place, we can build the *association rules* using the `arules::apriori()` function.	
+ 	
+`myrules <- apriori(data=mydata, parameter=list(support=0.1, confidence=0.8, minlen=1))`	
+ 	
+* data: a sparse matrix created by `read.transacations()`.	
+* support: minimum threshold for support.	
+* confidence: minimum threshold for confidence.	
+* minlen: minimum required rule items (in our case, medications).	
+ 	
+Setting up the threshold could be hard. You don't want it to be too high so that you get no rules or rules that everyone knows. You don't want to set it too low either, to avoid too many rules present. Let's see what we get under the default setting `support=0.1, confidence=0.8`:	
+
+```{r}
+apriori(med)
+```
+
+Not surprisingly, we have 0 rules. The default setting is too high. In practice, we might need some time to fine-tune these thresholds, which may require certain familiarity with the underlying process or clinical phenomenon.	
+ 	
+In this case study, we set `support=0.01` and `confidence=0.25`. This requires rules that have appeared in at least 10% of the head and neck cancer patients in the study. Also, the rules have to have least 25% accuracy. Moreover, `minlen=2` would be a very helpful option because it removes all rules that have fewer than two items.	
+
+```{r}
+med_rule <- apriori(med, parameter=list(support=0.01, confidence=0.25, minlen=2))	
+med_rule
+```
+
+The result suggest we have a new `rules` object consisting of 29 rules.	
+ 	
+## Step 4 - evaluating model performance	
+ 	
+First, we can obtain the overall summary of this set of rules.	
+
+```{r}
+summary(med_rule)
+```
+
+ We have 13 rules that contain two items; 12 rules containing 3 items, and the remaining 4 rules contain 4 items.	
+ 	
+The `lift` column shows how much more likely one medicine is to be prescribed to a patient given another medicine is prescribed. It is obtained by the following formula:	
+$$lift(X\rightarrow Y)=\frac{confidence(X\rightarrow Y)}{support(Y)}$$	
+Note that $lift(X\rightarrow Y)$ is the same as $lift(Y\rightarrow X)$. The range of $lift$ is $[0,\infty)$ and  higher $lift$ is better. We don't need to worry about the support, since we already set a threshold that the support must exceed.	
+ 	
+Using the `arulesViz` package we can visualize the confidence and support scatter plots for all the rules.	
+
+```{r}
+# install.packages("arulesViz")	
+library(arulesViz)	
+plot(sort(med_rule))
+```
+
+Again, we can utilize the `inspect()` function to see exactly what are these rules.	
+
+```{r}
+inspect(med_rule[1:3])
+```
+
+Here, `lhs` and `rhs` refer to "left hand side" and "right hand side" of the rule, respectively. `lhs` is the given condition and `rhs` is the predicted result. Using the first row as an example: If a head-and-neck patient has been prescribed acetaminophen (pain reliever and fever reducer), it is likely that the patient is also prescribed cefazolin (antibiotic prescribed for treatment of resistant bacterial infections); bacterial infections are associated with fevers and some cancers.	
+ 	
+## Step 5 - sorting the set of association rules	
+ 	
+Sorting the resulting association rules corresponding to high **lift** values will help us identify the most useful rules.	
+
+```{r}
+inspect(sort(med_rule, by="lift")[1:3])
+```
+
+These rules may need to be interpreted by clinicians and experts in the specific context of the study. For instance, the first row, *{fentanyl, heparin, hydrocodone acetaminophen}* implies *{cefazolin}*. Fentanyl and hydrocodone acetaminophen are both pain relievers that may be prescribed after surgery to relieve moderate to severe pain based on an narcotic opioid pain reliever (hydrocodone) and a non-opioid pain reliever (acetaminophen). *Heparin* is usually used before surgery to reduce the risk of blood clots. This rule may suggest patients that have undergone surgical treatments and are likely that they will need *cefazolin* to prevent post-surgical bacterial infection. *Cefazolin* is an antibiotic used for the treatment of bacterial infections and also to prevent group *B streptococcal disease* around the time of delivery and before general surgery.	
+ 	
+## Step 6 - taking subsets of association rules	
+ 	
+If we are more interested in investigating associations that are linked to a specific medicine, we can narrow the rules down by making subsets. Let us try investigating rules related to [fentanyl](https://en.wikipedia.org/wiki/Fentanyl), since it appears to be the most frequently prescribed medicine. [Fentanyl](https://en.wikipedia.org/wiki/Fentanyl) is used in the management of chronic cancer pain.	
+
+```{r}
+fi_rules <- subset(med_rule, items %in% "fentanyl injection uh")	
+inspect(fi_rules)
+```
+
+Earlier, we saw that $\%in\%$ is a simple intuitive interface to `match()` and is used as a binary operator returning a logical vector indicating if there is a match (T) or not (F) for its left operand within the right table object. In total, there are 14 rules related to this item. Let's plot them.	
+ 	
+## Graphical depiction of association rules	
+
+```{r}
+# ?arulesViz::plot()	
+plot(sort(fi_rules, by="lift"), method="grouped", control=list(type="items"), 	
+     main = "Grouped Matrix for the 14 Fentanyl-associated Rules")
+plot(fi_rules, method="graph", measure = "support", engine="htmlwidget", # nodeCol=rainbow(14),	
+     shading = "lift", control = list(verbose = TRUE))
+```
+
+## Saving association rules to a file or data frame	
+ 	
+We can save these rules into a CSV file using `write()`. It is similar with the function `write.csv()` that we have mentioned in the beginning of this case study.	
+
+```{r}
+write(med_rule, file = "medrule.csv", sep=",", row.names=F)
+```
+
+Sometimes it is more convenient to convert the rules into a data frame.
+
+```{r}
+med_df <-as(med_rule, "data.frame")	
+str(med_df)
+```
+
+As we can see, the rules are converted into a factor vector.	
+ 	
+# Practice Problems: Groceries	
+ 	
+In this practice problem, we will investigate the associations of frequently purchased groceries using the *grocery* dataset in the R base. Firstly, let's load the data. 
+
+```{r}
+data("Groceries")	
+summary(Groceries)
+```
+
+We will try to find out the top 5 frequent grocery items and plot them.
+
+```{r}
+itemFrequencyPlot(Groceries, topN=5)
+```
+
+Then, try to use `support = 0.006, confidence = 0.25, minlen = 2` to set up the grocery association rules. Sort the top 3 rules with highest lift.	
+
+```{r}
+groceryrules <- apriori(Groceries, parameter = list(support =	
+0.006, confidence = 0.25, minlen = 2))	
+groceryrules	
+inspect(sort(groceryrules, by = "lift")[1:3])
+```
+
+The number of rules ($463$) appears excessive. We can try stringer parameters. In practice, it's more possible to observe underlying rules if you set a higher confidence. Here we set the $confidence=0.6$.	
+
+```{r}
+groceryrules <- apriori(Groceries, parameter = list(support = 0.006, confidence = 0.6, minlen = 2))	
+groceryrules	
+inspect(sort(groceryrules, by = "lift")[1:3])
+```
+
+We observe mainly rules between dairy products. It makes sense that customers pick up milk when they walk down the dairy products isle. Experiment further with various parameter settings and try to interpret the results in the context of this grocery case-study.	
+ 	
+# Summary	
+ 	
+* The Apriori algorithm for association rule learning is only suitable for large transactional data. For some small datasets, it might not be very helpful.	
+* It is useful for discovering associations, mostly in early phases of an exploratory study.	
+* Some rules can be built due to chance and may need further verification.	
+* [See also Chapter 19 (Text Mining and NLP)](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/19_NLP_TextMining.html).	
+ 	
+Try to replicate these results with [other data from the list of our Case-Studies](https://umich.instructure.com/courses/38100/files/).	
