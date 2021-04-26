@@ -1,0 +1,405 @@
+---
+title: "12 k-Means Clustering"
+author: "nobuo"
+date: "2021/4/26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+As we learned in [Chapters 6-8](http://dspa.predictive.space), classification could help us make predictions on new observations. However, classification requires (human supervised) predefined label classes. What if we are in the early phases of a study and/or don't have the required resources to manually define, derive or generate these class labels?	
+ 	
+*Clustering* can help us explore the dataset and separate cases into groups representing similar traits or characteristics. Each group could be a potential candidate for a class. Clustering is used for exploratory data analytics, i.e., as *unsupervised learning*, rather than for confirmatory analytics or for predicting specific outcomes. 	
+ 	
+In this chapter, we will present (1) clustering as a machine learning task, (2) the *silhouette* plots for assessing the reliability of clustering, (3) the *k-Means* clustering algorithm and how to tune it, (4) examples of several interesting case-studies, including Divorce and Consequences on Young Adults, Pediatric Trauma, and Youth Development, (5) demonstrate hierarchical clustering, (6) show spectral clustering, and (7) present Gaussian mixture modeling.	
+     	
+# Clustering as a machine learning task	
+ 	
+As we mentioned earlier, clustering is a machine learning technique that bundles unlabeled cases into groups. Scatter plots we saw in previous chapters represent a simple illustration of the clustering process. Let's start with a [hotdogs example](https://wiki.socr.umich.edu/index.php/SOCR_012708_ID_Data_HotDogs). Assume we don't know much about the ingredients of frankfurter hot dogs and we look the following graph.	
+
+```{r}
+# install.packages("rvest")	
+library(rvest)	
+wiki_url <- read_html("https://wiki.socr.umich.edu/index.php/SOCR_012708_ID_Data_HotDogs")	
+html_nodes(wiki_url, "#content")	
+hotdog<- html_table(html_nodes(wiki_url, "table")[[1]])	
+plot(hotdog$Calories, hotdog$Sodium, main = "Hotdogs", xlab="Calories", ylab="Sodium")	
+segments(120, 280, 120, 570, lty=2)	
+segments(120, 280, 30, 280, lty=2)	
+segments(120, 570, 30, 570, lty=2)	
+segments(125, 250, 125, 600, lty=2)	
+segments(125, 250, 165, 250, lty=2)	
+segments(165, 250, 165, 600, lty=2)	
+segments(125, 600, 165, 600, lty=2)	
+segments(170, 400, 170, 700, lty=2)	
+segments(170, 400, 250, 400, lty=2)	
+text(100, 220, "cluster 1")	
+text(140, 200, "cluster 2")	
+text(185, 350, "cluster 3")	
+# install.packages("calibrate")	
+# library(calibrate)
+```
+
+In terms of calories and sodium, these hot dogs are clearly separated into three different clusters. *Cluster 1* has hot dogs of low calories and medium sodium content; *Cluster 2* has both calorie and sodium at medium levels; *Cluster 3* has both sodium and calories at high levels. We can make a bold guess about the ingredients used in the hot dogs in these three clusters. For cluster 1, it could be mostly *chicken* meat since it has low calories. The second cluster might be *beef* and the third one is likely to be *pork*, because beef hot dogs have considerably less calories and salt than pork hot dogs. However, this is just guessing. Some hot dogs have a mixture of two or three types of meat. The real situation is somewhat similar to what we guessed but with some random noise, especially in cluster 2.	
+ 	
+The following pair of plots show the primary type of meat used for each hot dog labeled by name (top) and color-coded (bottom).	
+
+```{r}
+plot(hotdog$Calories, hotdog$Sodium)	
+text(hotdog$Calories, hotdog$Sodium, labels=hotdog$Type, pos=3)	
+	
+library(ggplot2)	
+gg1_plot = ggplot(hotdog, aes(x=Calories, y=Sodium)) + 
+  geom_point(aes(color=Type, shape = Type, stroke = 5),alpha=1) +
+  theme_bw(base_size=15) +	
+  guides(colour = guide_legend(override.aes = list(size=5))) +
+  theme(legend.position="top")	
+gg1_plot
+```
+
+# Silhouette plots	
+[Silhouette plots](https://en.wikipedia.org/wiki/Silhouette_(clustering)) are useful for interpretation and validation of consistency of all clustering algorithms. The silhouette value, $sil \in [-1,1]$, measures the similarity (cohesion) of a data point to its cluster relative to other clusters (separation). Silhouette plots rely on a distance metric, e.g., the [Euclidean distance](https://en.wikipedia.org/wiki/Euclidean_distance), [Manhattan distance](https://en.wikipedia.org/wiki/Manhattan_distance), [Minkowski distance]( https://en.wikipedia.org/wiki/Minkowski_distance), etc.	
+ 	
+* A high silhouette value suggest that the data matches its own cluster well.	
+* A clustering algorithm performs well when most Silhouette values are high.	
+* A low silhouette value indicates poor matching within neighboring cluster. 	
+* Poor clustering may imply that the algorithm configuration may have too many or too few clusters.	
+ 	
+Suppose a clustering method groups all data points (objects), $\{X_i\}_i$, into $k$ clusters and define:	
+ 	
+* $d_i$ as the *average dissimilarity* of $X_i$ with all other data points within its cluster. $d_i$ captures the quality of the assignment of $X_i$ to its current class label. Smaller or larger $d_i$ values suggest better or worse overall assignment for $X_i$ to its cluster, respectively.  The average dissimilarity of $X_i$ to a cluster $C$ is the average distance between $X_i$ and all points in the cluster of points labeled $C$.	
+* $l_i$ as the *lowest average dissimilarity* of $X_i$ to any other cluster that $X_i$ is not a member of. The cluster corresponding to $l_i$, the lowest average dissimilarity, is called the $X_i$ **neighboring cluster**, as it is the next best fit cluster for $X_i$. 	
+ 	
+Then, the **silhouette** of $X_i$ is defined by:	
+ 	
+$$-1 \leq s_i = \frac{l_i - d_i}{\max\{l_i,  d_i\}}	
+\equiv \begin{cases}	
+ 1-\frac{d_i}{l_i}, & \mbox{if } d_i < l_i \\	
+ 0,  & \mbox{if } d_i = l_i \\	
+ \frac{l_i}{d_i}-1, & \mbox{if } d_i > l_i \\	
+\end{cases} \leq 1$$	
+ 	
+ Note that:	
+ 	
+* $-1\leq s_i \leq 1$,	
+* $s_i \longrightarrow 1$ when $d_i \ll l_i$, i.e., the dissimilarity of $X_i$ to its cluster $C$ is much lower relative to its dissimilarity to other clusters, indicating a good (cluster assignment) match. Thus, high Silhouette values imply the data is appropriately clustered.	
+* Conversely, $-1 \longleftarrow s_i$ when $l_i \ll d_i$, $d_i$ is large, implying a poor match of $X_i$ with its current cluster $C$, relative to neighboring clusters. $X_i$ may be more appropriately clustered in its neighboring cluster. 	
+* $s_i \sim 0$ means that the $X_i$ may lie on the border between two natural clusters.	
+
+# The k-Means Clustering Algorithm	
+ 	
+The *K-means* algorithm is one of the most commonly used algorithms for clustering.	
+ 	
+## Using distance to assign and update clusters	
+ 	
+This algorithm is similar to *k-nearest neighbors (KNN)* presented in [Chapter 6](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/06_LazyLearning_kNN.html). In clustering, we don't have a priori pre-determined labels, and the algorithm is trying to deduce intrinsic groupings in the data.	
+ 	
+Similar to KNN, k-means uses Euclidean distance ($|. |_2$ norm) most of the times, however Manhattan distance ($|. |_1$ norm), or the more general Minkowski distance ($(\sum_{i=1}^n{|p_i - q_i|^c})^{\frac{1}{c}}$) may also be used. For $c=2$, the Minkowski distance represents the classical Euclidean distance:	
+$$dist(x, y)=\sqrt{\sum_{n=1}^n(x_i-y_i)^2}.$$	
+ 	
+How can we separate clusters using this formula? The **k-means protocol** is as follows:	
+ 	
+* *Initiation*: First, we define *k* points as cluster centers. Often these points are *k* random points from the dataset. For example if *k=3* we choose 3 random points in the dataset as cluster centers.	
+* *Assignment*: Second, we determine the maximum extent of the cluster boundaries that all have maximal distance from their cluster centers. Now the data is separated into *k* initial clusters.  The assignment of each observation to a cluster is based on computing the least within-cluster sum of squares (of dissimilarities) according to the chosen distance. Mathematically, this is equivalent to [Voronoi tessellation](https://en.wikipedia.org/wiki/Centroidal_Voronoi_tessellation) of the space of the observations according to their mean distances.	
+* *Update*: We update the centers of our clusters to the new *means* of the cluster centroid locations. This updating phase is the essence of the *k-means* algorithm.	
+ 	
+Although there is no guarantee that the *k-means* algorithm converges to a global optimum, in practice, the algorithm tends to converge, i.e., the assignments no longer change, to a local minimum as there are only a finite number of such Voronoi partitionings, see the [SOCR 2D Interactive Voronoi Tessellation App](https://socr.umich.edu/HTML5/others/Voronoi_App/).	
+ 	
+## Choosing the appropriate number of clusters	
+ 	
+We don't want our number of clusters to be either too large or too small. If it is too large, the groups are too specific to be meaningful. On the other hand, too few groups might be too broadly general to be useful. As we mentioned in [Chapter 6](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/06_LazyLearning_kNN.html), $k=\sqrt{\frac{n}{2}}$ is a good place to start. However, it might generate a large number of groups. 	
+ 	
+Also, the elbow method may be used to determine the relationship of $k$ and homogeneity of the observations within each cluster.	
+ 	
+When we graph within-group homogeneity against $k$, we can find an "elbow point" that suggests a minimum $k$ corresponding to relatively large within-group homogeneity.	
+
+```{r}
+require(graphics)	
+x <- c(30, 200, 500, 1096.663, 3000, 5000, 7000, 10000)	
+y<-function(x){	
+  y=log(x)	
+}	
+curve(log(x), 30, 10000, xlab="k", ylab="Within-group Homogeneity",
+      axes=F, main="Elbow Method")	
+Axis(side=1, at=c(0, 2000, 4000, 6000, 8000, 10000), labels = c(rep("", 6)))	
+Axis(side=2, at=4:9, labels = c(rep("", 6)))	
+points(x, y(x))	
+text(1000, 8, "elbow point")	
+segments(1096.663, 7.3, 1000, 7.7)
+```
+
+This graph shows that homogeneity barely increases above the "elbow point". There are various ways to measure homogeneity within a cluster. Further detailed about these choices are provided in this paper [On clustering validation techniques, Journal of Intelligent Information Systems Vol. 17, pp. 107-145, by M. Halkidi, Y. Batistakis, and M. Vazirgiannis (2001)](http://dx.doi.org/10.1023/A:1012801612483).	
+ 	
+# Case Study 1: Divorce and Consequences on Young Adults	
+ 	
+## Step 1 - collecting data	
+ 	
+The dataset we will be using is the [Divorce and Consequences on Young Adults dataset](https://umich.instructure.com/files/399121/download?download_frd=1). This is a longitudinal study focused on examining the consequences of recent parental divorce for young adults (initially ages 18-23) whose parents had divorced within 15 months of the study's first wave (1990-91). The sample consisted of 257 White respondents with newly divorced parents. Here we have a subset of this dataset with 47 respondents in [our case-studies folder, CaseStudy01_Divorce_YoungAdults_Data.csv](https://umich.instructure.com/courses/38100/files/folder/Case_Studies).	
+ 	
+### Variables	
+ 	
+* **DIVYEAR**: Year in which parents were divorced.  Dichotomous variable with 1989 and 1990 	
+* **Child affective relations**: 	
+   * Momint: Mother intimacy.  Interval level data with 4 possible responses (1-extremely close, 2-quite close, 3-fairly close, 4- not close at all) 	
+   * Dadint: Father intimacy. Interval level data with 4 possible responses (1-extremely close, 2-quite close, 3-fairly close, 4-not close at all) 	
+   * Live with mom: Polytomous variable with 3 categories (1- mother only, 2- father only, 3- both parents) 	
+* **momclose**: measure of how close the child is to the mother (1-extremely close, 2-quite close, 3-fairly close, 4- not close at all).	
+* **Depression**: Interval level data regarding feelings of depression in the past 4 weeks.  Possible responses are 1-often, 2-sometimes, 3-hardly ever, 4-never 	
+* **Gethitched**: Polytomous variable with 4 possible categories indicating respondent's plan for marriage (1-Marry fairly soon, 2-marry sometime, 3-never marry, 8-don't know)	
+ 	
+## Step 2 - exploring and preparing the data	
+ 	
+Let's load the dataset and pull out a summary of all variables.	
+
+```{r}
+divorce<-read.csv("https://umich.instructure.com/files/399118/download?download_frd=1")	
+summary(divorce)
+```
+
+According to the summary, DIVYEAR is actually a dummy variable (either 89 or 90). We can re-code (binarize) the DIVYEAR using the `ifelse()` function (mentioned in [Chapter 7](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/07_NaiveBayesianClass.html)). The following line of code generates a new indicator variable for *divorce year=1990*.	
+
+```{r}
+divorce$DIVYEAR <- ifelse(divorce$DIVYEAR==89, 0, 1)
+```
+
+We also need another preprocessing step to deal with `livewithmom`, which has missing values, `livewithmom=9`. We can impute these using `momint` and `dadint` variables for each specific participant.	
+
+```{r}
+table(divorce$livewithmom)	
+divorce[divorce$livewithmom==9, ]
+```
+
+For instance, respondents that feel much closer to their dads may be assigned `divorce$livewithmom==2`, suggesting they most likely live with their fathers. Of course, alternative imputation strategies are also possible.	
+
+```{r}
+divorce[45, 6]<-2	
+divorce[45, ]
+```
+
+## Step 3 - training a model on the data	
+ 	
+We are only using R base functionality, so no need to install any additional packages now, `library(stats)` may be necessary. Then, the function `kmeans()` will provide the *k-means* clustering of the data.	
+ 	
+`myclusters <- kmeans(mydata, k)`	
+
+* *mydata*: dataset in a matrix form.	
+* *k*: number of clusters we want to create.	
+ 	
+The *output* consists of:	
+ 	
+* *myclusters$cluster*: vector indicating the cluster number for every observation.	
+* *myclusters$center*: a matrix showing the mean feature values for every center.	
+* *mycluster$size*: a table showing how many observations are assigned to each cluster.	
+ 	
+Before we perform clustering, we need to standardize the features to avoid biasing the clustering based on features that use large-scale values. Note that distance calculations are sensitive to measuring units. `as.data.frame()` will convert our dataset into a data frame allowing us to use the `lapply()` function. Next, we use a combination of `lapply()` and `scale()` to standardize our data.	
+
+```{r}
+di_z <- as.data.frame(lapply(divorce, scale))	
+str(di_z)
+```
+
+The resulting dataset, `di_z`, is standardized so all features are unitless and follow approximately standardized normal distribution.	
+ 	
+Next, we need to think about selecting a proper $k$. We have a relatively small dataset with 47 observations. Obviously we cannot have a $k$ as large as 10. The rule of thumb suggests $k=\sqrt{47/2}=4.8$. This would be relatively large also because we will have less than 10 observations for each cluster. It is very likely that for some clusters we only have one observation. A better choice may be 3. Let's see if this will work.	
+
+```{r}
+library(stats)	
+set.seed(321)	
+diz_clussters <- kmeans(di_z, 3)
+```
+
+## Step 4 - evaluating model performance	
+ 	
+Let's look at the clusters created by the *k-means* model.
+
+```{r}
+diz_clussters$size
+```
+
+At first glance, it seems that 3 worked well for the number of clusters. We don't have any cluster that contains a small number of observations. The three clusters have relatively equal number of respondents.	
+ 	
+*Silhouette* plots represent the most appropriate evaluation strategy to assess the quality of the clustering. Silhouette values are between -1 and 1. In our case, two data points correspond to a negative Silhouette values, suggesting these cases may be "mis-clustered", or perhaps are ambiguous as the Silhouette value is close to 0. We can observe that the average Silhouette is reasonable, about $0.2$.	
+
+```{r}
+require(cluster)	
+dis = dist(di_z)	
+sil = silhouette(diz_clussters$cluster, dis)	
+summary(sil)	
+plot(sil)
+```
+
+The next step would be to interpret the clusters in the context of this social study.
+
+```{r}
+diz_clussters$centers
+```
+
+This result shows:	
+ 	
+* *Cluster 1*: divyear=mostly 90, momint=very close, dadint=not close, livewithmom=mostly mother, depression=not often, (gethiched) marry=will likely not get married. Cluster 1 represents mostly adolescents that are closer to mom than dad. These young adults do not often feel depressed and they may avoid getting married. These young adults tends to be not be too emotional and do not value family.	
+ 	
+* *Cluster 2*: divyear=mostly 89, momint=not close, dadint=very close, livewithmom=father, depression=mild, marry=do not know/not inclined. Cluster 2 includes children that mostly live with dad and only feel close to dad. These people don't felt severely depressed and are not inclined to marry. These young adults may prefer freedom and tend to be more naive.	
+ 	
+* *Cluster 3*: divyear=mix of 89 and 90, momint=not close, dadint=not at all, livewithmom=mother, depression=sometimes, marry=tend to get married. Cluster 3 contains children that did not feel close to either dad or mom. They sometimes felt depressed and are willing to build their own family. These young adults seem to be more independent.	
+ 	
+We can see that these three different clusters do contain three alternative types of young adults.	
+ 	
+Bar plots provide an alternative strategy to visualize the difference between clusters.	
+
+```{r}
+par(mfrow=c(1, 1), mar=c(4, 4, 4, 2))	
+myColors <- c("darkblue", "red", "green", "brown", "pink", "purple", "yellow")	
+barplot(t(diz_clussters$centers), beside = TRUE,
+        xlab="cluster", ylab="value", col = myColors)	
+legend("top", ncol=2, legend = c("DIVYEAR", "momint", "dadint", "momclose",
+                                 "depression", "livewithmom", "gethitched"),
+       fill = myColors)	
+
+```
+
+For each of the three clusters, the bars in the plot above represent the following order of features `DIVYEAR, momint, dadint, momclose, depression, livewithmom, gethitched`.	
+ 	
+## Step 5 - usage of cluster information	
+ 	
+Clustering results could be utilized as new information augmenting the original dataset. For instance, we can add a *cluster* label in our `divorce` dataset:	
+
+```{r}
+divorce$clusters <- diz_clussters$cluster	
+divorce[1:5, ]
+```
+
+We can also examine the relationship between live with mom and feel close to mom by displaying a scatter plot of these two variables. If we suspect that young adults' personality might affect this relationship, then we could consider the potential personality (cluster type) in the plot. The cluster labels associated with each participant are printed in different positions relative to each pair of observations, `(livewithmom, momint)`.	
+
+```{r}
+require(ggplot2)	
+ggplot(divorce, aes(livewithmom, momint),
+       main="Scatterplot Live with mom vs feel close to mom") +	
+  geom_point(aes(colour = factor(clusters),
+                 shape=factor(clusters), stroke = 8), alpha=1) + 
+  theme_bw(base_size=25) +	
+  geom_text(aes(label=ifelse(clusters%in%1, as.character(clusters), ''),
+                hjust=2, vjust=2, colour = factor(clusters)))+	
+  geom_text(aes(label=ifelse(clusters%in%2, as.character(clusters), ''),
+                hjust=-2, vjust=2, colour = factor(clusters)))+	
+  geom_text(aes(label=ifelse(clusters%in%3, as.character(clusters), ''),
+                hjust=2, vjust=-1, colour = factor(clusters))) + 	
+  guides(colour = guide_legend(override.aes = list(size=8))) +
+  theme(legend.position="top")
+```
+
+We used `ggplot()` function in `ggplot2` package to label points with cluster types. `ggplot(divorce, aes(livewithmom, momint))+geom_point()` gives us the scatterplot and the three `geom_text()` functions help us label the points with the corresponding cluster identifiers.	
+ 	
+This picture shows that live with mom does not necessarily mean young adults will feel close to mom. For "emotional" (cluster 1) young adults, they felt close to their mom whether they live with their mom or not. "Naive" (cluster 2) young adults feel closer to mom if they live with mom. However, they tend to be estranged from their mother. "Independent" (cluster 3) young adults are opposite to cluster 1. They felt closer to mom if they don't live with her. 	
+ 	
+# Model improvement	
+Let's still use the divorce data to illustrate a model improvement using **k-means++**.	
+ 	
+(Appropriate) initialization of the **k-means** algorithm is of paramount importance. The **k-means++** extension provides a practical strategy to obtain an optimal initialization for k-means clustering using a predefined `kpp_init` method.	
+
+```{r}
+# install.packages("matrixStats")	
+library(matrixStats)	
+kpp_init = function(dat, K) {	
+  x = as.matrix(dat)	
+  n = nrow(x)	
+  # Randomly choose a first center	
+  centers = matrix(NA, nrow=K, ncol=ncol(x))	
+  set.seed(123)	
+  centers[1,] = as.matrix(x[sample(1:n, 1),])	
+  for (k in 2:K) {	
+    # Calculate dist^2 to closest center for each point	
+    dists = matrix(NA, nrow=n, ncol=k-1)	
+    for (j in 1:(k-1)) {	
+      temp = sweep(x, 2, centers[j,], '-')	
+      dists[,j] = rowSums(temp^2)	
+    }	
+    dists = rowMins(dists)	
+    # Draw next center with probability proportional to dist^2	
+    cumdists = cumsum(dists)	
+    prop = runif(1, min=0, max=cumdists[n])	
+    centers[k,] = as.matrix(x[min(which(cumdists > prop)),])	
+  }	
+  return(centers)	
+}	
+	
+clust_kpp = kmeans(di_z, kpp_init(di_z, 3), iter.max=100, algorithm='Lloyd')
+```
+
+We can observe some differences.
+
+```{r}
+clust_kpp$centers
+```
+
+This improvement is not substantial - the new overall average Silhouette value remains $0.2$ for **k-means++**, compared with the value of $0.2$ reported for the earlier k-means clustering, albeit the 3 groups generated by each method are quite distinct. In addition, the number of "mis-clustered" instances remains 2 although their Silhouette values are rather smaller than before and the overall cluster 1 Silhouette average value is low ($0.006$).	
+
+```{r}
+sil2 = silhouette(clust_kpp$cluster, dis)	
+summary(sil2)	
+plot(sil2, col=1:length(diz_clussters$size), border=NA)
+```
+
+## Tuning the parameter $k$	
+ 	
+Similar to what we performed for KNN and SVM, we can tune the **k-means** parameters, including centers initialization and $k$.	
+
+```{r}
+n_rows <- 21	
+mat = matrix(0,nrow = n_rows)	
+for (i in 2:n_rows){	
+  set.seed(321)	
+  clust_kpp = kmeans(di_z, kpp_init(di_z, i), iter.max=100, algorithm='Lloyd')	
+  sil = silhouette(clust_kpp$cluster, dis)	
+  mat[i] = mean(as.matrix(sil)[,3])	
+}	
+colnames(mat) <- c("Avg_Silhouette_Value")	
+mat	
+ggplot(data.frame(k=2:n_rows,sil=mat[2:n_rows]),aes(x=k,y=sil))+	
+  geom_line()+	
+  scale_x_continuous(breaks = 2:n_rows)
+```
+
+This suggests that $k\sim 3$ may be an appropriate number of clusters to use in this case.	
+ 	
+Next, let's set the maximal iteration of the algorithm and rerun the model with optimal `k=2`, `k=3` or `k=10`. Below, we just demonstrate the results for $k=3$. There are still 2 mis-clustered observations, which is not a significant improvement on the prior model according to the average Silhouette measure. 	
+
+```{r}
+k <- 3	
+set.seed(31)	
+clust_kpp = kmeans(di_z, kpp_init(di_z, k), iter.max=200, algorithm="MacQueen")	
+sil3 = silhouette(clust_kpp$cluster, dis)	
+summary(sil3)	
+plot(sil3)
+```
+
+Note that we now see 3 cases of group 1 that have negative silhouette values (previously we had only 2), albeit the overall average silhouette remains $0.2$.	
+ 	
+# Case study 2: Pediatric Trauma	
+ 	
+Let's go through another example demonstrating the *k-means* clustering method using a larger dataset.	
+ 	
+## Step 1 - collecting data	
+ 	
+The dataset we will interrogate now includes [Services Utilization by Trauma-Exposed Children in the US data](https://umich.instructure.com/files/399127/download?download_frd=1), which is located in [our case-studies folder](https://umich.instructure.com/courses/38100/files/folder/Case_Studies). This case study examines associations between post-traumatic psychopathology and service utilization by trauma-exposed children. 	
+ 	
+**Variables**:	
+ 	
+* **id**: Case identification number.	
+* **sex**: Female or male, dichotomous variable (1= female, 0= male).	
+* **age**: Age of child at time of seeking treatment services. Interval-level variable, score range= 0-18.	
+* **race**: Race of child seeking treatment services. Polytomous variable with 4 categories (1= black, 2= white, 3= hispanic, 4= other).	
+* **cmt**: The child was exposed to child maltreatment trauma - dichotomous variable (1= yes, 0= no).	
+* **traumatype**: Type of trauma exposure the child is seeking treatment sore. Polytomous variable with 5 categories ("sexabuse"= sexual abuse, "physabuse"= physical abuse, "neglect"= neglect, "psychabuse"= psychological or emotional abuse, "dvexp"= exposure to domestic violence or intimate partner violence).	
+* **ptsd**: The child has current post-traumatic stress disorder. Dichotomous variable (1= yes, 0= no).	
+* **dissoc**: The child has currently has a dissociative disorder (PTSD dissociative subtype, DESNOS, DDNOS). Interval-level variable, score range= 0-11.	
+* **service**: Number of services the child has utilized in the past 6 months, including primary care, emergency room, outpatient therapy, outpatient psychiatrist, inpatient admission, case management, in-home counseling, group home, foster care, treatment foster care, therapeutic recreation or mentor, department of social services, residential treatment center, school counselor, special classes or school, detention center or jail, probation officer. Interval-level variable, score range= 0-19.	
+* **Note**: These data (`Case_04_ChildTrauma._Data.csv`) are tab-delimited.	
+ 	
+## Step 2 - exploring and preparing the data	
+ 	
+First, we need to load the dataset into R and report its summary and dimensions.	
+
+
+
