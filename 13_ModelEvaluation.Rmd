@@ -1,0 +1,708 @@
+---
+title: "13 Model Evaluation"
+author: "nobuo"
+date: "2021/4/27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In [previous chapters](http://dspa.predictive.space/), we used prediction accuracy to evaluate classification models. However, accurate predictions in one dataset does not necessarily imply that our model is perfect or that it will reproduce when tested on external data. We need additional metrics to evaluate the model performance to make sure it is robust, reproducible, reliable and unbiased.	
+ 	
+In this chapter, we will discuss (1) various evaluation strategies for prediction, clustering, classification, regression, and decision trees, (2) visualization of ROC curves and performance tradeoffs, and (3) estimation of future performance, internal statistical cross-validation and bootstrap sampling.	
+ 	
+# Measuring the performance of classification methods	
+ 	
+*Prediction accuracy* represents just one view at evaluation of classification model performance or the reliability of clustering methods. Different classification models and alternative clustering techniques may be appropriate for different situations. For example, when screening newborns for rare genetic defects, we may want the model to have as few true-negatives as possible. We don't want to classify anyone as "non-carriers" when they actually may have a defective gene, since early treatment might impact near- and long-term life experiences. 	
+ 	
+We can use the following three types of data to evaluate the performance of a classifier model.  	
+
+* Actual class values (for supervised classification).	
+* Predicted class values.	
+* Estimated probabilities of the prediction.	
+
+We are familiar with the first two cases. The last type of validation relies on the `predict(model, test_data)` function that we have talked about in previous classification and prediction chapters ([Chapter 6-8](http://dspa.predictive.space)). Let's revisit the model and test data we discussed in [Chapter 7](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/07_NaiveBayesianClass.html) - [Inpatient Head and Neck Cancer Medication data](https://umich.instructure.com/files/1614351/download?download_frd=1). We will demonstrate prediction probability estimation using this case-study  [CaseStudy14_HeadNeck_Cancer_Medication.csv](https://umich.instructure.com/files/1614350/download?download_frd=1). 	
+
+```{r}
+hn_med <- read.csv("https://umich.instructure.com/files/1614350/download?download_frd=1", stringsAsFactors = FALSE)	
+hn_med$seer_stage <- factor(hn_med$seer_stage)	
+require(tm)	
+hn_med_corpus<-Corpus(VectorSource(hn_med$MEDICATION_SUMMARY))	
+ corpus_clean<-tm_map(hn_med_corpus, tolower)	
+ corpus_clean<-tm_map(corpus_clean, removePunctuation)	
+ corpus_clean <- tm_map(corpus_clean, stripWhitespace)	
+ corpus_clean <-tm_map(corpus_clean, removeNumbers)	
+ hn_med_dtm<-DocumentTermMatrix(corpus_clean)	
+ hn_med_train<-hn_med[1:562, ]	
+ hn_med_test<-hn_med[563:662, ]	
+ hn_med_dtm_train<-hn_med_dtm[1:562, ]	
+ hn_med_dtm_test<-hn_med_dtm[563:662, ]	
+ corpus_train<-corpus_clean[1:562]	
+ corpus_test<-corpus_clean[563:662]	
+ hn_med_train$stage<-hn_med_train$seer_stage %in% c(4, 5, 7)	
+ hn_med_train$stage<-factor(hn_med_train$stage, levels=c(F, T), labels = c("early_stage", "later_stage"))	
+ hn_med_test$stage<-hn_med_test$seer_stage %in% c(4, 5, 7)	
+ hn_med_test$stage<-factor(hn_med_test$stage, levels=c(F, T), labels = c("early_stage", "later_stage"))	
+ 	
+convert_counts <- function(x) {	
+x <- ifelse(x > 0, 1, 0)	
+x <- factor(x, levels = c(0, 1), labels = c("No", "Yes"))	
+return(x)	
+}	
+	
+ hn_med_dict<-as.character(findFreqTerms(hn_med_dtm_train, 5))	
+ hn_train<-DocumentTermMatrix(corpus_train, list(dictionary=hn_med_dict))	
+ hn_test<-DocumentTermMatrix(corpus_test, list(dictionary=hn_med_dict))	
+ hn_train <- apply(hn_train, MARGIN = 2, convert_counts)	
+ hn_test <- apply(hn_test, MARGIN = 2, convert_counts)	
+ library(e1071)	
+hn_classifier <- naiveBayes(hn_train, hn_med_train$stage)
+```
+
+```{r}
+pred_raw <- predict(hn_classifier, hn_test, type="raw")	
+head(pred_raw)
+```
+
+The above output includes the prediction probabilities for the first 6 rows of the data. This examples is based on [Naive Bayes classifier (naiveBayes)](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/07_NaiveBayesianClass.html#5_case_study:_head_and_neck_cancer_medication), however the same approach works for any other machine learning classification or prediction technique.  The `type="raw"` indicates that the prediction call will return the *conditional a-posterior probabilities* for each class. If `type="class"` predict returns the class with *maximal probability*.	
+ 	
+In addition, we can report the predicted probability with the outputs of the Naive Bayesian decision-support system (`hn_classifier <- naiveBayes(hn_train, hn_med_train$stage)`):	
+
+```{r}
+pred_nb <- predict(hn_classifier, hn_test)	
+head(stats::ftable(pred_nb))
+```
+
+The general `predict()` method automatically subclasses to the specific `predict.naiveBayes(object, newdata, type = c("class", "raw"), threshold = 0.001, ...)` call where `type="raw"` and `type = "class"` specify the output as the conditional a-posterior probabilities for each class or the class with maximal probability, respectively. Back in [Chapter 8](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/08_DecisionTreeClass.html) where we discussed the `C5.0` and the `randomForest` classifiers to predict the chronic disease score in a another case-study [Quality of Life (QoL)](https://umich.instructure.com/files/481332/download?download_frd=1).	
+
+```{r}
+qol <- read.csv("https://umich.instructure.com/files/481332/download?download_frd=1")	
+qol <- qol[!qol$CHRONICDISEASESCORE==-9, ]	
+qol$cd <- qol$CHRONICDISEASESCORE > 1.497	
+qol$cd <- factor(qol$cd, levels=c(F, T), labels = c("minor_disease", "severe_disease"))	
+qol <- qol[order(qol$ID), ]	
+	
+# Remove ID (col=1) # the clinical Diagnosis (col=41) will be handled later	
+qol <- qol[ , -1]	
+	
+# 80-20%  training-testing data split	
+set.seed(1234)	
+train_index <- sample(seq_len(nrow(qol)), size = 0.8*nrow(qol))	
+qol_train<-qol[train_index, ]	
+qol_test<-qol[-train_index, ]	
+	
+library(C50)	
+set.seed(1234)	
+qol_model <- C5.0(qol_train[,-c(40, 41)], qol_train$cd)
+```
+
+Below are the (probability) results of the `C5.0` classification tree model prediction:	
+
+```{r}
+pred_prob <- predict(qol_model, qol_test, type="prob")	
+head(pred_prob)
+```
+
+These can be contrasted against the `C5.0` tree classification label results:
+
+```{r}
+pred_tree <- predict(qol_model, qol_test)	
+head(pred_tree); head(stats::ftable(pred_tree))
+```
+
+The same complementary types of outputs can be reported for most machine learning classification and prediction approaches.	
+ 	
+# Evaluation strategies	
+ 	
+In [Chapter 6](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/06_LazyLearning_kNN.html), we saw an attempt to categorize the supervised classification and unsupervised clustering methods. Similarly, the *table* below summarizes the basic types of evaluation and validation strategies for different forecasting, prediction, ensembling, and clustering techniques. [(Internal) Statistical Cross Validation](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/20_PredictionCrossValidation.html) or external validation should always be applied to ensure reliability and reproducibility of the results. The SciKit [clustering performance evaluation](http://scikit-learn.org/stable/modules/clustering.html#clustering-performance-evaluation) and [Classification metrics](http://scikit-learn.org/stable/modules/classes.html#module-sklearn.metrics) sections provide details about many alternative techniques and metrics for performance evaluation of clustering and classification methods.	
+ 	
+Inference | Outcome     | Evaluation Metrics  | R functions	
+----------|-------------|---------------------|------------------------	
+Classification & Prediction | Binary | Accuracy, Sensitivity, Specificity, PPV/Precision, NPV/Recall, LOR |  `caret::confusionMatrix`, `gmodels::CrossTable`, `cluster::silhouette`	
+Classification & Prediction | Categorical | Accuracy, Sensitivity/Specificity, PPV, NPV, LOR, Silhouette Coefficient  |  `caret::confusionMatrix`, `gmodels::CrossTable`, `cluster::silhouette`	
+Regression Modeling | Real Quantitative | correlation coefficient, $R^2$, RMSE, Mutual Information, Homogeneity and Completeness Scores |  `cor`, `metrics::mse`	
+ 	
+## Binary outcomes	
+More details about binary test assessment is available on the [Scientific Methods for Health Sciences (SMHS) EBook site](https://wiki.socr.umich.edu/index.php/SMHS_IntroEpi#Screening). The table below summarizes the key measures commonly used to evaluate the performance of binary tests, classifiers, or predictions.	
+ 	
+<table>	
+<tr>	
+<td colspan="2" rowspan="2"> </td>	
+<td colspan="2" align="middle"> <b>Actual Condition</b></td>	
+<td rowspan="2"><b>Test Interpretation</b> </td>	
+</tr>	
+<tr>	
+<td align="middle"><b>Absent ($H_0$ is true)</b></td>	
+<td align="middle"><b>Present ($H_1$ is true)</b></td>	
+</tr>	
+<tr>	
+<td rowspan="2"> <b>Test Result</b></td>	
+<td>  <b>Negative<br/>(fail to reject $H_0$)</b> </td>	
+<td align="middle"> <b>TN</b><br/> Condition absent + Negative result = True (accurate) Negative </td>	
+<td align="middle"> <b>FN</b><br/> <i>Condition present + Negative result = False (invalid) Negative <b>Type II error</b> (proportional to $\beta$)</i></td>	
+<td align="middle"> $NPV$<br/>	
+     $=\frac{TN}{TN+FN}$<td>	
+</tr>	
+<tr>	
+<td> <b>Positive <br/>(reject $H_0$)</b> </td>	
+<td align="middle"> <b>FP</b><br/> Condition absent + Positive result = False Positive <b>Type I error</b> ($\alpha$) </td>	
+<td align="middle"> <b>TP</b><br/> Condition Present + Positive result = True Positive </td>	
+<td align="middle"> $PPV=Precision$<br/>	
+   $=\frac{TP}{TP+FP}$<td>	
+</tr>	
+<tr>	
+<td><b>Test Interpretation</b> </td>	
+<td align="middle"> $Power =1-\beta$ <br/>	
+     $= 1-\frac{FN}{FN+TP}$ </td>	
+<td align="middle">$Specificity=\frac{TN}{TN+FP}$ </td>	
+<td align="middle">$Power=Recall=Sensitivity$	
+<br/>$=\frac{TP}{TP+FN}$</td>	
+<td>$LOR=\ln\left (\frac{TN\times TP}{FP\times FN}\right )$	
+</td>	
+</tr>	
+</table>	
+ 	
+See also [SMHS EBook, Power, Sensitivity and Specificity section](https://wiki.socr.umich.edu/index.php/SMHS_PowerSensitivitySpecificity).	
+ 	
+## Confusion matrices	
+ 	
+We talked about this type of matrix in [Chapter 8](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/08_DecisionTreeClass.html). For binary classes, there will be a $2\times 2$ matrix. Each of the cells have a specific meaning.	
+ 	
+Graph $2\times 2$ table:	
+
+```{r}
+require(knitr)	
+item_table = data.frame(predict_T = c("TP","FP"),predict_F = c("TN","FN"))	
+rownames(item_table) = c("TRUE","FALSE")	
+kable(item_table,caption = "cross table")
+```
+
+**True Positive**(TP): Number of observations that correctly classified as "yes" or "success".	
+ 	
+* **True Negative**(TN): Number of observations that correctly classified as "no" or "failure".	
+ 	
+* **False Positive**(FP): Number of observations that incorrectly classified as "yes" or "success".	
+ 	
+* **False Negative**(FN): Number of observations that incorrectly classified as "no" or "failure".	
+ 	
+**Using confusion matrices to measure performance**	
+ 	
+The way we calculate accuracy using these four cells is summarized by the following formula:	
+$$accuracy=\frac{TP+TN}{TP+TN+FP+FN}=\frac{TP+TN}{\text{Total number of observations}}$$	
+On the other hand, the error rate, or proportion of incorrectly classified observations is calculated using:	
+$$error rate=\frac{FP+FN}{TP+TN+FP+FN}==\frac{FP+FN}{\text{Total number of observations}}=1-accuracy$$	
+If we look at the numerator and denominator carefully, we can see that the error rate and accuracy add up to 1. Therefore, a 95% accuracy means 5% error rate.	
+ 	
+In R, we have multiple ways to obtain confusion table. The simplest way would be `table()`. For example, in [Chapter 7](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/07_NaiveBayesianClass.html), to get a plain $2\times 2$ table reporting the agreement between the real clinical cancer labels and their machine learning predicted counterparts, we used:	
+
+```{r}
+hn_test_pred <- predict(hn_classifier, hn_test)	
+table(hn_test_pred, hn_med_test$stage)
+```
+
+The reason we sometimes use the `gmodels::CrossTable()` function, e.g., see [Chapter 7](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/07_NaiveBayesianClass.html), is because it reports additional information about the model performance.	
+
+```{r}
+library(gmodels)	
+CrossTable(hn_test_pred, hn_med_test$stage)
+```
+
+The second entry in each cell of the *crossTable* table reports the Chi-square contribution. This uses the standard [Chi-Square formula](https://wiki.socr.umich.edu/index.php/AP_Statistics_Curriculum_2007_Contingency_Indep) for computing relative discrepancy between *observed* and *expected* counts. For instance, the Chi-square contribution of *cell(1,1)*, (`hn_med_test$stage=early_stage` and `hn_test_pred=early_stage`), can be computed as follows from the $\frac{(Observed-Expected)^2}{Expected}$ formula. Assuming independence between the rows and columns (i.e., random classification), the *expected cell(1,1) value* is computed as the product of the corresponding row (96) and column (77) marginal counts, $\frac{96\times 77}{100}$. Thus the Chi-square value for cell(1,1) is:	
+ 	
+$$\text{Chi-square cell(1,1)} = \frac{(Observed-Expected)^2}{Expected}=$$	
+$$=\frac{\left (73-\frac{96\times 77}{100}\right ) ^2}{\frac{96\times 77}{100}}=0.01145022.$$	
+
+Note that each cell Chi-square value represents one of the four (in this case) components of the Chi-square test-statistics, which tries to answer the question if there is no association between observed and predicted class labels. That is, under the null-hypothesis there is no association between actual and observed counts for each level of the factor variable, which allows us to quantify whether the derived classification jibes with the real class annotations (labels). The aggregate sum of all Chi-square values represents the $\chi_o^2 = \displaystyle\sum_{all-categories}{(O-E)^2 \over E} \sim \chi_{(df)}^2$ statistics, where $df = (\# rows - 1)\times (\# columns - 1)$.	
+ 	
+Using either table (CrossTable, confusionMatrix), we can calculate accuracy and error rate by hand.	
+
+```{r}
+accuracy <- (73+0)/100	
+accuracy	
+error_rate <- (23+4)/100	
+error_rate	
+1 - accuracy
+```
+
+For matrices that are larger than $2\times 2$, all diagonal elements count the observations that are correctly classified and the off-diagonal elements represent incorrectly labeled cases.	
+ 	
+## Other measures of performance beyond accuracy	
+ 	
+So far we discussed two performance methods - `table()` and `CrossTable()`. A third function is `caret::confusionMatrix()` which provides the easiest way to report model performance. Notice that the first argument is an *actual vector of the labels*, i.e., $Test\_Y$ and the second argument, of the same length, represents the *vector of predicted labels*. 	
+ 	
+This example was presented as the first case-study in [Chapter 8](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/08_DecisionTreeClass.html).	
+
+```{r}
+library(caret)	
+qol_pred <- predict(qol_model, qol_test)	
+confusionMatrix(table(qol_pred, qol_test$cd), positive="severe_disease")
+```
+
+### Silhouette coefficient	
+ 	
+In [Chapter 12](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/12_kMeans_Clustering.html#2_silhouette_plots) we already saw the *Silhouette coefficient*, which captures the shape of the clustering boundaries. It is a function of the *intracluster distance* of a sample in the dataset ($i$). Suppose:	
+ 	
+* $d_i$ is the average dissimilarity of point $i$ with all other data points within its cluster. Then, $d_i$ captures the quality of the assignment of $i$ to its current class label. Smaller or larger $d_i$ values suggest better or worse overall assignment for $i$ to its cluster, respectively. The average dissimilarity of $i$ to a cluster $C$ is the average distance between $i$ and all points in the cluster of points labeled $C$.	
+* $l_i$ is the lowest average dissimilarity of point $i$ to any other cluster, that $i$ is not a member of. The cluster corresponding to $l_i$, the lowest average dissimilarity, is called the $i$ neighboring cluster, as it is the next best fit cluster for $i$. 	
+ 	
+Then, the *Silhouette coefficient* for a sample point $i$ is:	
+ 	
+$$-1\leq Silhouette(i)=\frac{l_i-d_i}{\max(l_i,d_i)} \leq 1.$$	
+For interpreting the Silhouette of point $i$, we use:	
+ 	
+$$Silhouette(i) \approx 	
+\begin{cases} 	
+     -1 & \text{sample } i \text{ is closer to a neighboring cluster} \\	
+     0 & \text {the sample } i \text{ is near the border of its cluster, i.e., } i \text{ represents the closest point in its cluster to the rest of the dataset clusters} \\	
+     1 & \text {the sample } i \text{ is near the center of its cluster} 	
+  \end{cases}.$$	
+ 	
+The *mean Silhouette value* represents the arithmetic average of all Silhouette coefficients (either within a cluster, or overall) and represents the quality of the cluster (clustering). High mean Silhouette corresponds to compact clustering (dense and separated clusters), whereas low values represent more diffused clusters. The Silhouette value is useful when the number of predicted clusters is smaller than the number of samples.	
+ 	
+### The kappa ( $\kappa$ ) statistic	
+ 	
+The Kappa statistic was [originally developed to measure the reliability between two human raters](https://wiki.socr.umich.edu/index.php/SMHS_ReliabilityValidity). It can be harnessed in machine learning applications to compare the accuracy of a classifier, where `one rater` represents the ground truth (for labeled data, these are the actual values of each instance) and the `second rater` represents the results of the automated machine learning classifier. The order of listing the **raters** is irrelevant.	
+
+Kappa statistic measures the **possibility of a correct prediction by chance alone** and answers the question of *How much better is the agreement (between the ground truth and the machine learning prediction) than would be expected by chance alone?* Its value is between $0$ and $1$. When $\kappa=1$, we have a perfect agreement between a **computed** prediction (typically the result of a model-based or model-free technique forecasting an outcome of interest) and an **expected** prediction (typically random, by-chance, prediction). A common interpretation of the Kappa statistics includes:	
+ 	
+* Poor agreement: less than 0.20	
+* Fair agreement: 0.20-0.40	
+* Moderate agreement: 0.40-0.60	
+* Good agreement: 0.60-0.80	
+* Very good agreement: 0.80-1	
+ 	
+In the above `confusionMatrix` output, we have a fair agreement. For different problems, we may have different interpretations of Kappa statistics.	
+ 	
+To understand Kappa statistic better, let's look at its definition.	
+ 	
+| Predicted \\ Observed | Minor  | Severe  | Row Sum  |	
+|---|---|---|---|	
+| Minor  | $A=143$  | $B=71$  | $A+B=214$ |	
+| Severe | $C=72$ | $D=157$ | $C+D=229$ |	
+| Column Sum  | $A+C=215$  | $B+D=228$ | $A+B+C+D=443$ | 		
+ 	
+ 	
+In this table, $A=143, B=71, C=72, D=157$ denote the frequencies (counts) of cases within each of the cells in the $2\times 2$ design. Then 	
+ 	
+$$ObservedAgreement = (A+D)=300.$$	
+ 	
+$$ExpectedAgreement = \frac{(A+B)\times (A+C)+(C+D)\times (B+D)}{A+B+C+D}=221.72.$$	
+ 	
+$$(Kappa)\ \kappa = \frac{(ObservedAgreement) – (ExpectedAgreement)}	
+ {(A+B+C+D) – (ExpectedAgreement)}=0.35.$$	
+ 	
+In this manual calculation of `kappa` statistics ($\kappa$) we used the corresponding values we saw earlier in the Quality of Life (QoL) case-study, where chronic-disease binary outcome `qol$cd<-qol$CHRONICDISEASESCORE>1.497`, and we used the `cd` prediction (qol_pred).	
+
+```{r}
+table(qol_pred, qol_test$cd)
+```
+
+According to above table, actual agreement is the accuracy:
+
+```{r}
+A=143; B=71; C=72; D=157	
+# A+B+ C+D # 443	
+# ((A+B)*(A+C)+(C+D)*(B+D))/(A+B+C+D)   # 221.7201	
+EA=((A+B)*(A+C)+(C+D)*(B+D))/(A+B+C+D) # Expected accuracy	
+OA=A+D; OA    # Observed accuracy	
+k=(OA-EA)/(A+B+C+D - EA); k # 0.3537597	
+	
+# Compare against the official kappa score	
+confusionMatrix(table(qol_pred, qol_test$cd), positive="severe_disease")$overall[1] # report official Accuracy	
+```
+
+The manually and automatically computed accuracies coincide ($\sim 0.35$). 	
+ 	
+Let's now look at computing `Kappa`. It may be trickier to obtain the expected agreement. [Probability rules](https://wiki.socr.umich.edu/index.php/EBook#Chapter_III:_Probability) tell us that the probability of the union of two *disjoint events* equals to the sum of the individual (marginal) probabilities for these two events. Thus, we have:	
+
+```{r}
+round(confusionMatrix(table(qol_pred, qol_test$cd),
+                      positive="severe_disease")$overall[2], 2) # report official Kappa	
+```
+
+We get a similar value in the `confusionTable()` output. A more straight forward way of getting the Kappa statistics is by using `Kappa()` function in the `vcd` package.	
+
+```{r}
+# install.packages(vcd)	
+library(vcd)	
+Kappa(table(qol_pred, qol_test$cd))
+```
+
+The combination of `Kappa()` and `table` function yields a $2\times 4$ matrix. The *Kappa statistic* is under the unweighted value. 	
+ 	
+Generally speaking, predicting a severe disease outcome is a more critical problem than predicting a mild disease state. Thus, weighted Kappa is also useful. We give the severe disease a higher weight. The Kappa test result is not acceptable since the classifier may make too many mistakes for the severe disease cases. The Kappa value is $0.26374$. Notice that the range of weighted Kappa may exceed [0,1].	
+
+```{r}
+Kappa(table(qol_pred, qol_test$cd),weights = matrix(c(1,10,1,10),nrow=2))
+```
+
+When the predicted value is the first argument, the row and column names represent the **true labels** and the **predicted labels**, respectively.	
+
+```{r}
+table(qol_pred, qol_test$cd)
+```
+
+#### Summary of the Kappa score for calculating prediction accuracy	
+ 	
+Kappa compares an **Observed classification accuracy** (output of our ML classifier) with an **Expected classification accuracy** (corresponding to random chance classification). It may be used to evaluate single classifiers and/or to compare among a set of different classifiers. It takes into account random chance (agreement with a random classifier). That makes **Kappa** more meaningful than simply using the **accuracy** as a single quality metric. For instance, the interpretation of an `Observed Accuracy of 80%` is **relative** to the `Expected Accuracy`. `Observed Accuracy of 80%` is more impactful for an `Expected Accuracy of 50%` compared to `Expected Accuracy of 75%`. 	
+ 	
+### Sensitivity and specificity	
+ 	
+Take a closer look at the `confusionMatrix()` output where we can find two important statistics - "sensitivity" and "specificity".	
+ 	
+Sensitivity or true positive rate measures the proportion of "success" observations that are correctly classified. 	
+$$sensitivity=\frac{TP}{TP+FN}.$$	
+Notice $TP+FN$ are the total number of true "success" observations.	
+ 	
+On the other hand, specificity or true negative rate measures the proportion of "failure" observations that are correctly classified. 	
+$$sensitivity=\frac{TN}{TN+FP}.$$	
+Accordingly, $TN+FP$ are the total number of true "failure" observations.	
+ 	
+In the QoL data, considering "severe_disease" as "success" and using the `table()` output we can manually compute the *sensitivity* and *specificity*, as well as *precision* and *recall* (below):	
+
+```{r}
+sens <- 131/(131+89)	
+sens	
+spec <- 149/(149+74)	
+spec
+```
+
+Another R package `caret` also provides functions to directly calculate the sensitivity and specificity.  	
+
+```{r}
+library(caret)	
+sensitivity(qol_pred, qol_test$cd, positive="severe_disease")	
+# specificity(qol_pred, qol_test$cd)	
+confusionMatrix(table(qol_pred, qol_test$cd), positive="severe_disease")$byClass[1] # another way to report the sensitivity	
+# confusionMatrix(table(qol_pred, qol_test$cd), positive="severe_disease")$byClass[2] # another way to report the specificity	
+```
+
+Sensitivity and specificity both range from 0 to 1. For either measure, a values of 1 imply that the positive and negative predictions are very accurate. However, simultaneously high sensitivity and specificity may not be attainable in real world situations. There is a tradeoff between sensitivity and specificity. To compromise, some studies loosen the demands on one and focus on achieving high values on the other.	
+ 	
+### Precision and recall	
+ 	
+Very similar to sensitivity, *precision* measures the proportion of true "success" observations among predicted "success" observations.	
+$$precision=\frac{TP}{TP+FP}.$$	
+*Recall* is the proportion of true "failures" among all "failures". A model with high recall captures most "interesting" cases.	
+$$recall=\frac{TP}{TP+FN}.$$	
+Again, let's calculate these by hand for the QoL data:	
+
+```{r}
+prec<-157/(157+72); prec	
+recall<-157/(157+71); recall
+```
+
+Report the Area under the ROC Curve (AUC).
+
+```{r}
+library (ROCR)	
+qol_pred<-predict(qol_model, qol_test)	
+qol_pred <- predict(qol_model, qol_test, type = 'prob')	
+	
+pred <- prediction( qol_pred[,2], qol_test$cd)	
+PrecRec <- performance(pred, "prec", "rec")	
+plot(PrecRec)	
+PrecRec <- performance(pred, "auc")	
+paste0("AUC=", round(as.numeric(PrecRec@y.values), 2))
+```
+
+Another way to obtain *precision* would be `posPredValue()` under `caret` package. Remember to specify which one is the "success" class.	
+
+```{r}
+qol_pred <- predict(qol_model, qol_test)	
+posPredValue(qol_pred, qol_test$cd, positive="severe_disease")
+```
+
+From the definitions of **precision** and **recall**, we can derive the type 1 error and type 2 errors as follow:	
+ 	
+$$error_1 = 1- Precision = \frac{FP}{TP+FP}.$$	
+ 	
+$$error_2 = 1- Recall = \frac{FN}{TN+FN}.$$	
+ 	
+Thus, we can compute the type 1 error ($0.31$) and type 2 error ($0.31$).	
+
+```{r}
+error1 <- 1 - prec; error1	
+error2 <- 1 - recall; error2
+```
+
+### The F-measure	
+ 	
+The F-measure, or F1-score, combines precision and recall using the [harmonic mean](https://wiki.socr.umich.edu/index.php/SMHS_CenterSpreadShape#Harmonic_Mean) assuming equal weights. High F1-score means high precision and high recall. This is a convenient way of measuring model performances and comparing models.	
+$$F1=\frac{2\times precision\times recall}{recall+precision}=\frac{2\times TP}{2\times TP+FP+FN}$$	
+If calculating the F1-score by hand, using the Quality of Life prediction:	
+
+```{r}
+f1 <- (2 * prec * recall)/(prec + recall)	
+f1
+```
+
+The direct calculations of the F1-statistics can be obtained using `caret`:
+
+```{r}
+precision <- posPredValue(qol_pred, qol_test$cd, positive="severe_disease")	
+recall <- sensitivity(qol_pred, qol_test$cd, positive="severe_disease")	
+F1 <- (2 * precision * recall) / (precision + recall); F1
+```
+
+# Visualizing performance tradeoffs (ROC Curve)	
+ 	
+Another choice for evaluating classifiers' performance is by graphs rather than statistics. Graphs are usually more comprehensive than single statistics.	
+ 	
+The R package `ROCR` provides user-friendly functions for visualizing model performance. Details could be find on the [ROCR website](http://rocr.bioinf.mpi-sb.mpg.de).	
+ 	
+Here we evaluate the model performance for the Quality of Life case study in [Chapter 8](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/08_DecisionTreeClass.html). 	
+
+```{r}
+# install.packages("ROCR")	
+library(ROCR)	
+pred <- ROCR::prediction(predictions=pred_prob[, 2], labels=qol_test$cd) 	
+# avoid naming collision (ROCR::prediction), as	
+# there is another prediction function in the neuralnet package.
+```
+
+`pred_prob[, 2]` is the probability of classifying each observation as "severe_disease". The above code saved all the model prediction information into the object `pred`.	
+ 	
+[Receiver Operating Characteristic (ROC)](https://wiki.socr.umich.edu/index.php/SMHS_ROC) curves are often used for examine the trade-off between detecting true positives and avoiding the false positives.	
+
+```{r}
+#' 	
+curve(log(x), from=0, to=100,
+      xlab="False Positive Rate", ylab="True Positive Rate",
+      main="ROC curve", col="green", lwd=3, axes=F)	
+Axis(side=1, at=c(0, 20, 40, 60, 80, 100),
+     labels = c("0%", "20%", "40%", "60%", "80%", "100%"))	
+Axis(side=2, at=0:5, labels = c("0%", "20%", "40%", "60%", "80%", "100%"))	
+segments(0, 0, 110, 5, lty=2, lwd=3)	
+segments(0, 0, 0, 4.7, lty=2, lwd=3, col="blue")	
+segments(0, 4.7, 107, 4.7, lty=2, lwd=3, col="blue")	
+text(20, 4, col="blue", labels = "Perfect Classifier")	
+text(40, 3, col="green", labels = "Test Classifier")	
+text(70, 2, col="black", labels= "Classifier with no predictive value")
+```
+
+The <span style="color:blue">blue line</span> in the above graph represents the perfect classifier where we have 0% false positive and 100% true positive. The middle <span style="color:green">green line</span> represents a test classifier. Most of our classifiers trained by real data will look like this. The <span style="color:black">black diagonal line</span> illustrates a classifier with no predictive value. We can see that it has same true positive rate and false positive rate. Thus, it cannot distinguish between the two states.	
+ 	
+Classifiers with high true positive values have ROC curves near the (blue) *perfect classifier* curve. Thus, we measure the area under the ROC curve (abbreviated as AUC) as a proxy of the classifier performance. To do this, we have to change the scale of the graph above. Mapping 100% to 1, we have a $1\times 1$ square. The area under perfect classifier would be 1 and area under classifier with no predictive value being 0.5. Then, 1 and 0.5 will be the upper and lower limits for our model ROC curve. For model ROC curves, the typical interpretation of the area under curve (AUC) includes:	
+ 	
+* Outstanding:       0.9-1.0	
+* Excellent/good:    0.8-0.9	
+* Acceptable/fair:   0.7-0.8	
+* Poor:              0.6-0.7	
+* No discrimination: 0.5-0.6	
+ 	
+Note that this rating system is somewhat subjective. We can use the `ROCR` package to draw ROC curves.	
+
+```{r}
+roc <- performance(pred, measure="tpr", x.measure="fpr")
+```
+
+We can specify a "performance" object by providing `"tpr"` (True positive rate) and `"fpr"` (False positive rate) parameters:	
+
+```{r}
+plot(roc, main="ROC curve for Quality of Life Model", col="blue", lwd=3)	
+segments(0, 0, 1, 1, lty=2)
+```
+
+The *segments* command draws the dash line representing a classifier with no predictive value.	
+ 	
+To measure the model performance quantitatively we need to create a new performance object with `measure="auc"`, for area under the curve.	
+
+```{r}
+roc_auc <- performance(pred, measure="auc")
+```
+
+Now the `roc_auc` is stored as a [S4 object](http://adv-r.had.co.nz/OO-essentials.html). This is quite different than data frame and matrices. First, we can use `str()` function to see its structure.	
+
+```{r}
+str(roc_auc)
+```
+
+It has 6 members, or "slots". The AUC value is stored in `y.values`. To extract that we use `@` symbol according to `str()` output. 	
+
+```{r}
+roc_auc@y.values
+```
+
+Thus, the obtained $AUC=0.65$, which suggests a fair classifier, according to the above scoring schema. 	
+ 	
+# Estimating future performance (internal statistical validation)	
+	
+The evaluation method we have talked about are all measuring re-substitution error. That is building the model on training data and measuring the model error on test data. This is one way of dealing with unseen data. Let's look at some alternative strategies.	
+ 	
+## The holdout method	
+ 	
+The `holdout` method idea is to partition a dataset into two separate sets. Using the first set to create (train) the model and the other to test (validate) the model performance. In practice, we usually use a fraction (e.g., $50\%$, or $\frac{2}{3}$) of our data for training the model, and reserve the rest (e.g., $50\%$, or $\frac{1}{3}$) for testing. Note that the testing data may also be further split into proportions for internal repeated (e.g., cross-validation) testing and final external (independent) testing. 	
+ 	
+The partition has to be randomized. In R, the best way of doing this is to create a parameter that randomly draws numbers and use this parameter to extract random rows from the original dataset. In [Chapter 10](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/10_ML_NN_SVM_Class.html), we used this method to partition the *Google Trends* data.
+
+```{r}
+google <- read.csv("https://umich.instructure.com/files/416274/download?download_frd=1", stringsAsFactors = F)	
+google <- google[, -c(1, 2)]	
+normalize <- function(x) {	
+return((x - min(x)) / (max(x) - min(x)))	
+ }	
+google_norm<-as.data.frame(lapply(google, normalize))
+```
+
+```{r}
+sub <- sample(nrow(google_norm), floor(nrow(google_norm)*0.75))	
+google_train <- google_norm[sub, ]	
+google_test <- google_norm[-sub, ]
+```
+
+Another way of partition is using `caret::createDatePartition()` method. We can subset the original dataset or any independent variable column of the original dataset, e.g., `google_norm$RealEstate`: 	
+
+```{r}
+sub <- caret::createDataPartition(google_norm$RealEstate, p=0.75, list = F)	
+google_train <- google_norm[sub, ]	
+google_test <- google_norm[-sub, ]
+```
+
+To make sure that the model can be applied to future datasets, we can partition the original dataset into three separate subsets. In this way, we have two subsets of data for testing and validation. The additional validation dataset can alleviate the probability that we have a good model due to chance (non-representative subsets). A common split among training, testing, and validation subsets may be 50%, 25%, and 25% respectively.	
+
+```{r}
+sub <- sample(nrow(google_norm), floor(nrow(google_norm)*0.50))	
+google_train <- google_norm[sub, ]	
+google_test <- google_norm[-sub, ]	
+sub1<-sample(nrow(google_test), floor(nrow(google_test)*0.5))	
+google_test1 <- google_test[sub1, ]	
+google_test2 <- google_test[-sub1, ]	
+nrow(google_norm)	
+nrow(google_train) # training	
+nrow(google_test1) # testing: internal cross validation	
+nrow(google_test2) # testing: out of bag validation
+```
+
+However, when we only have a very small dataset, it's difficult to split off too much data as this may reduce excessively the training sample size. There are the following two options for evaluation of model performance with unseen data. Both of these are implemented in the `caret` package.	
+ 	
+## Cross-validation	
+ 	
+For complete details see the [DSPA Cross-Validation (Chapter 20)](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/20_PredictionCrossValidation.html). Below, we describe the fundamentals of cross-validation as an internal statistical validation technique. 	
+ 	
+This technique is known as *k-fold cross-validation* or *k-fold CV*, which is a standard for estimating model performance. K-fold CV randomly partitions the original data into *k* separate random subsets called folds.	
+ 	
+A common practice is to use `k=10` or 10-fold CV. That is to split the data into 10 different subsets. Each time, one of the subsets is reserved for testing, and the rest are employed for learning/building the model. This can be accomplished using the `caret::createFolds()` method. Using `seet.seed()` insures the reproducibility of the created folds, in case you run the code multiple times. Here, we use `1234`, a random number, to seed the folds separation. You can use any number for `set.seed()`. We demonstrate the process using the normalized Google Trend dataset.	
+
+```{r}
+library("caret")	
+set.seed(1234)	
+folds <- createFolds(google_norm$RealEstate, k=10)	
+str(folds)
+```
+
+Another way to cross-validate is to use `sparsediscrim::cv_partition()` or `caret::createFolds()`.	
+
+```{r}
+# install.packages("sparsediscrim")	
+# library(sparsediscrim)	
+# folds2 = cv_partition(1:nrow(google_norm), num_folds=10)
+```
+
+Now, we have 10 different subsets in the `folds` object. We can use `lapply()` to fit the model. 90% of data will be used for training so we use `[-x, ]` to represent all observations not in a specific fold. In [Chapter 10](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/10_ML_NN_SVM_Class.html) we showed building a neutral network model for the *Google Trends* data. We can do the same for each fold manually. Then we can train, test, and aggregate the results. Finally, we can report the agreement (e.g., correlations between the predicted and observed RealEstate values).	
+
+```{r}
+library(neuralnet)	
+fold_cv <- lapply(folds, function(x){	
+  google_train <- google_norm[-x, ]	
+  google_test <- google_norm[x, ]	
+  google_model <- neuralnet(RealEstate ~ Unemployment + Rental + Mortgage +
+                              Jobs + Investing + DJI_Index + StdDJI,
+                            data=google_train)	
+  google_pred <- compute(google_model, google_test[, c(1:2, 4:8)])	
+  pred_results <- google_pred$net.result	
+  pred_cor <- cor(google_test$RealEstate, pred_results)	
+  return(pred_cor)	
+  })	
+str(fold_cv)
+```
+
+From the output, we know that in most of the folds the model predicts very well. In a typical run, one fold may yield bad results. We can use the *mean* of these 10 correlations to represent the *overall* model performance. But first, we need to use `unlist()` function to transform `fold_cv` into a vector.	
+
+```{r}
+mean(unlist(fold_cv))
+```
+
+This correlation is high suggesting strong association between predicted and true values. Thus, the model is very good in terms of its prediction.	
+ 	
+## Bootstrap sampling	
+ 	
+The second method is called *bootstrap sampling*. In k-fold CV, each observation can only be used once for testing. Bootstrap sampling relies on a sampling *with replacement* process. Before selecting a new sample, it recycles every observation so that each observation could be appear in multiple folds. 	
+ 	
+A very special setting of bootstrap uses at each iteration 63.2% of the original data as our training dataset and the remaining 36.8% as the test dataset. Thus, compared to k-fold CV, bootstrap sampling is less representative of the full dataset. A special case of bootstrapping is the *0.632 bootstrap* technique which address this issue with changing the final performance error assessment formula to:	
+ 	
+$$error=0.632\times error_{test}+0.368\times error_{train}.$$	
+This synthesizes the *optimistic model performance* on training data ($error_{train}$) with the *pessimistic model performance* on testing data ($error_{test}$) by weighting the corresponding errors. This method is extremely reliable for small samples (it may be computationally intensive for large samples). 	
+ 	
+To see the (asymptotics) rationale behind *0.632 bootstrap* technique, consider a standard training set $T$ of cardinality $n$ where our bootstrapping sampling generates $m$ new training sets $T_i$, each of size $n'$. As sampling from $T$ is uniform *with replacement*, some observations may be repeated in each sample $T_i$. Suppose the size of the sub-samples are of the same order as $T$, i.e., $n'=n$, then for large $n$ the sample $T_{i}$ is *expected* to have $\left (1 - \frac{1}{e}\right ) \sim 0.632$ unique cases from the complete original collection $T$, the remaining proportion $0.368$ are expected to be repeated duplicates. Hence the name *0.632 bootstrap* sampling. A particular training data element has a probability of $1-\frac{1}{n}$ of not being picked for training, and hence, its probability of being in the testing set is $\left (1- \frac{1}{n}\right )^n=e^{-1} \sim 0.368$.	
+ 	
+The simulation below illustrates the *0.632* bootstrap experimentally:	
+
+```{r}
+# define the total data size	
+n <- 500	
+# define number of Bootstrap iterations	
+N=2000	
+#define the resampling function and compute the proportion of uniquely selected elements	
+uniqueProportions <- function(myDataSet, sampleSize){	
+    indices <- sample(1:sampleSize, sampleSize, replace=TRUE) # sample With Replacement	
+    length(unique(indices))/sampleSize	
+}	
+# compute the N proportions of unique elements (could also use a for loop)	
+proportionsVector <- c(lapply(1:N, uniqueProportions, sampleSize=n), recursive=TRUE)	
+# report the Expected (mean) proportion of unique elements in the bootstraping samples of n	
+mean(proportionsVector)
+```
+
+In general, for large $n\gg n'$, the sample $T_{i}$ is *expected* to have $n\left ( 1-e^{-n'/n}\right )$ unique cases, see [On Estimating the Size and Confidence of a Statistical Audit](http://people.csail.mit.edu/rivest/pubs/APR07.pdf)).	
+ 	
+Having the bootstrap samples, the $m$ models can be fitted (estimated) and aggregated, e.g., by averaging the outputs (for regression) or using voting methods (for classification). We will discuss this more in later [Chapters](http://dspa.predictive.space). Let's look at the implementation of the `0.632 Bootstrap` technique for the *QoL* case-study. 	
+
+```{r}
+# Recall: qol_model <- C5.0(qol_train[,-c(40, 41)], qol_train$cd)	
+# predict lables of testing data	
+qol_pred <- predict(qol_model, qol_test)	
+# compute matches and mismatches of Predicted and Observed class labels	
+predObsEqual <- qol_pred == qol_test$cd	
+predObsTF <- c(table(predObsEqual)[1], table(predObsEqual)[2]); predObsTF	
+	
+# training error rate	
+train.err <- as.numeric(predObsTF[1]/(predObsTF[1]+predObsTF[2]))	
+	
+# testing error rate, leave-one-out Bootstrap (LOOB) Cross-Validation	
+B <- 10 	
+loob.err <- NULL	
+N <- dim(qol_test)[1]   # size of test-dataset	
+for (b in 1:B) {	
+   bootIndices <- sample(1:N, N*0.9, replace=T)	
+   train <- qol_test[bootIndices, ]	
+   qol_modelBS <- C5.0(train[,-c(40, 41)], train$cd)	
+   inner.err <- NULL	
+	
+   # for current iteration extract the apporopriate tetsing cases for testing	
+   i <- (1:length(bootIndices))	
+   i <- i[is.na(match(i, bootIndices))]	
+   test <- qol_test[i, ]	
+  	
+   # predict using model at current iteration	
+   qol_modelBS_pred <- predict(qol_modelBS, test)	
+  	
+   predObsEqual <- qol_modelBS_pred == test$cd	
+   predObsTF <- c(table(predObsEqual)[1], table(predObsEqual)[2]); predObsTF	
+   # training error rate	
+   inner.err <- as.numeric(predObsTF[1]/(predObsTF[1]+predObsTF[2]))	
+   loob.err <- c(loob.err, mean(inner.err))	
+}	
+	
+test.err <- ifelse(is.null(loob.err), NA, mean(loob.err))	
+	
+# 0.632 Bootstrap error	
+boot.632 <- 0.368 * train.err + 0.632 * test.err; boot.632
+```
+
+
+
+
+
