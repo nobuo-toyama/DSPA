@@ -213,9 +213,217 @@ Clearly, `fit` provides the training functionality, `pred` the prediction and fo
 svmBag$fit
 ```
 
+The SVM bag `fit` relies on the `kernlab::ksvm()` function. The other two methods, `pred` and `aggregate`, may be explored in a similar way. They follow the SVM model building and testing process we discussed in [Chapter 10](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/10_ML_NN_SVM_Class.html). 	
+ 	
+This `svmBag` object could be used as an optional setting in the `train()` function. However, this option requires that all features are linearly independent, which may be rare in real world data. 	
 
+```{r}
+bagctrl <- bagControl(fit=svmBag$fit, predict = svmBag$pred, aggregate=svmBag$aggregate)	
+qol.rand <- qol[order(runif(2328)), ]	
+set.seed(123)	
+svmbag <- train(grade ~ ., data=boystown_n, "bag", trControl=ctrl, bagControl=bagctrl)	
+svmbag
+```
 
+## Boosting	
+ 	
+*Bagging* uses equal weights for all learners we include in the model. *Boosting* is different as it employs non-uniform weights. Suppose we have the first learner correctly classifying 60% of the observations. This 60% of data may be less likely to be included in the training dataset for the next learner. So, we have more learners working on the remaining "hard-to-classify" observations.	
+ 	
+Mathematically, the boosting technique uses a weighted sum of functions to predict the outcome class labels. We can try to fit the true model using weighted additive modeling. We start with a random learner that can classify some of the observations mostly correctly, possibly with some errors.	
+$$\hat{y}_1=l_1.$$	
+This $l_1$ is our first learner and $\hat{y}_1$ denotes its predictions (this equation is in matrix form). Then, we can calculate the residuals of our first leaner.	
+$$\epsilon_1=y-v_1\times\hat{y}_1,$$	
+where $v_1$ is a shrinkage parameter to avoid overfitting. Next, we fit the residual with another learner. This learner minimizes the following objective function $\sum_{i=1}^N||y_i-l_{k-1}-l_k||$. Here `k=2`. Then we obtain a second model $l_2$ with:	
+$$\hat{y}_2=l_2.$$	
+After that, we can update the residuals:	
+$$\epsilon_2=\epsilon_1-v_2\times\hat{y}_2.$$	
+We repeat this residual fitting until adding another learner $l_k$ results in updated residual $\epsilon_k$ that is smaller than a small predefined threshold. In the end, we will have an additive model like:	
+$$L=v_1\times l_1+v_2\times l_2+...+v_k\times l_k,$$	
+where we ensemble *k* weak learners to generate a stronger meta model.	
+ 	
+[Schapire and Freund](https://doi.org/10.1006/jcss.1997.1504) found that although individual learners trained on the pilot observations might be very weak in predicting in isolation, boosting the collective power of all of them is expected to generate a model **no worse than the best of all individual constituent models** included in the boosting ensemble. Usually, the boosting results are quite better than the top individual model. Although boosting can be used for almost all models, it's most commonly applied to decision trees.	
+ 	
+## Random forests	
+ 	
+Random forests, or decision tree forests, represents a boosting method focusing on decision tree learners.	
+ 	
+### Training random forests	
+ 	
+One approach to train and build random forests uses the `randomForest::randomForest()` method, which has the following invocation:	
+ 	
+`m <- randomForest(expression, data, ntree=500, mtry=sqrt(p))`	
 
+* *expression*: the class variable and features we want to include in the model.	
+* *data*: training data containing class and features.	
+* *ntree*: number of voting decision trees	
+* *mtry*: optional integer specifying the number of features to randomly select at each split. The `p` stands for number of features in the data.	
+ 	
+Let's build a random forest using the Quality of Life dataset.	
 
+```{r}
+# install.packages("randomForest")	
+library(randomForest)	
+set.seed(123)	
+rf <- randomForest(as.factor(QOL_Q_01) ~ . , data=qol)	
+rf
+```
 
+By default the model contains 500 voter trees and tried 6 variables at each split. Its OOB (out-of-bag) error rate is about 38%, which corresponds with a moderate accuracy (62%). Note that the OOB error rate is not re-substitution error. Next to the confusion matrix, we see the reported OOB error rate for all specific classes. All of these error rates are reasonable estimates of future performances with unseen data. We can see that this model is so far the best of all models, although it is still not highly predictive of `QOL_Q_01`.	
+ 	
+### Evaluating random forest performance	
+ 	
+In addition to model building, the `caret` package also supports model evaluation. It reports more detailed model performance evaluations. As usual, we need to specify the re-sampling method and a parameter grid. Let's use 10-folded CV re-sampling method as an example. The grid for this model contains information about the `mtry` parameter (the only tuning parameter for random forest). Previously we tried the default value $\sqrt{38}=6$ (38 is the number of features). This time we could compare multiple `mtry` parameters.  	
+
+```{r}
+library(caret)	
+ctrl <- trainControl(method="cv", number=10)	
+grid_rf <- expand.grid(mtry=c(2, 4, 8, 16))
+```
+
+Next, we apply the `train()` function with our `ctrl` and `grid_rf` settings.	
+
+```{r}
+set.seed(123)	
+m_rf <- train(as.factor(QOL_Q_01) ~ ., data = qol,
+              method = "rf", metric = "Kappa",
+              trControl = ctrl, tuneGrid = grid_rf)	
+m_rf
+```
+
+This call may take a while to complete. The result appears to be a good model, when `mtry=16` we reached a moderately high accuracy (0.62) and good `kappa` statistic (0.44). This is a good result for a meta-learner of 6 dispersed classes (`table(as.factor(qol$QOL_Q_01))`).	
+ 	
+More examples of using `randomForest()` and interpreting its results are shown in [Chapter 8](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/08_DecisionTreeClass.html#74_step_5_-_alternative_model2).	
+ 	
+## Adaptive boosting	
+We may achieve even higher accuracy using **AdaBoost**. Adaptive boosting (AdaBoost) can be used in conjunction with many other types of learning algorithms to improve their performance. The output of the other learning algorithms ('weak learners') is combined into a weighted sum that represents the final output of the boosted classifier. AdaBoost is adaptive in the sense that subsequent weak learners are tweaked in favor of those instances misclassified by the previous classifiers. 	
+ 	
+For binary cases, we could use the method `ada::ada()` and for multiple classes (multinomial/polytomous outcomes) we can use the package `adabag`. The `adabag::boosting()` function allows us to specify a method by setting `coeflearn`. The two main types of adaptive boosting methods that are commonly used include `AdaBoost.M1` algorithm, e.g., `Breiman` and `Freund`, or the `Zhu`'s `SAMME` algorithm. The key parameter in the `adabag::boosting()` method is *coeflearn*:	
+ 	
+* *Breiman* (default), corresponding to $\alpha=\frac{1}{2}\times \ln\left (\frac{1-err}{err} \right )$, using the AdaBoost.M1 algorithm, where $\alpha$ is the [weight updating coefficient](https://en.wikipedia.org/wiki/AdaBoost#Choosing_.CE.B1t)	
+* *Freund*, corresponding to $\alpha=\ln\left (\frac{1-err}{err} \right )$, or	
+* *Zhu*, corresponding to $\alpha=\ln\left (\frac{1-err}{err} \right ) + \ln(nclasses-1)$.	
+ 	
+The generalizations of AdaBoost for multiple classes ($\geq 2$) include `AdaBoost.M1` (where individual trees are required to have an error $\lt \frac{1}{2}$) and `SAMME` (where individual trees are required to have an error $\lt 1-\frac{1}{nclasses}$). 	
+ 	
+Let's see some examples using these three alternative adaptive boosting methods:	
+
+```{r}
+# Prep the data	
+qol <- read.csv("https://umich.instructure.com/files/481332/download?download_frd=1")	
+qol <- qol[!qol$CHARLSONSCORE==-9 , -c(1, 2)]	
+qol$CHARLSONSCORE <- as.factor(qol$CHARLSONSCORE)	
+#qol$QOL_Q_01 <- as.factor(qol$QOL_Q_01)	
+qol <- qol[!qol$CHARLSONSCORE==-9 , -c(1, 2)]	
+qol$cd <- qol$CHRONICDISEASESCORE>1.497	
+qol$cd <- factor(qol$cd, levels=c(F, T), labels = c("minor_disease", "severe_disease"))	
+qol <- qol[!qol$CHRONICDISEASESCORE==-9, ]	
+	
+# install.packages("ada"); install.packages("adabag")	
+library("ada"); library("adabag")	
+set.seed(123)	
+# qol_boost <- boosting(QOL_Q_01 ~ . , data=qol, mfinal = 100, coeflearn = 'Breiman')	
+# mean(qol_boost$class==qol$QOL_Q_01)	
+qol_boost <- boosting(cd ~ . , data=qol[, -37], mfinal = 100, coeflearn = 'Breiman')	
+mean(qol_boost$class==qol$cd)
+```
+
+```{r}
+set.seed(123)	
+#qol_boost <- boosting(QOL_Q_01 ~ ., data=qol, mfinal = 100, coeflearn = 'Breiman')	
+#mean(qol_boost$class==qol$QOL_Q_01)	
+qol_boost <- boosting(cd ~ . , data=qol[, -37], mfinal = 100, coeflearn = 'Breiman')	
+mean(qol_boost$class==qol$cd)
+```
+```{r}
+set.seed(1234)	
+#qol_boost <- boosting(QOL_Q_01 ~ ., data=qol, mfinal = 100, coeflearn = 'Zhu')	
+#mean(qol_boost$class==qol$QOL_Q_01)	
+qol_boost <- boosting(cd ~ . , data=qol[, -37], mfinal = 100, coeflearn = 'Zhu')	
+mean(qol_boost$class==qol$QOL_Q_01)
+```
+
+We observe that `Zhu` approach achieves the best results, average $accuracy=0.78$. Notice that the default method is M1 `Breiman` and `mfinal` is the number of boosting iterations.	
+
+```{r}
+# install.packages("kernlab")	
+# install.packages("party")	
+library(kernlab)	
+library(party)	
+	
+qol_n <- as.data.frame(lapply(qol[, -41], normalize))	
+qol_n <- cbind(qol_n, qol$cd)	
+colnames(qol_n)[41] <- "cd"	
+ctrl <- trainControl(method="boot632", number = 25)	
+bagctrl <- bagControl(fit = ctreeBag$fit, predict = ctreeBag$pred,
+                      aggregate = ctreeBag$aggregate)	
+svmbag <- train(as.factor(cd) ~ ., data = as.data.frame(qol_n),
+                method="bag", trControl = ctrl, bagControl = bagctrl)	
+svmbag
+```
+
+See naiveBayes() hn_med data in Chapter 7
+
+```{r}
+hn_med<-read.csv("https://umich.instructure.com/files/1614350/download?download_frd=1", stringsAsFactors = FALSE)	
+hn_med$seer_stage <- factor(hn_med$seer_stage)	
+hn_med_corpus <- Corpus(VectorSource(hn_med$MEDICATION_SUMMARY))	
+corpus_clean <- tm_map(hn_med_corpus, tolower)	
+corpus_clean <- tm_map(corpus_clean, removePunctuation)	
+corpus_clean <- tm_map(corpus_clean, stripWhitespace)	
+corpus_clean <- tm_map(corpus_clean, removeNumbers)	
+corpus_clean <- tm_map(corpus_clean, PlainTextDocument)	
+hn_med_dtm <- DocumentTermMatrix(corpus_clean)	
+hn_med$stage <- hn_med$seer_stage %in% c(4, 5, 7)	
+hn_med$stage <- factor(hn_med$stage, levels=c(F, T),
+                       labels = c("early_stage", "later_stage"))	
+hn_med_dict <- as.character(findFreqTerms(hn_med_dtm, 5))	
+hn_dtm <- DocumentTermMatrix(corpus_clean,
+                             list(dictionary=hn_med_dict))	
+convert_counts <- function(x) {	
+x <- ifelse(x > 0, 1, 0)	
+x <- factor(x, levels = c(0, 1), labels = c("No", "Yes"))	
+return(x)	
+}	
+hn_dtm <- apply(hn_dtm, MARGIN = 2, convert_counts)
+```
+
+# Comparing the performance of several alternative models	
+ 	
+Earlier in [Chapter 8 (Decision Trees)](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/08_DecisionTreeClass.html) and [Chapter 13 (Model Evaluation)](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/13_ModelEvaluation.html) we saw examples of how to choose appropriate evaluation metrics and how to contrast the performance of various AI/ML methods. Below, we illustrate model comparison based on classification of [Case-Study 6, Quality of Life (QoL) dataset](https://umich.instructure.com/courses/38100/files/folder/Case_Studies) using bagging, boosting, random forest, SVN, k nearest neighbors, and decision trees. All available [`caret` package ML/AI training methods are listed here](https://topepo.github.io/caret/train-models-by-tag.html).	
+
+```{r}
+# install.packages(fastAdaboost)	
+library(fastAdaboost)	
+library(caret)    # for modeling	
+library(lattice)  # for plotting	
+control <- trainControl(method="repeatedcv", number=10, repeats=3)	
+	
+## Run all subsequent models in parallel	
+library(doParallel)	
+cl <- makePSOCKcluster(5)	
+registerDoParallel(cl)	
+system.time({	
+  rf.fit        <- train(cd~., data=qol[, -37], method="rf", trControl=control);	
+  knn.fit       <- train(cd~., data=qol[, -37], method="knn", trControl=control);	
+  svm.fit       <- train(cd~., data=qol[, -37], method="svmRadialWeights", trControl=control);	
+  adabag.fit    <- train(cd~., data=qol[, -37], method="AdaBag", trControl=control);	
+  adaboost.fit  <- train(cd~., data=qol[, -37], method="adaboost", trControl=control)	
+})	
+stopCluster(cl) # close multi-core cluster	
+rm(cl)	
+	
+results <- resamples(list(RF=rf.fit, kNN=knn.fit, SVM=svm.fit, Bag=adabag.fit, Boost=adaboost.fit))	
+	
+# summary of model differences	
+summary(results)	
+	
+# Plot Accuracy Summaries	
+scales <- list(x=list(relation="free"), y=list(relation="free"))	
+bwplot(results, scales=scales)                 # Box plots of accuracy	
+densityplot(results, scales=scales, pch = "|") # Density plots of accuracy	
+dotplot(results, scales=scales)                # Dot plots of Accuracy & Kappa	
+splom(results)      # contrast pair-wise model scatterplots of prediction accuracy (Trellis Scatterplot matrices)	
+```
+
+Try applying model improvement techniques using [other data from the list of our Case-Studies](https://umich.instructure.com/courses/38100/files/).	
 
