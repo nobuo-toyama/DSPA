@@ -1,0 +1,281 @@
+---
+title: "16 Feature Selection"
+author: "nobuo"
+date: "2021/4/29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+As we mentioned in [Chapter 15](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/15_SpecializedML_FormatsOptimization.html), variable selection is very important when dealing with bioinformatics, healthcare, and biomedical data where we may have more features than observations. Instead of trying to interrogate the complete data in its native high-dimensional state, variable selection, or feature selection, helps us focus on the most salient information contained in the observations. Due to presence of intrinsic and extrinsic noise, the volume and complexity of big health data, as well as different methodological and technological challenges, the process of identifying the salient features may resemble finding a needle in a haystack. Here, we will illustrate alternative strategies for feature selection using filtering (e.g., correlation-based feature selection), wrapping (e.g., recursive feature elimination), and embedding (e.g., variable importance via random forest classification) techniques. 	
+ 	
+Variable selection relates to *dimensionality reduction*, which we saw in [Chapter 5](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/05_DimensionalityReduction.html), however there are differences between them. 	
+ 	
+Method  |  Process Type  |  Goals  |  Approach	
+--------|----------------|---------|-----------------------------------------	
+Variable selection | Discrete process | To select unique representative features from each group of *similar* features | To identify highly correlated variables and choose a representative feature by post processing the data	
+Dimension reduction | Continuous process | To denoise the data, enable simpler prediction, or group features so that low impact features have smaller weights | Find the *essential*, $k\ll n$, components, factors, or clusters representing linear, or nonlinear, functions of the $n$ variables which maximize an objective function like the proportion of explained variance	
+ 	
+Relative to the lower variance estimates in *continuous dimensionaltuy reduction*, the intrinsic characteristics of the *discrete feature selection* process yield higher variance in bootstrap estimation and cross validation.	
+ 	
+In [Chapter 17](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/17_RegularizedLinModel_KnockoffFilter.html), we will learn about another powerful technique for variable-selection using *decoy features* (knockoffs) to control for the false discovery rate of selecting inconsequential features as important.	
+ 	
+# Feature selection methods	
+ 	
+There are three major classes of variable or feature selection techniques - filtering-based, wrapper-based, and embedded methods.	
+ 	
+## Filtering techniques	
+ 	
+ * *Univariate*: Univariate filtering methods focus on selecting single features with high score based on some statistics like $\chi^2$ or Information Gain Ratio. Each feature is viewed as independent of the others, effectively ignoring interactions between features. 	
+   + Examples: $\chi^2$, Euclidean distance, $i$-test, and Information gain.	
+ * *Multivariate*: Multivariate filtering methods rely on various (multivariate) statistics to select the principal features. They typically account for between-feature interactions by using higher-order statistics like correlation. The basic idea is that we iteratively triage variables that have high correlations with other features.	
+   + Examples: Correlation-based feature selection, Markov blanket filter, and fast correlation-based feature selection.	
+ 	
+## Wrapper	
+ 	
+ * *Deterministic*: Deterministic wrapper feature selection methods either start with no features (forward-selection) or with all features included in the model (backward-selection) and iteratively refine the set of chosen features according to some model quality measures. The iterative process of adding or removing features may rely on statistics like the Jaccard similarity coefficient.	
+   + Examples: Sequential forward selection, Recursive Feature Elimination, Plus $q$ take-away $r$, and Beam search.	
+ * *Randomized*: Stochastic wrapper feature selection procedures utilize a binary feature-indexing vector indicating whether or not each variable should be includes in the list of salient features. At each iteration, we *randomly* perturb to the binary indicators vector and compare the combinations of features before and after the random inclusion-exclusion indexing change. Finally, we pick the indexing vector corresponding with the optimal performance based on some metric like acceptance probability measures. The iterative process continues until no improvement of the objective function is observed.	
+   + Examples: Simulated annealing, Genetic algorithms, Estimation of distribution algorithms.	
+   	
+## Embedded Techniques 	
+   	
+ * Embedded feature selection techniques are based on various classifiers, predictors, or clustering procedures. For instance, we can accomplish feature selection by using decision trees where the separation of the training data relies on features associated with the highest information gain. Further tree branching separating the data deeper may utilize *weaker* features. This process of choosing the vital features based on their separability characteristics continues until the classifier generates group labels that are mostly homogeneous within clusters/classes and largely heterogeneous across groups, and when the information gain of further tree branching is marginal. The entire process may be iterated multiple times and select the features that appear most frequently.	
+   + Examples: Decision trees, random forests, weighted naive Bayes, and feature selection using weighted-SVM. 	
+ 	
+The different types of feature selection methods have their own pros and cons. In this chapter, we are going to introduce the randomized wrapper method using the `Boruta` package, which utilizes random forest classification method to output variable importance measures (VIMs). Then, we will compare its results with Recursive Feature Elimination, a classical deterministic wrapper method.	
+ 	
+# Random Forest Feature Selection	
+ 	
+Let's start by examining random forest based feature selection, as an embedded technique. The good performance of random forest as a classification, regression, and clustering method is coupled with its ease-of-use, accurate, and robust results. Having a random forest, or more broadly a decision tree, prediction naturally leads to feature selection by using the mean decrease impurity or the mean accuracy decrease criteria.	
+ 	
+The many decision trees captured in a random forest include explicit conditions at each branching node, which are based on single features. The intrinsic bifurcation conditions splitting the data may be based on cost function optimization using the *impurity*, see [Chapter 8](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/08_DecisionTreeClass.html#32_entropy). We can also use other metrics information gain or entropy for classification problems. These measures capture the importance of variables by computing its impact (how much is the feature-based splitting decision decreasing the weighted impurity in a tree). In random forests, the ranking of feature importance, which based on the average impurity decrease due to each variable leads to effective feature selection.	
+ 	
+# Case Study - ALS	
+ 	
+## Step 1: Collecting Data	
+ 	
+First things first, let's explore the dataset we will be using. Case Study 15, [Amyotrophic Lateral Sclerosis (ALS)](https://umich.instructure.com/files/1789624/download?download_frd=1), examines the patterns, symmetries, associations and causality in a rare but devastating disease, amyotrophic lateral sclerosis (ALS), also known as *Lou Gehrig disease*. This ALS case-study reflects a large clinical trial including big, multi-source and heterogeneous datasets. It would be interesting to interrogate the data and attempt to derive potential biomarkers that can be used for detecting, prognosticating, and forecasting the progression of this neurodegenerative disorder. Overcoming many scientific, technical and infrastructure barriers is required to establish complete, efficient, and reproducible protocols for such complex data. These pipeline workflows start with ingesting the raw data, preprocessing, aggregating, harmonizing, analyzing, visualizing and interpreting the findings.	
+ 	
+In this case-study, we use the training dataset that contains 2,223 observations and 131 numeric variables. We select `ALSFRS slope` as our outcome variable, as it captures the patients' clinical decline over a year. Although we have more observations than features, this is one of the examples where multiple features are highly correlated. Therefore, we need to preprocess the variables before commencing with feature selection. 	
+ 	
+## Step 2: Exploring and preparing the data	
+ 	
+The dataset is located in our [case-studies archive](https://umich.instructure.com/courses/38100/files/folder/Case_Studies). We can use `read.csv()` to directly import the CSV dataset into R using the URL reference.	
+
+```{r}
+ALS.train <- read.csv("https://umich.instructure.com/files/1789624/download?download_frd=1")	
+summary(ALS.train)
+```
+
+There are 131 features and some of variables represent statistics like *max*, *min* and *median* values of the same clinical measurements.	
+ 	
+## Step 3 - training a model on the data	
+ 	
+Now let's explore the `Boruta()` function in `Boruta` package to perform variables selection, based on random forest classification. `Boruta()` includes the following components:	
+ 	
+`vs <- Boruta(class ~ features, data=Mydata, pValue = 0.01, mcAdj = TRUE, maxRuns = 100, doTrace=0, getImp = getImpRfZ, ...)`	
+ 	
+* `class`: variable for class labels.	
+* `features`: potential features to select from.	
+* `data`: dataset containing classes and features.	
+* `pValue`: confidence level. Default value is 0.01 (Notice we are applying multiple variable selection.	
+* `mcAdj`: Default TRUE to apply a multiple comparisons adjustment using the Bonferroni method.	
+* `maxRuns`: maximal number of importance source runs. You may increase it to resolve attributes left Tentative.	
+* `doTrace`: verbosity level. Default 0 means no tracing, 1 means reporting decision about each attribute as soon as it is justified, 2 means same as 1, plus at each importance source run reporting the number of attributes. The default is 0 where we don't do the reporting.	
+* `getImp`: function used to obtain attribute importance. The default is $getImpRfZ$, which runs random forest from the ranger package and gathers $Z$-scores of mean decrease accuracy measure.	
+ 	
+The resulting `vs` object is of class `Boruta` and contains two important components:	
+ 	
+* `finalDecision`: a factor of three values: `Confirmed`, `Rejected` or `Tentative`, containing the final results of the feature selection process.	
+* `ImpHistory`: a data frame of importance of attributes gathered in each importance source run. Besides the predictors' importance, it contains maximal, mean and minimal importance of shadow attributes for each run. Rejected attributes get `-Inf` importance. This output is set to NULL if we specify `holdHistory=FALSE` in the Boruta call. 	
+ 	
+*Caution*: Running the code below will take several minutes.	
+
+```{r}
+# install.packages("Boruta")	
+library(Boruta)	
+set.seed(123)	
+als <- Boruta(ALSFRS_slope ~ . - ID, data=ALS.train, doTrace=0)	
+print(als)	
+als$ImpHistory[1:6, 1:10]
+```
+
+This is a fairly time-consuming computation. Boruta determines the *important* attributes from *unimportant* and *tentative* features. Here the importance is measured by the [Out-of-bag (OOB) error](https://en.wikipedia.org/wiki/Out-of-bag_error). The OOB estimates the prediction error of machine learning methods (e.g., random forests and boosted decision trees) that utilize bootstrap aggregation to sub-sample training data. **OOB** represents the mean prediction error on each training sample $x_i$, using only the trees that did not include $x_i$ in their bootstrap samples. Out-of-bag estimates provide *internal* assessment of the learning accuracy and avoid the need for an independent *external* validation dataset.	
+
+The importance scores for all features at every iteration are stored in the data frame `als$ImpHistory`. Let's plot a graph depicting the essential features. 	
+ 	
+*Note*: Again, running this code will take several minutes to complete.
+
+```{r}
+plot(als, xlab="", xaxt="n")	
+lz <- lapply(1:ncol(als$ImpHistory), function(i)	
+als$ImpHistory[is.finite(als$ImpHistory[, i]), i])	
+names(lz) <- colnames(als$ImpHistory)	
+lb <- sort(sapply(lz, median))	
+axis(side=1, las=2, labels=names(lb), at=1:ncol(als$ImpHistory), cex.axis=0.5, font = 4)	
+```
+
+We can see that plotting the graph is easy but extracting matched feature names may require more work. The basic plot is done by this call `plot(als, xlab="", xaxt="n")`, where `xaxt="n"` suppresses labeling the x-axis, but the following lines in the script reconstruct the correct x-axis labels, and `lz` is a list created by the `lapply()` function. Each element in `lz` contains all the important scores for a single feature in the original dataset. Also, we excluded all rejected features with infinite importance. Then, we sorted these non-rejected features according to their median importance and print them on the x-axis by using `axis()`. 	
+ 	
+We have already seen similar groups of boxplots back in [Chapter 2](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/02_ManagingData.html) and [Chapter 3](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/03_DataVisualization.html). In this graph, variables with *green* boxes are more important than the ones represented with *red* boxes, and we can see the range of importance scores within a single variable in the graph.	
+ 	
+It may be desirable to get rid of tentative features. Notice that this function should be used only when strict decision is highly desired, because this test is much weaker than Boruta and can lower the confidence of the final result.	
+
+```{r}
+final.als <- TentativeRoughFix(als)	
+print(final.als)	
+final.als$finalDecision	
+getConfirmedFormula(final.als)	
+	
+# report the Boruta "Confirmed" & "Tentative" features, removing the "Rejected" ones	
+print(final.als$finalDecision[final.als$finalDecision %in% c("Confirmed", "Tentative")])	
+# how many are actually "confirmed" as important/salient?	
+impBoruta <- final.als$finalDecision[final.als$finalDecision %in% c("Confirmed")]; length(impBoruta)	
+```
+
+This shows the final features selection result.	
+ 	
+## Step 4 - evaluating model performance	
+ 	
+### Comparing with RFE	
+ 	
+Let's compare the `Boruta` results against a classical variable selection method - *recursive feature elimination (RFE)*. First, we need to load two packages: `caret` and `randomForest`. Then, similar to [Chapter 14](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/14_ImprovingModelPerformance.html) we must specify a resampling method. Here we use *10-fold CV* to do the resampling. 	
+
+```{r}
+library(caret)	
+library(randomForest)	
+set.seed(123)	
+control <- rfeControl(functions = rfFuncs, method = "cv", number=10)
+```
+
+Now, all preparations are complete and we are ready to do the RFE variable selection.
+
+```{r}
+rf.train <- rfe(ALS.train[, -c(1, 7)], ALS.train[, 7],
+                sizes=c(10, 20, 30, 40), rfeControl=control)	
+rf.train
+```
+
+This calculation may take a long time to complete. The RFE invocation is different from `Boruta`. Here we have to specify the feature data frame and the class labels separately. Also, the `sizes=` option allows us to specify the number of features we want to include in the model. Let's try `sizes=c(10, 20, 30, 40)` to compare the model performance for alternative numbers of features.	
+ 	
+To visualize the results, we can plot the 5 different feature size combinations listed in the summary. The one with 30 features has the lowest RMSE measure. This result is similar to the `Boruta` output, which selected around 30 features.	
+
+```{r}
+plot(rf.train, type=c("g", "o"), cex=1, col=1:5)
+```
+
+Using the functions `predictors()` and `getSelectedAttributes()`, we can compare the final results of the two alternative feature selection methods.	
+
+```{r}
+predRFE <- predictors(rf.train)	
+predBoruta <- getSelectedAttributes(final.als, withTentative = F)
+```
+
+The results are almost identical:
+
+```{r}
+intersect(predBoruta, predRFE)
+```
+
+There are 26 common variables chosen by the two techniques, which suggests that both the `Boruta` and RFE methods are robust. Also, notice that the `Boruta` method can give similar results without utilizing the *size* option. If we want to consider 10 or more different sizes, the procedure will be quite time consuming. Thus, `Boruta` method is effective when dealing with complex real world problems.	
+ 	
+### Comparing with stepwise feature selection	
+ 	
+Next, we can contrast the `Boruta` feature selection results against another classical variable selection method - *stepwise model selection*. Let's start with fitting a bidirectional stepwise linear model-based feature selection.	
+
+```{r}
+data2 <- ALS.train[, -1]	
+# Define a base model - intercept only	
+base.mod <- lm(ALSFRS_slope ~ 1 , data= data2)	
+# Define the full model - including all predictors	
+all.mod <- lm(ALSFRS_slope ~ . , data= data2)	
+# ols_step <- lm(ALSFRS_slope ~ ., data=data2)	
+ols_step <- step(base.mod, scope = list(lower = base.mod, upper = all.mod), direction = 'both', k=2, trace = F)	
+summary(ols_step); # ols_step
+```
+
+We can report the stepwise "Confirmed" (important) features:
+
+```{r}
+# get the shortlisted variable	
+stepwiseConfirmedVars <- names(unlist(ols_step[[1]]))	
+# remove the intercept 	
+stepwiseConfirmedVars <- stepwiseConfirmedVars[!stepwiseConfirmedVars %in% "(Intercept)"]	
+print(stepwiseConfirmedVars)
+```
+
+The feature selection results of `Boruta` and `step` are similar
+
+```{r}
+library(mlbench)	
+library(caret)	
+	
+# estimate variable importance	
+predStepwise <- varImp(ols_step, scale=FALSE)	
+# summarize importance	
+print(predStepwise)	
+# plot predStepwise	
+# plot(predStepwise)	
+	
+# Boruta vs. Stepwise feataure selection	
+intersect(predBoruta, stepwiseConfirmedVars)
+```
+
+There are about $10$ common variables chosen by the Boruta and Stepwise feature selection methods.	
+ 	
+There is another more elaborate stepwise feature selection technique that is implemented in the function `MASS::stepAIC()` that is useful for a wider range of object classes.	
+ 	
+# Practice Problem	
+ 	
+You can practice variable selection with the [SOCR_Data_AD_BiomedBigMetadata](https://wiki.socr.umich.edu/index.php/SOCR_Data_AD_BiomedBigMetadata) on SOCR website. This is a smaller dataset that has 744 observations and 63 variables. Here we utilize `DXCURREN` or current diagnostics as the class variable.	
+ 	
+Let's import the dataset first.
+
+```{r}
+library(rvest)	
+wiki_url <- read_html("https://wiki.socr.umich.edu/index.php/SOCR_Data_AD_BiomedBigMetadata")	
+html_nodes(wiki_url, "#content")	
+alzh <- html_table(html_nodes(wiki_url, "table")[[1]])	
+summary(alzh)
+```
+
+The data summary shows that we have several factor variables. After converting their type to numeric we find some missing data. We can manage this issue by selecting only the complete observation of the original dataset or by using multivariate imputation, see [Chapter 2](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/02_ManagingData.html). 	
+
+```{r}
+chrtofactor　<-　c(3, 5, 8, 10, 21:22, 51:54)	
+alzh[alzh=="."] <- NA  # replace all missing "." values with "NA"	
+alzh[chrtofactor] <- data.frame(apply(alzh[chrtofactor], 2, as.numeric))	
+alzh<-alzh[complete.cases(alzh), ]
+```
+
+For simplicity, here we eliminated the missing data and are left with 408 complete observations. Now, we can apply the `Boruta` method for feature selection.	
+
+```{r}
+set.seed(123)	
+train <- Boruta(DXCURREN~.-SID, data=alzh, doTrace=0)	
+print(train)
+```
+
+You might get a result that is a little bit different. We can plot the variable importance graph using some previous knowledge.	
+
+```{r}
+plot(train, xlab = "", xaxt="n")	
+lz <- lapply(1:ncol(train$ImpHistory), function(i)	
+train$ImpHistory[is.finite(train$ImpHistory[, i]), i])	
+names(lz) <- colnames(train$ImpHistory)	
+lb <- sort(sapply(lz, median))	
+axis(side=1, las=2, labels=names(lb), at=1:ncol(train$ImpHistory), cex.axis=0.7)
+```
+
+The final step is to get rid of the tentative features.
+
+```{r}
+final.train <- TentativeRoughFix(train)	
+print(final.train)	
+getSelectedAttributes(final.train, withTentative = F)
+```
+
+Can you reproduce these results? Also try to apply some of these techniques to [other data from the list of our Case-Studies](https://umich.instructure.com/courses/38100/files/).	
