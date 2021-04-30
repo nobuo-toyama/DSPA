@@ -1,0 +1,1050 @@
+---
+title: "17 Regularized Linear Modeling"
+author: "nobuo"
+date: "2021/4/29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Many biomedical and biosocial studies involve large amounts of complex data, including cases where the number of features ($k$) is large and may exceed the number of cases ($n$). In such situations, parameter estimates are difficult to compute or may be unreliable as the [system is underdetermined](https://en.wikipedia.org/wiki/Underdetermined_system). Regularization provides one approach to improve model reliability, prediction accuracy, and result interpretability. It is based on augmenting the fidelity term of the objective function used in the model fitting process with a regularization term that provides restrictions on the parameter space.	
+ 	
+Classical techniques for choosing *important* covariates to include in a model of complex multivariate data rely on various types of stepwise variable selection processes, see [Chapter 16](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/16_FeatureSelection.html). These tend to improve prediction accuracy in certain situations, e.g., when a small number of features are strongly predictive, or heavily associated, with the clinical outcome or the specific biosocial trait. However, the prediction error may be large when the model relies purely on a fidelity term. Including an additional regularization term in the optimization of the cost function improves the prediction accuracy. For example, below we show that by shrinking large regression coefficients, ridge regularization reduces overfitting and improves prediction error. Similarly, the least absolute shrinkage and selection operator (LASSO) employs regularization to perform simultaneous parameter estimation and variable selection. LASSO enhances the prediction accuracy and provides a natural interpretation of the resulting model. *Regularization* refers to forcing certain characteristics on the model, or the corresponding scientific inference. Examples include discouraging complex models or extreme explanations, even if they fit the data, enforcing model generalizability to prospective data, or restricting model overfitting of accidental samples.	
+ 	
+In this chapter, we extend the mathematical foundation we presented in [Chapter 4](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/04_LinearAlgebraMatrixComputing.html) and (1) discuss computational protocols for handling complex high-dimensional data, (2) illustrate model estimation by controlling the false-positive rate of selection of salient features, and (3) derive effective forecasting models.	
+ 	
+# Questions	
+Applications of regularized linear modeling techniques will help us address problems like:	
+ 	
+* How to deal with extremely high-dimensional data (hundreds or thousands of features)?	
+* Why mix fidelity (model fit) and regularization (model interpretability) terms in objective function optimization?	
+* How to reduce the false-positive rate, increase scientific validation, and improve result reproducibility (e.g., Knockoff filtering)?	
+ 	
+# Matrix notation  	
+We should review the basics of matrix notation, linear algebra, and matrix computing we covered in [Chapter 4](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/04_LinearAlgebraMatrixComputing.html). At the core of matrix manipulations are scalars, vectors and matrices.	
+ 	
+- ${y}_i$: output or response variable, $i = 1, ..., n$ (cases, subjects, units, etc.)	
+- $x_{ij}$: input, predictor, or feature variable,  $1\leq j \leq k,\ 1\leq i \leq n.$	
+ 	
+$${y} = \begin{pmatrix} y_1 \\ y_2 \\ \vdots \\ y_n \end{pmatrix} \quad ,$$	
+and 	
+$$\quad {X} = 	
+ \begin{pmatrix} 	
+   x_{1,1} & x_{1,2} & \cdots & x_{1,k} \\ 	
+   x_{2,1} & x_{2,2} & \cdots & x_{2,k} \\ 	
+   \vdots & \vdots & \cdots & \vdots \\ 	
+   x_{n,1} & x_{n,2} & \cdots & x_{n,k} 	
+ \end{pmatrix}_{cases\times features}.$$	
+   	
+# Regularized Linear Modeling	
+ 	
+If we assume that the covariates are orthonormal, i.e., we have a special kind of a *design matrix* $X^T X = I$, then:	
+ 	
+* The ordinary least squares (`OLS`) estimates minimize the following objective function: $$\min_{ \beta \in \mathbb{R}^k } \left\{ \frac{1}{N} \left\| y - X \beta \right\|_2^2\right\}, $$ 	
+ 	
+and are defined in general by 	
+$$\hat{\beta}^{OLS} = (X^T X)^{-1} X^T y.$$	
+ 	
+* `LASSO` estimates minimize a modified cost function $$\min_{ \beta \in \mathbb{R}^k } \left\{ \frac{1}{N} \left\| y - X \beta \right\|_2^2 + \lambda \| \beta \|_1 \right\}, $$ 	
+	
+and may be expressed as a soft-thresholding function of the OLS estimates: 	
+$$\hat{\beta}_j = S_{N \lambda}( \hat{\beta}^\text{OLS}_j ) = \hat{\beta}^\text{OLS}_j \max \left( 0, 1 - \frac{ N \lambda }{ |\hat{\beta}^{OLS}_j| } \right), $$	
+
+where $S_{N \lambda}$ is a soft thresholding operator translating values *towards* zero. This is different from the hard thresholding operator, which *sets* smaller values to zero and leaves larger ones unchanged.	
+ 	
+* `Ridge` regression minimizes a similar objective function (using a different norm):	
+$$\min_{ \beta \in \mathbb{R}^k } \left\{ \frac{1}{N} \| y - X \beta \|_2^2 + \lambda \| \beta \|_2^2 \right\}, $$	
+ 	
+which yields estimates $\hat{\beta}_j = ( 1 + N \lambda )^{-1} \hat{\beta}^{OLS}_j$. Thus, ridge regression shrinks all coefficients by a uniform factor, $(1 + N \lambda)^{-1}$, and does not set any coefficients to zero.	
+ 	
+* `Best subset` selection regression, also known as orthogonal matching pursuit (OMP), minimizes the same cost function with respect to the zero-norm:	
+$$\min_{ \beta \in \mathbb{R}^k } \left\{ \frac{1}{N} \left\| y - X \beta \right\|_2^2 + \lambda \| \beta \|_0 \right\}, $$	
+ 	
+where $\|.\|_0$ is the "$\ell^0$ norm", defined for $z\in R^d$ as  $\| z \|_o = m$, where exactly $m$ components of $z$ are nonzero. In this case, a closed form of the parameter estimates is:	
+$$\hat{\beta}_j = H_{ \sqrt{ N \lambda } } \left( \hat{\beta}^{OLS}_j \right) = \hat{\beta}^{OLS}_j I \left( \left| \hat{\beta}^{OLS}_j \right| \geq \sqrt{ N \lambda } \right), $$	
+
+where $H_\alpha$ is a `hard-thresholding` function and $I$ is an indicator function (it is 1 if its argument is true, and 0 otherwise).	
+ 	
+The LASSO estimates may share similar features selection/estimates with both `Ridge` and `Best (OMP)`. This is because they both shrink the magnitude of all the coefficients, like ridge regression, but also set some of them to zero, as in the best subset selection case.  `Ridge` regression scales all of the coefficients by a constant factor, whereas LASSO translates the coefficients towards zero by a constant value and then sets the small values to zero.	
+ 	
+## Ridge Regression	
+ 	
+[Ridge regression](https://en.wikipedia.org/wiki/Tikhonov_regularization) relies on $L^2$ regularization to improve the model prediction accuracy. It improves prediction error by shrinking large regression coefficients and reduce overfitting. By itself, ridge regularization does not perform variable selection and does not really help with model interpretation.	
+ 	
+Let's show an example using the MLB dataset [01a_data.txt](https://umich.instructure.com/courses/38100/files/folder/data), which includes, player's Name, Team, Position, Height, Weight, and Age. We may fit in any regularized linear mode, e.g., $Weight \sim Age + Height$.	
+
+```{r}
+# install.packages("doParallel")	
+library("doParallel")
+	
+# Data: https://umich.instructure.com/courses/38100/files/folder/data   (01a_data.txt)	
+data <- read.table('https://umich.instructure.com/files/330381/download?download_frd=1', as.is=T, header=T)    	
+attach(data); str(data)	
+	
+# Training Data	
+# Full Model: x <- model.matrix(Weight ~ ., data = data[1:900, ])	
+# Reduced Model	
+x <- model.matrix(Weight ~ Age + Height, data = data[1:900, ])	
+# creates a design (or model) matrix, and adds 1 column for outcome according to the formula.	
+y <- data[1:900, ]$Weight	
+	
+# Testing Data	
+x.test <- model.matrix(Weight ~ Age + Height, data = data[901:1034, ])	
+y.test <- data[901:1034, ]$Weight	
+	
+# install.packages("glmnet")	
+library("glmnet")	
+library(doParallel)	
+cl <- makePSOCKcluster(6)	
+registerDoParallel(cl); getDoParWorkers()	
+# getDoParName(); getDoParVersion()	
+cv.ridge <-  cv.glmnet(x, y, type.measure="mse", alpha=0, parallel=T)	
+## alpha =1 for lasso only, alpha = 0 for ridge only, and 0<alpha<1 to blend ridge & lasso penalty !!!!	
+plot(cv.ridge)	
+coef(cv.ridge)	
+sqrt(cv.ridge$cvm[cv.ridge$lambda == cv.ridge$lambda.1se])	
+	
+#plot variable feature coefficients against the shrinkage parameter lambda.	
+glmmod <-glmnet(x, y, alpha = 0)	
+plot(glmmod, xvar="lambda")	
+grid()	
+	
+# for plot_glmnet with ridge/lasso coefficient path labels	
+# install.packages("plotmo")	
+library(plotmo) 	
+plot_glmnet(glmmod, lwd=4)        #default colors	
+# More elaborate plots can be generated using:	
+# plot_glmnet(glmmod,label=2,lwd=4) #label the 2 biggest final coefs	
+# specify color of each line	
+# g <- "blue" 	
+# plot_glmnet(glmmod, lwd=4, col=c(2,g))	
+	
+	
+# report the model coefficient estimates	
+coef(glmmod)[, 1]	
+	
+cv.glmmod <- cv.glmnet(x, y, alpha=0)	
+	
+mod.ridge <-  cv.glmnet(x, y, alpha = 0, thresh = 1e-12, parallel = T)	
+lambda.best <-  mod.ridge$lambda.min	
+lambda.best	
+ridge.pred <-  predict(mod.ridge, newx = x.test, s = lambda.best)	
+ridge.RMS <- mean((y.test - ridge.pred)^2); ridge.RMS	
+ridge.test.r2 <-  1 - mean((y.test - ridge.pred)^2)/mean((y.test - mean(y.test))^2)	
+	
+plot(cv.glmmod)	
+best_lambda <- cv.glmmod$lambda.min	
+best_lambda
+```
+
+In the plots above, different colors represents the vector of features, and the corresponding coefficients, displayed as a function of the regularization parameter, $\lambda$. The top horizontal axis indicates the number of nonzero coefficients at the current value of $\lambda$. For LASSO regularization, this top-axis corresponds to the effective degrees of freedom (df) for the model. 	
+ 	
+Notice the usefulness of Ridge regularization for model estimation in highly ill-conditioned problems ($n<<k$) where slight feature perturbations may cause disproportionate alterations of the corresponding weight calculations. When $\lambda$ is very large, the regularization effect dominates the optimization of the objective function and the coefficients tend to zero. At the other extreme, as $\lambda\longrightarrow 0$, the resulting model solution tends towards the ordinary least squares (OLS) and the coefficients exhibit large oscillations. In practice, we often may need to tune $\lambda$ to balance this tradeoff.	
+ 	
+Also note that in the `cv.glmnet` call, the extreme values of the parameter $\alpha = 0$ (ridge) and $\alpha = 1$ (LASSO) correspond to different types of regularization, and intermediate values of $0<\alpha<1$ corresponds to *elastic net* blended regularization.	
+ 	
+## Least Absolute Shrinkage and Selection Operator (LASSO) Regression	
+ 	
+Estimating the linear regression coefficients in a linear regression model using LASSO involves minimizing an objective function that includes an $L^1$ regularization term which tends to shrink the number of features. A descriptive representation of the fidelity (left) and regularization (right) terms of the objective function are shown below:	
+ 	
+$$\underbrace{\sum_{i=1}^n \left [ y_i - \beta_0 - \sum_{j=1}^k \beta_j x_{ij} \right ]^2}_{\text{fidelity term}} + \underbrace{\lambda\sum_{j=1}^{k}|\beta_j|}_{\text{regilarization term}}.$$	
+LASSO jointly achieves model quality, reliability and variable selection by penalizing the sum of the absolute values of the regression coefficients. This forces the shrinkage of certain coefficients effectively acting as a variable selection process. This is similar to ridge regression's penalty on the sum of the squares of the regression coefficients, although ridge regression only shrinks the magnitude of the coefficients without truncating them to $0$.	
+ 	
+Let's show how to select the regularization weight parameter $\lambda$ using `training` data and report the error using `testing` data.	
+
+```{r}
+mod.lasso <-  cv.glmnet(x, y, alpha = 1, thresh = 1e-12, parallel = T)	
+## alpha =1 for lasso only, alpha = 0 for ridge only, and 0<alpha<1 for elastic net, a blend ridge & lasso penalty !!!!	
+lambda.best <- mod.lasso$lambda.min	
+lambda.best	
+lasso.pred <- predict(mod.lasso, newx = x.test, s = lambda.best)	
+LASSO.RMS <- mean((y.test - lasso.pred)^2); LASSO.RMS
+```
+
+Let's retrieve the estimates of the model coefficients.
+
+```{r}
+mod.lasso <-  glmnet(x, y, alpha = 1)	
+predict(mod.lasso, s = lambda.best, type = "coefficients")	
+lasso.test.r2 <-  1 - mean((y.test - lasso.pred)^2)/mean((y.test - mean(y.test))^2)
+```
+
+Perhaps obtain a classical OLS linear model, as well.
+
+```{r}
+lm.fit <-  lm(Weight ~ Age + Height, data = data[1:900, ])	
+summary(lm.fit)
+```
+
+The OLS linear (unregularized) model has slightly larger coefficients and greater MSE than LASSO, which attests to the shrinkage of LASSO.	
+
+```{r}
+lm.pred <-  predict(lm.fit, newx = x.test)	
+LM.RMS <- mean((y - lm.pred)^2); LM.RMS	
+lm.test.r2 <-  1 - mean((y - lm.pred)^2) / mean((y.test - mean(y.test))^2)	
+  	
+barplot(c(lm.test.r2, lasso.test.r2, ridge.test.r2), col = "red", names.arg = c("OLS", "LASSO", "Ridge"), main = "Testing Data Derived R-squared")
+```
+
+Compare the results of the three alternative models (LM, LASSO and Ridge) for these data and contrast the derived RSS results.	
+
+```{r}
+library(knitr) #  kable function to convert tabular R-results into Rmd tables	
+# create table as data frame	
+RMS_Table = data.frame(LM=LM.RMS, LASSO=LASSO.RMS, Ridge=ridge.RMS)	
+	
+# convert to markdown	
+kable(RMS_Table, format="pandoc", caption="Test Dataset RSS Results", align=c("c", "c", "c"))	
+stopCluster(cl)
+```
+
+As both the *inputs* (features or predictors) and the *output* (response) are observed for the testing data, we can build a learner examining the relationship between the two types of features (controlled covariates and observable responses). Most often, we are interested in forecasting or predicting responses based on prospective (new, testing, or validation) data.	
+ 	
+# Predictor Standardization	
+  	
+Prior to fitting regularized linear modeling and estimating the effects, covariates may be standardized. Scaling the features ensures the measuring units of the features do not bias the distance measures or norm estimates. Standardization can be accomplished by using the classic ["z-score" formula](https://wiki.socr.umich.edu/index.php/AP_Statistics_Curriculum_2007_Normal_Prob#General_Normal_Distribution]). This puts each predictor on the same scale (unitless quantities) - the mean is 0 and the variance is 1. We use $\hat{\beta_0} = \bar{y}$, for the mean intercept parameter, and estimate the coefficients of the remaining predictors. To facilitate interpretation of the results, after the model is estimated, in the context of the specific case-study, we can transform the results back to the original scale/units.	
+ 	
+# Estimation Goals	
+ 	
+The basic problem is this: given a set of predictors ${X}$, find a function, $f({X})$, to model or predict the outcome $Y$.	
+ 	
+Let's denote the objective (loss or cost) function by $L(y, f({X}))$. It determines adequacy of the fit and allows us to estimate the squared error loss:	
+$$L(y, f({X})) = (y - f({X}))^2 . $$	
+ 	
+We are looking to find $f$ that minimizes the expected loss:	
+$$  E[(Y - f({X}))^2] \Rightarrow f = E[Y | {X} = {x}].$$	
+ 	
+# Linear Regression	
+ 	
+For a linear model:	
+$$Y_i = \beta_0 + x_{i,1}\beta_1 + x_{i,2}\beta_2 + \dots + x_{i,k}\beta_k + \epsilon, $$	
+Let's assume that:	
+ 	
+* The model shorthand matrix notation is: $Y = X\beta + \epsilon.$	
+* And the expectation of the observed outcome given the data, $E[Y | {X} = {x}]$, is a linear function, which in certain situations can be expressed as:	
+$$\arg\min_{{\beta}} \sum_{i=1}^n \left (y_i - \sum_{j=1}^{k} x_{ij} \beta_j \right )^2 = \arg\min_{{\beta}} \sum_{i=1}^{n} (y_i - x_{i}^T \beta)^2.$$	
+ 	
+Multiplying  both hand-sides on the left by $X^T=X'$, which is the transpose of the design matrix $X$ (recall that matrix multiplication is not always commutative), yields:	
+$$X^T Y = X^T (X\beta) = (X^TX)\beta.$$	
+ 	
+To solve for the effect-size coefficients, $\beta$, we can multiply both sides of the equation by the inverse of its (right hand side) multiplier:	
+$$(X^TX)^{-1} (X^T Y) = (X^TX)^{-1} (X^TX)\beta = \beta.$$	
+ 	
+The *ordinary least squares (OLS)* estimate of ${\beta}$ is given by:	
+$$\hat{{\beta}} = 	
+ \arg\min_{{\beta}} \sum_{i=1}^n (y_i - \sum_{j=1}^{k} x_{ij} \beta_j)^2 = \arg\min_{{\beta}} \| {y} - {X}{\beta} \|^2_2 \Rightarrow$$	
+ $$\hat{{\beta}}^{OLS} = ({X}'{X})^{-1} {X}'{y} \Rightarrow \hat{f}({x}_i) = {x}_i'\hat{{\beta}}.$$	
+
+## Drawbacks of Linear Regression	
+ 	
+Despite its wide use and elegant theory, linear regression has some shortcomings.	
+ 	
+- Prediction accuracy - Often can be improved upon;	
+ 	
+- Model interpretability - Linear model does not automatically do variable selection.	
+ 	
+## Assessing Prediction Accuracy	
+ 	
+Given a new input, ${x}_0$, how do we assess our prediction $\hat{f}({x}_0)$?	
+ 	
+The *Expected Prediction Error (EPE)* is:	
+$$ \begin{aligned} EPE({x}_0) &= E[(Y_0 - \hat{f}({x}_0))^2] \\	
+                  &= \text{Var}(\epsilon) + \text{Var}(\hat{f}({x}_0)) + \text{Bias}(\hat{f}({x}_0))^2 \\	
+                  &= \text{Var}(\epsilon) + MSE(\hat{f}({x}_0)) \end{aligned} .$$	
+ 	
+where	
+ 	
+* $\text{Var}(\epsilon)$: irreducible error variance	
+* $\text{Var}(\hat{f}({x}_0))$: sample-to-sample variability of $\hat{f}({x}_0)$ , and	
+* $\text{Bias}(\hat{f}({x}_0))$: average difference of  $\hat{f}({x}_0)$ & $f({x}_0)$.	
+   	
+## Estimating the Prediction Error 	
+ 	
+One common approach to estimating prediction error include:	
+ 	
+* Randomly splitting the data into "training" and "testing" sets, where the testing data has $m$ observations that will be used to independently validate the model quality. We estimate/calculate $\hat{f}$ using training data;	
+* Estimating prediction error using the *testing set MSE*	
+$$ \hat{MSE}(\hat{f}) = \frac{1}{m} \sum_{i=1}^{m} (y_i - \hat{f}(x_i))^2.$$	
+ 	
+Ideally, we want our model/predictions to perform well with new or prospective data.	
+ 	
+## Improving the Prediction Accuracy	
+ 	
+If $f(x) \approx \text{linear}$, $\hat{f}$ will have low bias but possibly high variance, e.g., in high-dimensional setting due to correlated predictors, when $k\ \text{features} \ll n\ \text{cases}$, or under-determination, when $k > n$.  The goal is to minimize total error by trading off bias and precision:	
+$$MSE(\hat{f}(x)) = \text{Var}(\hat{f}(x)) +\text{Bias}(\hat{f}(x))^2.$$	
+We can sacrifice bias to reduce variance, which may lead to decrease in $MSE$. So, regularization allows us to tune this tradeoff.	
+ 	
+We aim to predict the outcome variable, $Y_{n\times1}$, in terms of other features $X_{n,k}$. Assume a first-order relationship relating $Y$ and $X$ is of the form $Y=f(X)+\epsilon$, where the error term $\epsilon \sim N(0,\sigma)$. An estimate model $\hat{f}(X)$ can be computed in many different ways (e.g., using least squares calculations for linear regressions, Newton-Raphson, steepest descent, stochastic gradient descent, or other methods). Then, we can decompose the expected squared prediction error at $x$ as:	
+ 	
+$$E(x)=E[(Y-\hat{f}(x))^2] = \underbrace{\left ( E[\hat{f}(x)]-f(x) \right )^2}_{Bias^2} + 	
+\underbrace{E\left [\left (\hat{f}(x)-E[\hat{f}(x)] \right )^2 \right]}_{\text{precision (variance)}} + \underbrace{\sigma^2}_{\text{irreducible error (noise)}}.$$	
+
+When the true $Y$ vs. $X$ relation is not known, infinite data may be necessary to calibrate the model $\hat{f}$ and it may be impractical to jointly reduce both the model *bias* and *variance*. In general, minimizing the *bias* at the same time as minimizing the *variance* may not be possible.	
+ 	
+The figure below illustrates diagrammatically the dichotomy between *bias* and *precision* (variance), additional information is available in the [SOCR SMHS EBook](https://wiki.socr.umich.edu/index.php/SMHS_BiasPrecision).	
+ 	
+![](https://wiki.socr.umich.edu/images/d/dd/SMHS_BIAS_Precision_Fig_1_cg_07282014.png)	
+
+## Variable Selection	
+ 	
+Oftentimes, we are only interested in using a subset of the original features as model predictors. Thus, we need to identify the most relevant predictors, which usually capture the big picture of the process. This helps us avoid overly complex models that may be difficult to interpret. Typically, when considering several models that achieve similar results, it's natural to select the simplest of them.	
+ 	
+Linear regression does not directly determine the importance of features to predict a specific outcome. The problem of selecting critical predictors is therefore very important.	
+ 	
+Automatic feature subset selection methods should directly determine an optimal subset of variables. Forward or backward stepwise variable selection and forward stagewise are examples of classical methods for choosing the best subset by assessing various metrics like $MSE$, $C_p$, AIC, or BIC, see [Chapter 16](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/16_FeatureSelection.html).	
+ 	
+# Regularization Framework	
+ 	
+As before, we start with a given ${X}$ and look for a (linear) function, $f({X})=\sum_{j=1}^{p} {x_{j} \beta_j}$, to model or predict $y$ subject to certain objective cost function, e.g., squared error loss. Adding a second term to the cost function minimization process yields (model parameter) estimates expressed as:	
+ 	
+$$\hat{{\beta}}(\lambda) = \arg\min_{\beta} 	
+ \left\{\sum_{i=1}^n (y_i - \sum_{j=1}^{k} {x_{ij} \beta_j})^2 	
+ + \lambda J({\beta})\right\}$$	
+ 	
+In the above expression, $\lambda \ge 0$ is the regularization (tuning or penalty) parameter, $J({\beta})$ is a `user-defined penalty function` - typically, the intercept is not penalized.	
+  	
+## Role of the *Penalty Term*	
+ 	
+Consider $\arg\min J({\beta}) = \sum_{j=1}^k \beta_j^2 =\| {\beta} \|^2_2$ (Ridge Regression, *RR*).	
+ 	
+Then, the formulation of the regularization framework is:	
+$$\hat{{\beta}}(\lambda)^{RR} = \arg\min_{{\beta}} 	
+ \left\{\sum_{i=1}^n \left (y_i - \sum_{j=1}^{k} x_{ij} \beta_j\right )^2 + 	
+ \lambda \sum_{j=1}^k \beta_j^2 \right\}.$$	
+ 	
+Or, alternatively:	
+ 	
+$$\hat{{\beta}}(t)^{RR} = \arg\min_{{\beta}} 	
+ \sum_{i=1}^n \left (y_i - \sum_{j=1}^{k} x_{ij} \beta_j\right )^2, $$ 	
+subject to	
+$$\sum_{j=1}^k \beta_j^2 \le t .$$	
+ 	
+## Role of the *Regularization Parameter*	
+ 	
+The regularization parameter $\lambda\geq 0$ directly controls the bias-variance trade-off:	
+ 	
+* $\lambda = 0$ corresponds to OLS, and	
+* $\lambda \rightarrow \infty$ puts more weight on the penalty function and results in more shrinkage of the coefficients, i.e., we introduce bias at the sake of reducing the variance.	
+ 	
+The choice of $\lambda$ is crucial and will be discussed below as each $\lambda$ results in a different solution $\hat{{\beta}}(\lambda)$.  	
+ 	
+## LASSO	
+The LASSO (Least Absolute Shrinkage and Selection Operator) regularization relies on: 	
+$$\arg\min J({\beta}) = \sum_{j=1}^k |\beta_j| =  \| {\beta} \|_1,$$	
+which leads to the following objective function:	
+$$\hat{{\beta}}(\lambda)^{L} = \arg\min_{\beta} 	
+ \left\{\sum_{i=1}^n \left (y_i - \sum_{j=1}^{k} x_{ij} \beta_j\right )^2 + 	
+ \lambda \sum_{j=1}^k |\beta_j| \right\}.$$	
+ 	
+In practice, subtle changes in the penalty terms frequently lead to big differences of the results. Not only does the regularization term shrink coefficients towards zero, but it sets some of them to be exactly zero. Thus, it performs continuous variable selection, hence the name, Least Absolute Shrinkage and Selection Operator (LASSO).	
+ 	
+For further details, see the [Tibshirani's LASSO website](http://statweb.stanford.edu/~tibs/LASSO.html).	
+ 	
+## General Regularization Framework	
+ 	
+The general regularization framework involves optimization of a more general objective function:	
+ 	
+$$\min_{f \in {H}} \sum_{i=1}^n \left\{L(y_i, f(x_i)) + \lambda J(f)\right\}, $$	
+ 	
+where $\mathcal{H}$ is a space of possible functions, $L$ is the *fidelity term*, e.g., squared error, absolute error, zero-one, negative log-likelihood (GLM), hinge loss (support vector machines), and $J$ is the *regularizer*, e.g., [ridge regression, LASSO, adaptive LASSO, group LASSO, fused LASSO, thresholded LASSO, generalized LASSO, constrained LASSO, elastic-net, Dantzig selector, SCAD, MCP, smoothing splines](http://www.stat.cmu.edu/~ryantibs/papers/genlasso.pdf), etc. 	
+ 	
+This represents a very general and flexible framework that allows us to incorporate prior knowledge (sparsity, structure, etc.) into the model estimation.	
+ 	
+# Likelihood Ratio Test (LRT), False Discovery Rate (FDR), and Logistic Transform	
+ 	
+These two concepts will be important in the theoretical model development as well as applications we show below.	
+ 	
+## Likelihood Ratio Test (LRT)	
+ 	
+The Likelihood Ratio Test (LRT) compares the data fit of two models. For instance, removing predictor variables from a model may reduce the model quality (i.e., a model will have a lower log likelihood). To statistically assess whether the observed difference in model fit is significant, the LRT compares the difference of the log likelihoods of the two models. When this difference is statistically significant, the full model (the one with more variables) represents a better fit to the data, compared to the reduced model. LRT is computed using the log likelihoods ($ll$) of the two models:	
+ 	
+$$LRT = -2 \ln\left (\frac{L(m_1)}{L(m_2)}\right )  = 2(ll(m_2)-ll(m_1)), $$	
+where:	
+ 	
+* $m_1$ and $m_2$ are the reduced and the full models, respectively,	
+* $L(m_1)$ and $L(m_2)$ denote the likelihoods of the 2 models, and	
+* $ll(m_1)$ and $ll(m_2)$ represent the *log likelihood* (natural log of the model likelihood function).	
+ 	
+As $n\longrightarrow \infty$, the distribution of the LRT is asymptotically chi-squared with degrees of freedom equal to the number of parameters that are reduced (i.e., the number of variables removed from the model). In our case, $LRT \sim \chi_{df=2}^2$, as we have an intercept and one predictor (SE), and the null model is empty (no parameters).	
+ 	
+## False Discovery Rate (FDR)	
+ 	
+The FDR rate measures the performance of a test:	
+ 	
+$$\underbrace{FDR}_{\text{False Discovery Rate}} =\underbrace{E}_{\text{expectation}} \underbrace{\left( \frac{\# False Positives}{\text{total number of selected features}}\right )}_{\text{False Discovery Proportion}}.$$	
+
+The Benjamini-Hochberg (BH) FDR procedure involves ordering the p-values, specifying a target FDR, calculating and applying the threshold. Below we show how this is accomplished in R.	
+
+```{r}
+# List the p-values (these are typicaly computed by some statistical	
+# analysis, later these will be ordered from smallest to largest)	
+pvals <- c(0.9, 0.35, 0.01, 0.013, 0.014, 0.19, 0.35, 0.5, 0.63, 0.67, 0.75, 0.81, 0.01, 0.051)	
+length(pvals)	
+#enter the target FDR	
+alpha.star <- 0.05	
+	
+# order the p-values small to large	
+pvals <- sort(pvals); pvals	
+	
+#calculate the threshold for each p-value	
+# threshold[i] = alpha*(i/n), where i is the index of the ordered p-value	
+threshold <- alpha.star*(1:length(pvals))/length(pvals)	
+	
+# for each index, compare the p-value against its threshold and display the results	
+cbind(pvals, threshold, pvals<=threshold)
+```
+
+Starting with the smallest p-value and moving up, we find that the largest $k$ for which the corresponding p-value is less than its threshold, $\alpha^*$, which yields an index $\hat{k}=4$.	
+ 	
+Next, the algorithm rejects the null hypotheses for the tests that correspond to p-values with indices $k\leq \hat{k}=4$, i.e.,  se determine that $p_{(1)}, p_{(2)}, p_{(3)}, p_{(4)}$ survive FDR correction for multiple testing.	
+ 	
+*Note*: Since we controlled FDR at $\alpha^*=0.05$, we expect that on average only 5% of the tests that we rejected are spurious. In other words, of the FDR-corrected p-values, only about $\alpha^*=0.05$ are expected to represent false-positives, e.g., features chosen to be salient, that are in fact not really important.	
+ 	
+As a comparison, the *Bonferroni corrected* $\alpha$-value for these data is $\frac{0.05}{14} = 0.0036$. Note that Bonferroni coincides with the 1-st threshold value corresponding to the smallest p-value. If we had used this correction for multipe testing, then we would have concluded that *none* of our $14$ results were significant!	
+ 	
+### Graphical Interpretation of the Benjamini-Hochberg (BH) Method	
+ 	
+There's an intuitive graphical interpretation of the BH calculations. 	
+ 	
+* Sort the p-values from largest to smallest.	
+* Plot the ordered p-values $p_{(k)}$ on the y-axis versus their indices on the x-axis.	
+* Superimpose on this plot a line that passes through the origin and has slope $\alpha^*$.	
+ 	
+Any p-value that falls on or below this line corresponds to a significant result.	
+
+```{r}
+#generate the "relative-indices" (i/n) that will be plotted on the x-axis	
+x.values <- (1:length(pvals))/length(pvals)	
+	
+#widen right margin to make room for labels	
+par(mar=c(4.1, 4.1, 1.1, 4.1))	
+	
+#plot the points (relative-index vs. probability-values)	
+# we can also plot the y-axis on a log-scale to spread out the values	
+# plot(x.values, pvals, xlab=expression(i/n), ylab="log(p-value)", log = 'y')	
+plot(x.values, pvals, xlab=expression(i/n), ylab="p-value")	
+	
+#add FDR line	
+abline(a=0, b=0.05, col=2, lwd=2)	
+    	
+#add naive threshold line	
+abline(h=.05, col=4, lty=2)	
+    	
+#add Bonferroni-corrected threshold line	
+abline(h=.05/length(pvals), col=4, lty=2)	
+    	
+#label lines	
+mtext(c('naive', 'Bonferroni'), side=4, at=c(.05, .05/length(pvals)), las=1, line=0.2)	
+    	
+#select observations that are less than threshold	
+for.test <- cbind(1:length(pvals), pvals)	
+pass.test <- for.test[pvals <= 0.05*x.values, ]	
+pass.test	
+	
+#use largest k to color points that meet Benjamini-Hochberg FDR test	
+last<-ifelse(is.vector(pass.test), pass.test[1], pass.test[nrow(pass.test), 1])	
+points(x.values[1:last], pvals[1:last], pch=19, cex=1.5)
+```
+
+### FDR adjusting the p-values	
+ 	
+R can automatically performs the Benjamini-Hochberg procedure. The adjusted p-values are obtained by	
+
+```{r}
+pvals.adjusted <- p.adjust(pvals, "BH")	
+pvals.adjusted
+```
+
+The adjusted p-values indicate the corresponding null hypothesis we need to reject to preserve the initial $\alpha^*$ false-positive rate. We can also compute the adjusted p-values as follows:	
+
+```{r}
+# manually calculate the thresholds for hte ordered p-values list	
+test.p <- length(pvals)/(1:length(pvals))*pvals   # test.p	
+	
+# loop through each p-value and carry out the manual FDR adjustment for multipel testing	
+adj.p <- numeric(14)	
+for(i in 1:14) {	
+    adj.p[i] <- min(test.p[i:length(test.p)])	
+    ifelse(adj.p[i] > 1, 1, adj.p[i])	
+}	
+adj.p
+```
+
+Note that the manually computed (`adj.p`) and the automatically computed (`pvals.adjusted`) adjusted-p-values are the same.	
+ 	
+## Logistic Transformation	
+ 	
+For **binary outcome variables**, or **ordinal categorical variables**, we may need to employ the `logistic curve` to transform the polytomous outcomes into real values.	
+ 	
+The Logistic curve is $y=f(x)=  \frac{1}{1+e^{-x}}$, 	
+where y and x represent probability and quantitative-predictor values, respectively. A slightly more general form is: $y=f(x)=  \frac{K}{1+e^{-x}}$, where the covariate $x \in (-\infty, \infty)$ and the response $y \in [0, K]$. For example, 	
+
+```{r}
+library("ggplot2")	
+k=7	
+x <- seq(-10, 10, 1)	
+plot(x, k/(1+exp(-x)), xlab="X-axis (Covariate)", ylab="Outcome k/(1+exp(-x)), k=7", type="l")	
+```
+
+The point of this logistic transformation is that:	
+$$y=  \frac{1}{1+e^{-x}} \Longleftrightarrow x=\ln\frac{y}{1-y},$$	
+which represents the `log-odds` (when $y$ is the probability of an event of interest)!!!	
+ 	
+We use the logistic regression equation model to estimate the probability of specific outcomes:	
+ 	
+(Estimate of)$P(Y=1| x_1, x_2, ., x_l)=  \frac{1}{1+e^{-(a_o+\sum_{k=1}^l{a_k x_k })}}$, 	
+where the coefficients $a_o$ (intercept) and effects $a_k, k = 1, 2, ..., l$, are estimated using GLM according to a maximum likelihood approach. Using this model allows us to estimate the probability of the dependent (clinical outcome) variable $Y=1$ (CO), i.e., surviving surgery, given the observed values of the predictors $X_k, k = 1, 2, ..., l$.	
+ 	
+### Example: Heart Transplant Surgery	
+ 	
+Let's look at an example of estimating the **probability of surviving a heart transplant based on surgeon's experience**. Suppose a group of 20 patients undergo heart transplantation with different surgeons having experience in the range {0(least), 2, ..., 10(most)}, representing 100's of operating/surgery hours. How does the surgeon's experience affect the probability of the patient survival?	
+ 	
+The data below shows the outcome of the surgery (1=survival) or (0=death) according to the surgeons' experience in 100's of hours of practice.	
+ 	
+Surgeon's Experience (SE) | 1 | 1.5 | 2 | 2.5 | 3 | 3.5 | 3.5 | 4 | 4.5 | 5 | 5.5 | 6 | 6.5 | 7 | 8 | 8.5 | 9 | 9.5 | 10 | 10	
+----------------------|---|-----|---|-----|---|-----|-----|---|-----|---|-----|---|-----|---|---|-----|---|-----|----|---	
+Clinical Outcome (CO) | 0 | 0   | 0 | 0   | 0 | 0   | 1   | 0 | 1   | 0 | 1   | 0 | 1   | 0 | 1 | 1   | 1 | 1   | 1  | 1	
+
+```{r}
+mydata <- read.csv("https://umich.instructure.com/files/405273/download?download_frd=1")  # 01_HeartSurgerySurvivalData.csv	
+# estimates a logistic regression model for the clinical outcome (CO), survival, using the glm 	
+# (generalized linear model) function. 	
+# convert Surgeon's Experience (SE) to a factor to indicate it should be treated as a categorical variable.	
+# mydata$rank <- factor(mydata$SE)	
+mylogit <- glm(CO ~ SE, data = mydata, family = "binomial")	
+	
+# library(ggplot2)	
+ggplot(mydata, aes(x=SE, y=CO)) + geom_point() + 	
+  	stat_smooth(method="glm", method.args=list(family = "binomial"), se=FALSE)
+```
+
+Graph of a logistic regression curve showing probability of surviving the surgery versus surgeon's experience.	
+ 	
+The graph shows the probability of the clinical outcome, survival, (Y-axis) versus the surgeon's experience (X-axis), with the logistic regression curve fitted to the data.	
+
+```{r}
+mylogit <- glm(CO ~ SE, data = mydata, family = "binomial")	
+summary(mylogit)
+```
+The output indicates that surgeon's experience (SE) is significantly associated with the probability of surviving the surgery (0.0157, Wald test). The output also provides the coefficients for:	
+ 	
+* Intercept = -4.1030 and  SE = 0.7583.	
+ 	
+These coefficients can then be used in the logistic regression equation model to estimate the probability of surviving the heart surgery:	
+ 	
+Probability of surviving heart surgery $CO =1/(1+exp(-(-4.1030+0.7583\times SE)))$	
+ 	
+For example, for a patient who is operated by a surgeon with 200 hours of operating experience (SE=2), we plug in the value 2 in the equation to get an estimated probability of survival, $p=0.07$:
+
+```{r}
+SE=2	
+CO =1/(1+exp(-(-4.1030+0.7583*SE)))	
+CO
+```
+
+Similarly, a patient undergoing heart surgery with a doctor that has 400 operating hours experience (SE=4), the estimated probability of survival is p=0.26:	
+
+```{r}
+SE=4; CO =1/(1+exp(-(-4.1030+0.7583*SE))); CO	
+CO	
+	
+for (SE in c(1:5)) {	
+  CO <- 1/(1+exp(-(-4.1030+0.7583*SE))); 	
+  print(c(SE, CO))	
+}
+```
+
+The table below shows the probability of surviving surgery for several values of surgeons' experience.	
+ 	
+Surgeon's Experience (SE) | Probability of patient survival (Clinical Outcome)	
+----------------------|---------------------------------------------------	
+1                     | 0.034	
+2                     | 0.07	
+3                     | 0.14	
+4                     | 0.26	
+5                     | 0.423	
+	
+The output from the logistic regression analysis gives a p-value of $p=0.0157$, which is based on the Wald z-score. In addition to the Wald method, we can calculate the p-value for logistic regression using the Likelihood Ratio Test (LRT), which for these data yields $0.0006476922$.	
+
+```{r}
+mylogit <- glm(CO ~ SE, data = mydata, family = "binomial")	
+summary(mylogit)
+```
+
+.  | Estimate  | Std. Error  | z value | $Pr(\gt|z|)$ Wald 	
+---|-----------|-------------|---------|--------------	
+SE | 0.7583    | 0.3139      | 2.416   | 0.0157 *	
+	
+The *logit* of a number $0\leq p\leq 1$ is given by the formula: $logit(p)=log\frac{p}{1-p}$, and represents the log-odds ratio (of survival in this case).	
+```{r}
+confint(mylogit)
+```
+
+So, why `exponentiating the coefficients`? Because, 	
+	
+$$logit(p)=log\frac{p}{1-p} \longrightarrow e^{logit(p)} =e^{log\frac{p}{1-p}}\longrightarrow RHS=\frac{p}{1-p}, \ 	
+\text{(odds-ratio, OR)}.$$
+
+```{r}
+exp(coef(mylogit)) 	  # exponentiated logit model coefficients
+```
+
+ + exp(coef(mylogit))	
+ 	
+(Intercept) | SE 	
+------------|----	
+0.01652254  | 2.13474149 == exp(0.7583456)	
+	
+ +  coef(mylogit)    	# raw logit model coefficients 	
+	
+(Intercept) | 	SE 	
+------------|------	
+-4.1030298 |	0.7583456	
+
+```{r}
+exp(cbind(OR = coef(mylogit), confint(mylogit)))
+```
+
+ .         | OR          | 2.5%          | 97.5%      	
+------------|-------------|---------------|---------	
+(Intercept) | 0.01652254  | 0.0001825743  | 0.277290	
+SE          | 2.13474149  | 1.3083794719  | 4.839986	
+	
+We can compute the LRT and report its p-value by using the `with()` function:	
+	
+`with(mylogit, df.null - df.residual)`
+
+```{r}
+with(mylogit, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = FALSE))	
+# mylogit$null.deviance - mylogit$deviance  # 11.63365	
+# mylogit$df.null - mylogit$df.residual   # 1	
+# [1] 0.0006476922	
+	
+# CONFIRM THE RESULT	
+# qchisq(1-with(mylogit, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = FALSE)), 1)	
+# qchisq(1-0.0006476922, 1)
+```
+
+LRT p-value < 0.001 tells us that our model as a whole fits significantly better than an empty model. The deviance residual `mylogit$deviance` is `-2*log likelihood`, and we can report the model's log likelihood by:	
+
+```{r}
+mylogit$deviance   # model residual diviance	
+	
+-2*logLik(mylogit) # -2 * model_ll
+```
+
+# Implementation of Regularization	
+	
+Before we dive into the theoretical formulation of model regularization, let's start with a specific application that will ground the subsequent analytics.	
+	
+## Example: Neuroimaging-genetics study of Parkinson's Disease Dataset	
+	
+More information about this specific study and the included derived [neuroimaging biomarkers is available here](https://wiki.socr.umich.edu/index.php/SOCR_Data_PD_BiomedBigMetadata). A link to the data and a brief summary of the features are included below:	
+	
+- [05_PPMI_top_UPDRS_Integrated_LongFormat1.csv](https://umich.instructure.com/files/330397/download?download_frd=1)	
+- Data elements include: FID_IID, L_insular_cortex_ComputeArea, L_insular_cortex_Volume, R_insular_cortex_ComputeArea, R_insular_cortex_Volume, L_cingulate_gyrus_ComputeArea, L_cingulate_gyrus_Volume, R_cingulate_gyrus_ComputeArea, R_cingulate_gyrus_Volume, L_caudate_ComputeArea, L_caudate_Volume, R_caudate_ComputeArea, R_caudate_Volume, L_putamen_ComputeArea, L_putamen_Volume, R_putamen_ComputeArea, R_putamen_Volume, Sex, Weight, ResearchGroup, Age, chr12_rs34637584_GT, chr17_rs11868035_GT, chr17_rs11012_GT, chr17_rs393152_GT, chr17_rs12185268_GT, chr17_rs199533_GT, UPDRS_part_I, UPDRS_part_II, UPDRS_part_III, time_visit	
+	
+Note that the dataset includes missing values and repeated measures.	
+	
+The *goal* of this demonstration is to use `OLS`, `ridge regression`, and `LASSO` to **find the best predictive model for the clinical outcomes** -- UPRDR score (vector) and Research Group (factor variable), in terms of demographic, genetics, and neuroimaging biomarkers.	
+	
+We can utilize the `glmnet` package in R for most calculations.	
+
+```{r}
+#### Initial Stuff ####	
+# clean up	
+rm(list=ls())	
+# load required packages	
+# install.packages("arm")	
+library(glmnet)	
+library(arm)	
+library(knitr) #  kable function to convert tabular R-results into Rmd tables	
+# pick a random seed, but set.seed(seed) only effects next block of code!	
+seed = 1234	
+	
+#### Organize Data ####	
+# load dataset	
+# Data: https://umich.instructure.com/courses/38100/files/folder/data  	
+# (05_PPMI_top_UPDRS_Integrated_LongFormat1.csv)	
+data1 <- read.table('https://umich.instructure.com/files/330397/download?download_frd=1', sep=",", header=T)    	
+# we will deal with missing values using multiple imputation later. For now, let's just ignore incomplete cases	
+data1.completeRowIndexes <- complete.cases(data1); table(data1.completeRowIndexes)	
+prop.table(table(data1.completeRowIndexes))	
+attach(data1)	
+# View(data1[data1.completeRowIndexes, ])	
+	
+# define response and predictors	
+y <- data1$UPDRS_part_I + data1$UPDRS_part_II + data1$UPDRS_part_III	
+table(y)   # Show Clinically relevant classification	
+y <- y[data1.completeRowIndexes]	
+	
+# X = scale(data1[,])  # Explicit Scaling is not needed, as glmnet auto standardizes predictors	
+# X = as.matrix(data1[, c("R_caudate_Volume", "R_putamen_Volume", "Weight", "Age", "chr17_rs12185268_GT")])  # X needs to be a matrix, not a data frame	
+drop_features <- c("FID_IID", "ResearchGroup", "PDRS_part_I", "UPDRS_part_II", "UPDRS_part_III")	
+X <- data1[ , !(names(data1) %in% drop_features)]	
+X = as.matrix(X)   # remove columns: index, ResearchGroup, and y=(PDRS_part_I + UPDRS_part_II + UPDRS_part_III)	
+X <- X[data1.completeRowIndexes, ]	
+summary(X)	
+	
+# randomly split data into training (80%) and test (20%) sets	
+set.seed(seed)	
+train = sample(1 : nrow(X), round((4/5) * nrow(X)))	
+test = -train	
+	
+# subset training data	
+yTrain = y[train]	
+XTrain = X[train, ]	
+XTrainOLS = cbind(rep(1, nrow(XTrain)), XTrain)	
+  	
+# subset test data	
+yTest = y[test]	
+XTest = X[test, ]	
+	
+#### Model Estimation & Selection ####	
+# Estimate models	
+fitOLS = lm(yTrain ~ XTrain)  # Ordinary Least Squares	
+# glmnet automatically standardizes the predictors	
+fitRidge = glmnet(XTrain, yTrain, alpha = 0)  # Ridge Regression	
+fitLASSO = glmnet(XTrain, yTrain, alpha = 1)  # The LASSO
+```
+
+Readers are encouraged to compare and contract the resulting *ridge* and *LASSO* models.	
+	
+## Computational Complexity	
+	
+Recall that the regularized regression estimates depend on the regularization parameter $\lambda$. Fortunately, efficient algorithms for choosing optimal $\lambda$ parameters do exist. Examples of solution path algorithms include:	
+	
+* [LARS Algorithm for the LASSO](http://projecteuclid.org/euclid.aos/1083178935) (Efron et al., 2004)	
+* [Piecewise linearity](http://www.jstor.org/stable/25463590?seq=1#page_scan_tab_contents) (Rosset & Zhu, 2007)	
+* [Generic path algorithm](http://dx.doi.org/10.1080/01621459.2013.864166) (Zhou & Wu, 2013)	
+* [Pathwise coordinate descent](http://projecteuclid.org/euclid.aoas/1196438020) (Friedman et al., 2007)	
+* [Alternating Direction Method of Multipliers (ADMM)](https://doi.org/10.1561/2200000016) (Boyd et al. 2011)	
+	
+We will show how to visualize the relations between the regularization parameter ($\ln(\lambda)$) and the number and magnitude of the corresponding coefficients for each specific regularized regression method.	
+	
+## LASSO and Ridge Solution Paths	
+	
+The plot for the *LASSO* results can be obtained via:	
+
+```{r}
+### Plot Solution Path ###	
+# LASSO	
+plot(fitLASSO, xvar="lambda", label="TRUE")	
+# add label to upper x-axis	
+mtext("LASSO regularizer: Number of Nonzero (Active) Coefficients", side=3, line=2.5)
+```
+
+Similarly, the plot for the *Ridge* regularization can be obtained by:
+
+```{r}
+### Plot Solution Path ###	
+# Ridge	
+plot(fitRidge, xvar="lambda", label="TRUE")	
+# add label to upper x-axis	
+mtext("Ridge regularizer: Number of Nonzero (Active) Coefficients", side=3, line=2.5)
+```
+
+## Regression Solution Paths - Ridge vs. LASSO	
+	
+Let's try to compare the paths of the *LASSO* and *Ridge* regression solutions. Below, you will see that the curves of LASSO are steeper and non-differentiable at some points, which is the result of using the $L_1$ norm. On the other hand, the Ridge path is smoother and asymptotically tends to $0$ as $\lambda$ increases.	
+	
+Let's start by examining the joint objective function (including LASSO and Ridge terms):	
+	
+$$\min_\beta \left (\sum_i (y_i-x_i\beta)^2+\frac{1-\alpha}{2}||\beta||_2^2+\alpha||\beta||_1	
+\right ),$$	
+	
+where $||\beta||_1 = \sum_{j=1}^{p}|\beta_j|$ and $||\beta||_2 = \sqrt{\sum_{j=1}^{p}||\beta_j||^2}$ are the norms of $\boldsymbol\beta$ corresponding to the $L_1$ and $L_2$ distance measures, respectively. When $\alpha=0$ and $\alpha=1$ correspond to *Ridge* and *LASSO* regularization. The following two natural questions raise:	
+	
+* What if $0 <\alpha<1$?	
+* How does the regularization penalty term affect the optimal solution?	
+	
+[In Chapter 9](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/09_RegressionForecasting.html), we explored the minimal SSE (Sum of Square Error) for the OLS (without penalty) where the feasible parameter ($\beta$) spans the entire real solution space. In penalized optimization problems, the best solution may actually be unachievable. Therefore, we look for solutions that are "closest", within the feasible region, to the enigmatic best solution.	
+	
+The effect of the penalty term on the objective function is separate from the *fidelity term* (OLS solution). Thus, the effect of $0\leq \alpha \leq 1$ is limited to the **size and shape of the penalty region**. Let's try to visualize the feasible region as:	
+	
+* centrosymmetric topology, when $\alpha=0$, and	
+* super diamond topology, then $\alpha=1$.	
+	
+Below is a hands-on demonstration of that process using the following simple quadratic equation solver.	
+
+```{r}
+require(needs)	
+	
+# Constructing Quadratic Formula	
+quadraticEquSolver <- function(a,b,c){	
+  if(delta(a,b,c) > 0){ # first case D>0	
+    x_1 = (-b+sqrt(delta(a,b,c)))/(2*a)	
+    x_2 = (-b-sqrt(delta(a,b,c)))/(2*a)	
+    result = c(x_1,x_2)	
+    # print(result)	
+  }	
+  else if(delta(a,b,c) == 0){ # second case D=0	
+    result = -b/(2*a)	
+    # print(result)	
+  }	
+  else {"There are no real roots."} # third case D<0	
+}	
+# Constructing delta	
+delta<-function(a,b,c){	
+  b^2-4*a*c	
+}
+```
+
+To make this realistic, we will use the [MLB dataset](https://umich.instructure.com/files/330381/download?download_frd=1) to first fit an OLS model. The dataset contains $1,034$ records of *heights and weights* for some current and recent Major League Baseball (MLB) Players. 	
+	
+* *Height*: Player height in inch,	
+* *Weight*: Player weight in pounds,	
+* *Age*: Player age at time of record.	
+	
+Then, we can obtain the SSE for any $||\boldsymbol\beta||$:	
+	
+$$SSE = ||Y-\hat Y||^2 = (Y-\hat Y)^{T}(Y-\hat Y)=Y^TY - 2\beta^TX^TY + \beta^TX^TX\beta.$$	
+
+Next, we will compute the contours for SSE in several situations.
+
+```{r}
+library("ggplot2")	
+# load data	
+mlb<- read.table('https://umich.instructure.com/files/330381/download?download_frd=1', as.is=T, header=T)	
+str(mlb)	
+fit<-lm(Height~Weight+Age-1, data = as.data.frame(scale(mlb[,4:6])))	
+points = data.frame(x=c(0,fit$coefficients[1]),y=c(0,fit$coefficients[2]),z=c("(0,0)","OLS Coef"))	
+	
+Y = scale(mlb$Height)	
+X = scale(mlb[,c(5,6)])	
+beta1 = seq(-0.556, 1.556, length.out = 100)	
+beta2 = seq(-0.661, 0.3386, length.out = 100)	
+df <- expand.grid(beta1 = beta1, beta2 = beta2)	
+b = as.matrix(df)	
+df$sse <- rep(t(Y)%*%Y,100*100) - 2*b%*%t(X)%*%Y + diag(b%*%t(X)%*%X%*%t(b))
+```
+
+```{r}
+base <- ggplot(df) + 	
+  stat_contour(aes(beta1, beta2, z = sse),
+               breaks = round(quantile(df$sse, seq(0, 0.2, 0.03)), 0), 	
+               size = 0.5,color="darkorchid2",alpha=0.8)+ 	
+  scale_x_continuous(limits = c(-0.4,1))+	
+  scale_y_continuous(limits = c(-0.55,0.4))+	
+  coord_fixed(ratio=1)+	
+  geom_point(data = points,aes(x,y))+	
+  geom_text(data = points,aes(x,y,label=z),vjust = 2,size=3.5)+	
+  geom_segment(aes(x = -0.4, y = 0, xend = 1, yend = 0),colour = "grey46",	
+               arrow = arrow(length=unit(0.30,"cm")),size=0.5,alpha=0.8)+	
+  geom_segment(aes(x = 0, y = -0.55, xend = 0, yend = 0.4),colour = "grey46",	
+               arrow = arrow(length=unit(0.30,"cm")),size=0.5,alpha=0.8)
+```
+
+```{r}
+plot_alpha = function(alpha=0,restrict=0.2,beta1_range=0.2,annot=c(0.15,-0.25,0.205,-0.05)){	
+  a=alpha; t=restrict; k=beta1_range; pos=data.frame(V1=annot[1:4])	
+  tex=paste("(",as.character(annot[3]),",",as.character(annot[4]),")",sep = "")	
+  K = seq(0,k,length.out = 50)	
+  y = unlist(lapply((1-a)*K^2/2+a*K-t, quadraticEquSolver,	
+                    a=(1-a)/2,b=a))[seq(1,99,by=2)]	
+  fills = data.frame(x=c(rev(-K),K), y1=c(rev(y),y), y2=c(-rev(y),-y))	
+  p<-base+geom_line(data=fills,aes(x = x,y = y1),colour = "salmon1",alpha=0.6,size=0.7)+	
+    geom_line(data=fills,aes(x = x,y = y2),colour = "salmon1",alpha=0.6,size=0.7)+	
+    geom_polygon(data = fills, aes(x, y1),fill = "red", alpha = 0.2)+	
+    geom_polygon(data = fills, aes(x, y2), fill = "red", alpha = 0.2)+	
+    geom_segment(data=pos,aes(x = V1[1] , y = V1[2], xend = V1[3], yend = V1[4]),	
+                 arrow = arrow(length=unit(0.30,"cm")),alpha=0.8,colour = "magenta")+	
+    ggplot2::annotate("text", x = pos$V1[1]-0.01, y = pos$V1[2]-0.11,	
+                      label = paste(tex,"\n","Point of Contact \n i.e., Coef of", "alpha=",fractions(a)),size=3)+	
+    xlab(expression(beta[1]))+	
+    ylab(expression(beta[2]))+	
+    ggtitle(paste("alpha =",as.character(fractions(a))))+	
+    theme(legend.position="none")	
+}
+```
+
+```{r}
+# $\alpha=0$ - Ridge	
+p1 <- plot_alpha(alpha=0,restrict=(0.21^2)/2,beta1_range=0.21,annot=c(0.15,-0.25,0.205,-0.05))	
+p1 <- p1 + ggtitle(expression(paste(alpha, "=0 (Ridge)")))	
+# $\alpha=1/9$	
+p2 <- plot_alpha(alpha=1/9,restrict=0.046,beta1_range=0.22,annot =c(0.15,-0.25,0.212,-0.02))	
+p2 <- p2 + ggtitle(expression(paste(alpha, "=1/9")))	
+# $\alpha=1/5$	
+p3 <- plot_alpha(alpha=1/5,restrict=0.063,beta1_range=0.22,annot=c(0.13,-0.25,0.22,0))	
+p3 <- p3 + ggtitle(expression(paste(alpha, "=1/5")))	
+# $\alpha=1/2$	
+p4 <- plot_alpha(alpha=1/2,restrict=0.123,beta1_range=0.22,annot=c(0.12,-0.25,0.22,0))	
+p4 <- p4 + ggtitle(expression(paste(alpha, "=1/2")))	
+# $\alpha=3/4$	
+p5 <- plot_alpha(alpha=3/4,restrict=0.17,beta1_range=0.22,annot=c(0.12,-0.25,0.22,0))	
+p5 <- p5 + ggtitle(expression(paste(alpha, "=3/4")))
+```
+
+```{r}
+# $\alpha=1$ - LASSO	
+t=0.22	
+K = seq(0,t,length.out = 50)	
+fills = data.frame(x=c(-rev(K),K),y1=c(rev(t-K),c(t-K)),y2=c(-rev(t-K),-c(t-K)))	
+p6 <- base + 	
+  geom_segment(aes(x = 0, y = t, xend = t, yend = 0),colour = "salmon1",alpha=0.1,size=0.2)+	
+  geom_segment(aes(x = 0, y = t, xend = -t, yend = 0),colour = "salmon1",alpha=0.1,size=0.2)+	
+  geom_segment(aes(x = 0, y = -t, xend = t, yend = 0),colour = "salmon1",alpha=0.1,size=0.2)+	
+  geom_segment(aes(x = 0, y = -t, xend = -t, yend = 0),colour = "salmon1",alpha=0.1,size=0.2)+	
+  geom_polygon(data = fills, aes(x, y1),fill = "red", alpha = 0.2)+	
+  geom_polygon(data = fills, aes(x, y2), fill = "red", alpha = 0.2)+	
+  geom_segment(aes(x = 0.12 , y = -0.25, xend = 0.22, yend = 0),colour = "magenta",	
+               arrow = arrow(length=unit(0.30,"cm")),alpha=0.8)+	
+  ggplot2::annotate("text", x = 0.11, y = -0.36,	
+                    label = "(0.22,0)\n Point of Contact \n i.e Coef of LASSO",size=3)+	
+  xlab( expression(beta[1]))+	
+  ylab( expression(beta[2]))+	
+  theme(legend.position="none")+  	
+  ggtitle(expression(paste(alpha, "=1 (LASSO)")))
+```
+
+Then, let's add the six feasible regions corresponding to $\alpha=0$ (Ridge), $\alpha=\frac{1}{9}$, $\alpha=\frac{1}{5}$, $\alpha=\frac{1}{2}$, $\alpha=\frac{3}{4}$ and $\alpha=1$ (LASSO).	
+	
+This figure provides some intuition into the continuum from Ridge to LASSO regularization. The feasible regions are drawn as ellipse contours of the SSE in *red*. Curves around the corresponding feasible regions represent the *boundary of the constraint function* $\frac{1-\alpha}{2}||\beta||_2^2+\alpha||\beta||_1\leq t$.	
+	
+In this example, $\beta_2$ shrinks to $0$ for $\alpha=\frac{1}{5}$, $\alpha=\frac{1}{2}$, $\alpha=\frac{3}{4}$ and $\alpha=1$.	
+	
+We observe that it is almost impossible for the contours of Ridge regression to touch the circle at any of the coordinate axes. This is also true in higher dimensions ($nD$), where the $L_1$ and $L_2$ metrics are unchanged and the 2D ellipse representations of the feasibility regions become hyper-ellipsoidal shapes.	
+	
+Generally, as $\alpha$ goes from $0$ to $1$. The coefficients of more features tend to shrink towards $0$. This specific property makes LASSO useful for variable selection.	
+	
+By Lagrangian duality, any solution of $\min_\beta {||Y-X\beta||^2_2} +\lambda ||\beta||_2$ and $\min_\beta {||Y-X\beta||^2_1} +\lambda ||\beta||_1$ must also represent a solution to the corresponding Ridge ($\hat{\beta}^{RR}$) or LASSO ($\hat{\beta}^{L}$) optimization problems:	
+	
+$$\min_\beta {||Y-X\beta||^2_2},\ \ \text{subject to}\ \ ||\beta||_2 \leq||\hat{\beta}^{RR}||_2, $$	
+$$\min_\beta {||Y-X\beta||^2_2},\ \ \text{subject to}\ \ ||\beta||_1 \leq ||\hat{\beta}^{L}||_1, $$	
+
+Suppose we actually know hte value of $||\hat{\beta}^{RR}||_2$ and $||\hat{\beta}^{L}||_1$, then we can pictorialy represent the optimizaiton problem and illstrate the complementary model-fitting, variable selection and shrinkage of the Ridge and LASSO regularization.	
+	
+The topologies of the solution (*domain*) regions are dfferent for Ridge and LASSO. Ridge regularization corresponds with ball topology and LASSO with diamond topology. This is because the solution regions are defined by $||\hat{\beta}||_2\leq ||\hat{\beta}^{RR}||_2$ and $||\hat{\beta}||_1\leq ||\hat{\beta}^{L}||_1$, respectively.	
+	
+On the other hand, the topology of the *fidelity term* $||Y-X\beta||^2_2$ is elipsoidal, centered at the OLS estimate,  $\hat{\beta}^{OLS}$. To solve the optimizaiton problem, 	
+we look for the tightest contour around $\hat{\beta}^{OLS}$ that hits the solution domain (ball for Ridge or diamond for LASSO). This intersection point would represent the solution estimate $\hat{\beta}$.  As the LASSO domain space ($l_1$ unit ball) has these corners, the solution estimate $\hat{\beta}$ is likely to be at the corners. Hence LASSO solutions tend to inlcude many zeroes, whereas Ridge regression solutions (constraint set is a round ball) may not.	
+	
+Let's compare the feasibility regions corresponding to *Ridge* (top, $p1$) and *LASSO* (bottom, $p6$) regularization.	
+
+```{r}
+plot(p1)
+```
+
+```{r}
+plot(p6)
+```
+
+Then, we can plot the *progression* from Ridge to LASSO.	
+(This composite *plot is intense* and may take several minutes to render!)
+
+```{r}
+library("gridExtra")	
+grid.arrange(p1,p2,p3,p4,p5,p6,nrow=3)
+```
+
+## Choice of the Regularization Parameter	
+	
+Efficiently obtaining the entire solution path is nice, but we still have to choose a specific $\lambda$ regularization parameter. This is critical as $\lambda$ `controls the bias-variance tradeoff`.	
+	
+Traditional model selection methods rely on various metrics like [Mallows' $C_p$](https://en.wikipedia.org/wiki/Mallows%27s_Cp), [AIC](https://en.wikipedia.org/wiki/Akaike_information_criterion), [BIC](https://en.wikipedia.org/wiki/Bayesian_information_criterion), and adjusted $R^2$.	
+	
+Internal statistical validation (Cross validation) is a popular modern alternative, which offers some of these benefits:	
+	
+* Choice is based on predictive performance,	
+* Makes fewer model assumptions,	
+* More widely applicable.	
+	
+## Cross Validation Motivation	
+	
+Ideally, we would like a separate validation set for choosing $\lambda$ for a given method. Reusing training sets may encourage overfitting and using testing data to pick $\lambda$ may underestimates the true error rate. Often, when we do not have enough data for a separate validation set, cross validation provides an alternative strategy.	
+	
+## $n$-Fold Cross Validation	
+	
+We have already seen examples of using cross-validation, e.g., [Chapter 13](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/13_ModelEvaluation.html), and [Chapter 20](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/20_PredictionCrossValidation.html) provides more details about this internal statistical assessment strategy. 	
+	
+We can use either automated or manual cross-validation. In either case, the protocol involves the following iterative steps:	
+	
+1. Randomly split the training data into $n$ parts ("folds").	
+2. Fit a model using data in $n-1$ folds for multiple $\lambda\text{s}$.	
+3. Calculate some prediction quality metrics (e.g., MSE, accuracy) on the last remaining fold, see [Chapter 13](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/13_ModelEvaluation.html).	
+4. Repeat the process and average the prediction metrics across iterations.	
+	
+Common choices of $n$ are 5, 10, and $n$ (which corresponds to `leave-one-out` CV). One standard error rule is to choose $\lambda$ corresponding to smallest model with MSE within one standard error of the minimum MSE.	
+	
+## LASSO 10-Fold Cross Validation	
+
+Now, let's apply an internal statistical cross-validation to assess the quality of the LASSO and Ridge models, based on our Parkinson's disease case-study. Recall our split of the PD data into training (yTrain, XTrain) and testing (yTest, XTest) sets.	
+
+```{r}
+#### 10-fold cross validation ####	
+# LASSO	
+library("glmnet")	
+library(doParallel)	
+cl <- makePSOCKcluster(6)	
+registerDoParallel(cl)	
+set.seed(seed)  # set seed 	
+# (10-fold) cross validation for the LASSO	
+cvLASSO = cv.glmnet(XTrain, yTrain, alpha = 1, parallel=TRUE)	
+plot(cvLASSO)	
+mtext("CV LASSO: Number of Nonzero (Active) Coefficients", side=3, line=2.5)	
+	
+# Report MSE LASSO	
+predLASSO <-  predict(cvLASSO, s = cvLASSO$lambda.1se, newx = XTest)	
+testMSE_LASSO <- mean((predLASSO - yTest)^2); testMSE_LASSO
+```
+
+```{r}
+#### 10-fold cross validation ####	
+# Ridge Regression	
+set.seed(seed)  # set seed 	
+# (10-fold) cross validation for Ridge Regression	
+cvRidge = cv.glmnet(XTrain, yTrain, alpha = 0, parallel=TRUE)	
+plot(cvRidge)	
+mtext("CV Ridge: Number of Nonzero (Active) Coefficients", side=3, line=2.5)	
+	
+# Report MSE Ridge	
+predRidge <-  predict(cvRidge, s = cvRidge$lambda.1se, newx = XTest)	
+testMSE_Ridge <- mean((predRidge - yTest)^2); testMSE_Ridge	
+stopCluster(cl)
+```
+
+Note that the `predict()` method applied to `cv.gmlnet` or `glmnet` forecasting models is effectively a function wrapper to `predict.gmlnet()`. According to what you would like to get as a **prediction output**, you can use `type="..."` to specify one of the following types of prediction outputs:	
+	
+* `type="link"`, reports the linear predictors for "binomial", "multinomial", "poisson" or "cox" models; for "gaussian" models it gives the fitted values. 	
+* `type="response"`, reports the fitted probabilities for "binomial" or "multinomial", fitted mean for "poisson" and the fitted relative-risk for "cox"; for "gaussian" type "response" is equivalent to type "link". 	
+* `type="coefficients"`, reports the coefficients at the requested values for `s`. Note that for "binomial" models, results are returned only for the class corresponding to the second level of the factor response. 	
+* `type="class"`, applies only to "binomial" or "multinomial" models, and produces the class label corresponding to the maximum probability. 	
+* `type="nonzero"`, returns a list of the indices of the nonzero coefficients for each value of `s`.	
+	
+## Stepwise OLS (ordinary least squares)	
+	
+For a fair comparison, let's also obtain an OLS stepwise model selection, see [Chapter 16](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/16_FeatureSelection.html).	
+
+```{r}
+dt = as.data.frame(cbind(yTrain,XTrain))	
+ols_step <- lm(yTrain ~., data = dt)	
+ols_step <- step(ols_step, direction = 'both', k=2, trace = F)	
+summary(ols_step)
+```
+
+We use `direction=both` for both *forward* and *backward* selection and choose the optimal one. `k=2` specifies AIC and BIC criteria, and you can choose $k\sim \log(n)$.	
+	
+Then, we use the `ols_step` model to predict the outcome $Y$ for some new test data.	
+
+```{r}
+betaHatOLS_step = ols_step$coefficients	
+var_step <- colnames(ols_step$model)[-1]	
+XTestOLS_step = cbind(rep(1, nrow(XTest)), XTest[,var_step])	
+predOLS_step = XTestOLS_step%*%betaHatOLS_step 	
+testMSEOLS_step = mean((predOLS_step - yTest)^2)	
+# Report MSE OLS Stepwise feature selection	
+testMSEOLS_step
+```
+
+Alternatively, we can predict the outcomes directly using the `predict()` function, and the results should be identical:	
+
+```{r}
+pred2 <- predict(ols_step,as.data.frame(XTest))	
+any(pred2 == predOLS_step)
+```
+
+
+
