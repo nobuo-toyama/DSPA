@@ -1046,5 +1046,326 @@ pred2 <- predict(ols_step,as.data.frame(XTest))
 any(pred2 == predOLS_step)
 ```
 
+## Final Models	
+	
+Let's identify the most important (predictive) features, which can then be interpreted in the context of the specific data.	
+
+```{r}
+# Determine final models	
+	
+# Extract Coefficients	
+# OLS coefficient estimates	
+betaHatOLS = fitOLS$coefficients	
+# LASSO coefficient estimates 	
+betaHatLASSO = as.double(coef(fitLASSO, s = cvLASSO$lambda.1se))  # s is lambda	
+# Ridge  coefficient estimates 	
+betaHatRidge = as.double(coef(fitRidge, s = cvRidge$lambda.1se))	
+	
+# Test Set MSE	
+# calculate predicted values	
+	
+XTestOLS = cbind(rep(1, nrow(XTest)), XTest) # add intercept to test data	
+predOLS = XTestOLS %*% betaHatOLS 	
+predLASSO = predict(fitLASSO, s = cvLASSO$lambda.1se, newx = XTest)	
+predRidge = predict(fitRidge, s = cvRidge$lambda.1se, newx = XTest)	
+	
+# calculate test set MSE	
+testMSEOLS = mean((predOLS - yTest)^2)	
+testMSELASSO = mean((predLASSO - yTest)^2)	
+testMSERidge = mean((predRidge - yTest)^2)
+```
+
+This plot shows a rank-ordered list of the key predictors of the clinical outcome variable (total UPDRS, `y <- data1$UPDRS_part_I + data1$UPDRS_part_II + data1$UPDRS_part_III`).	
+
+```{r}
+# Plot Regression Coefficients	
+# create variable names for plotting 	
+library("arm")	
+par(mar=c(2, 13, 1, 1))   # extra large left margin	
+varNames <- colnames(data1[ , !(names(data1) %in% drop_features)]); varNames; length(varNames)	
+  	
+# Graph 27 regression coefficients (exclude intercept [1], betaHat indices 2:27)	
+coefplot(betaHatOLS[2:27], sd = rep(0, 26), pch=0, cex.pts = 3, main = "Regression Coefficient Estimates", varnames = varNames)	
+coefplot(betaHatLASSO[2:27], sd = rep(0, 26), pch=1, add = TRUE, col.pts = "red", cex.pts = 3)	
+coefplot(betaHatRidge[2:27], sd = rep(0, 26), pch=2, add = TRUE, col.pts = "blue", cex.pts = 3)	
+legend("bottomright", c("OLS", "LASSO", "Ridge"), col = c("black", "red", "blue"), pch = c(0, 1 , 2), bty = "o", cex = 2)	
+# par()
+```
+
+## Model Performance	
+	
+We next quantify the performance of the models.
+
+```{r}
+# Test Set MSE Table 	
+# create table as data frame	
+MSETable = data.frame(OLS=testMSEOLS, OLS_step=testMSEOLS_step, LASSO=testMSELASSO, Ridge=testMSERidge)	
+	
+# convert to markdown	
+kable(MSETable, format="pandoc", caption="Test Set MSE", align=c("c", "c", "c", "c"))
+```
+
+## Compare the selected variables 
+
+```{r}
+var_step = names(ols_step$coefficients)[-1]	
+var_lasso = colnames(XTrain)[which(coef(fitLASSO, s = cvLASSO$lambda.min)!=0)-1]	
+intersect(var_step,var_lasso)	
+coef(fitLASSO, s = cvLASSO$lambda.min)
+```
+
+Stepwise variable selection for OLS selects 12 variables, whereas LASSO selects 9 variables with the best $\lambda$. There are 6 common variables common for both OLS and LASSO.	
+	
+## Summary	
+Traditional linear models are useful but also have their shortcomings:	
+	
+* Prediction accuracy may be sub-optimal.	
+* Model interpretability may be challenging (especially when a large number of features are used as regressors).	
+* Stepwise model selection may improve the model performance and add some interpretations, but still may not be optimal.	
+	
+Regularization adds a penalty term to the estimation:	
+	
+*  Enables exploitation of the *bias-variance* tradeoff.	
+*  Provides flexibility on specifying penalties to allow for continuous variable selection.	
+*  Allows incorporation of prior knowledge.	
+
+# Knockoff Filtering	
+	
+## Simulated Knockoff Example	
+	
+Variable selection that controls the false discovery rate (FDR) of *salient features* can be accomplished in different ways. The [knockoff filtering](https://web.stanford.edu/~candes/Knockoffs/) represents one strategy for controlled variable selection.	
+To show the usage of `knockoff.filter` we start with a synthetic dataset constructed so that the true coefficient vector $\beta$ has only a few nonzero entries.	
+	
+The essence of the knockoff filtering is based on the following three-step process:	
+	
+* Construct the decoy features (knockoff variables), one for each real observed feature. These act as controls for assessing the importance of the real variables.	
+* For each feature, $X_j$, compute the knockoff statistic, $W_j$, which measures the importance of the variable, relative to its decoy counterpart, $\tilde{X}_j$. This *importance* is measured by comparing the corresponding parameter estimates, $\hat{\beta_{X_j}}$ and $\hat{\beta_{\tilde{X}_j}}$, obtained via regularized linear modeling (e.g., LASSO).	
+* Determine the overall knockoff threshold. This is computed by rank-ordering the $W_j$ statistics (from large to small), walking down the list of $W_j$'s, selecting variables $X_j$ corresponding to positive $W_j$'s, and terminating this search the last time the ratio of negative to positive $W_j$'s is below the default FDR $q$ value, e.g., $q=0.10$.	
+	
+Mathematically, we consider $X_j$ to be *unimportant* (i.e., peripheral or extraneous) if the conditional distribution of $Y$ given $X_1,...,X_p$ does not depend on $X_j$. Formally, $X_j$ is unimportant if it is conditionally independent of $Y$ given all other features, $X_{-j}$:	
+	
+$$ Y \perp X_j | X_{-j}.$$	
+We want to generate a Markov Blanket of $Y$, such that the smallest set of features $J$ satisfies this condition. Further, to make sure we do not make too many mistakes, we search for a set $\hat{S}$ controlling the false discovery rate (FDR):	
+	
+$$ FDR(\hat{S}) = \mathrm{E} \left (\frac{\#j\in \hat{S}:\ x_j\ unimportant}{\#j\in \hat{S}} \right) \leq q\ (e.g.\ 10\%).$$	
+
+Let's look at one simulation example.	
+
+```{r}
+# Problem parameters	
+n = 1000          # number of observations	
+p = 300           # number of variables	
+k = 30            # number of variables with nonzero coefficients	
+amplitude = 3.5   # signal amplitude (for noise level = 1)	
+	
+# Problem data	
+X = matrix(rnorm(n*p), nrow=n, ncol=p)	
+nonzero = sample(p, k)	
+beta = amplitude * (1:p %in% nonzero)	
+y.sample <- function() X %*% beta + rnorm(n)
+```
+
+To begin with, we will invoke the `knockoff.filter` using the default settings.
+
+```{r}
+# install.packages("knockoff")	
+library(knockoff)	
+y = y.sample()	
+result = knockoff.filter(X, y)	
+print(result)
+```
+
+The false discovery proportion (fdp) is:
+
+```{r}
+fdp <- function(selected) sum(beta[selected] == 0) / max(1, length(selected))	
+fdp(result$selected)
+```
+
+This yields an approximate FDR of $0.10$.	
+ 	
+The default settings of the knockoff filter uses a test statistic based on LASSO -- `knockoff.stat.lasso_signed_max`, which computes the $W_j$ statistics that quantify the discrepancy between a real ($X_j$) and a decoy, knockoff ($\tilde{X}_j$), feature coefficient estimates:	
+	
+$$W_j=\max(X_j, \tilde{X}_j) \times sgn(X_j - \tilde{X}_j). $$	
+Effectively, the $W_j$ statistics measures how much more important the variable $X_j$ is relative to its decoy counterpart $\tilde{X}_j$. The strength of the importance of $X_j$ relative to $\tilde{X}_j$ is measured by the magnitude of $W_j$.	
+	
+The `knockoff` package includes several other test statistics, with appropriate names prefixed by *knockoff.stat*. For instance, we can use a statistic based on forward selection ($fs$) and a lower target FDR of $0.10$.	
+
+```{r}
+result = knockoff.filter(X, y, fdr = 0.10, statistic = stat.glmnet_coefdiff)         # Old: statistic=knockoff.stat.fs)	
+#knockoff::stat.forward_selection		Importance statistics based on forward selection	
+#knockoff::stat.glmnet_coefdiff		Importance statistics based on a GLM with cross-validation	
+#knockoff::stat.glmnet_lambdadiff		Importance statistics based on a GLM	
+#knockoff::stat.glmnet_lambdasmax		GLM statistics for knockoff	
+#knockoff::stat.lasso_coefdiff		Importance statistics based the lasso with cross-validation	
+#knockoff::stat.lasso_coefdiff_bin		Importance statistics based on regularized logistic regression with cross-validation	
+#knockoff::stat.lasso_lambdadiff		Importance statistics based on the lasso	
+#knockoff::stat.lasso_lambdadiff_bin		Importance statistics based on regularized logistic regression	
+#knockoff::stat.lasso_lambdasmax		Penalized linear regression statistics for knockoff	
+#knockoff::stat.lasso_lambdasmax_bin		Penalized logistic regression statistics for knockoff	
+#knockoff::stat.random_forest		Importance statistics based on random forests	
+# knockoff::stat.sqrt_lasso		Importance statistics based on the square-root lasso	
+#knockoff::stat.stability_selection		Importance statistics based on stability selection	
+#knockoff::verify_stat_depends		Verify dependencies for chosen statistics)	
+fdp(result$selected)
+```
+
+One can also define additional test statistics, complementing the ones included in the package already. For instance, if we want to implement the following test-statistics:	
+
+$$W_j= || X^t . y|| - ||\tilde{X^t} . y||.$$	
+ 	
+We can code it as:
+
+```{r}
+new_knockoff_stat <- function(X, X_ko, y) {	
+  abs(t(X) %*% y) - abs(t(X_ko) %*% y)	
+}	
+result = knockoff.filter(X, y, statistic = new_knockoff_stat)	
+# print indices of selected features	
+print(sprintf("Number of KO-selected features: %d", length(result$selected)))	
+cat("Indices of KO-selected features: ", result$selected)	
+fdp(result$selected)	
+```
+
+## Knockoff invocation	
+	
+The `knockoff.filter` function is a wrapper around several simpler functions that (1) construct knockoff variables (*knockoff.create*); (2) compute the test statistic $W$ (various functions with prefix *knockoff.stat*); and (3) compute the threshold for variable selection (*knockoff.threshold*).	
+	
+The high-level function *knockoff.filter* will automatically `normalize the columns` of the input matrix (unless this behavior is explicitly disabled). However, all other functions in this *package assume that the columns of the input matrix have unitary Euclidean norm*.	
+	
+## PD Neuroimaging-genetics Case-Study	
+	
+Let's illustrate controlled variable selection via knockoff filtering using the real PD dataset.	
+	
+The goal is to determine which imaging, genetics and phenotypic covariates are associated with the clinical diagnosis of PD. The [dataset is available at the DSPA case-study archive site](https://umich.instructure.com/files/330397/download?download_frd=1).	
+	
+### Preparing the data	
+	
+The data set consists of clinical, genetics, and demographic measurements. To evaluate our results, we will compare diagnostic predictions created by the model for the *UPDRS scores* and the *ResearchGroup* factor variable. 	
+	
+### Fetching and cleaning the data	
+	
+First, we download the data and read it into data frames.
+
+```{r}
+data1 <- read.table('https://umich.instructure.com/files/330397/download?download_frd=1', sep=",", header=T)    	
+# we will deal with missing values using multiple imputation later. For now, let's just ignore incomplete cases	
+data1.completeRowIndexes <- complete.cases(data1) # table(data1.completeRowIndexes)	
+prop.table(table(data1.completeRowIndexes))	
+	
+# attach(data1)	
+# View(data1[data1.completeRowIndexes, ])	
+data2 <- data1[data1.completeRowIndexes, ]	
+Dx_label  <- data2$ResearchGroup; table(Dx_label)
+```
+
+### Preparing the design matrix	
+	
+We now construct the design matrix $X$ and the response vector $Y$. The features (columns of $X$) represent covariates that will be used to explain the response $Y$.	
+
+```{r}
+# Construct preliminary design matrix.	
+# define response and predictors	
+Y <- data1$UPDRS_part_I + data1$UPDRS_part_II + data1$UPDRS_part_III	
+table(Y)   # Show Clinically relevant classification	
+Y <- Y[data1.completeRowIndexes]	
+	
+# X = scale(ncaaData[, -20])  # Explicit Scaling is not needed, as glmnet auto standardizes predictors	
+# X = as.matrix(data1[, c("R_caudate_Volume", "R_putamen_Volume", "Weight", "Age", "chr17_rs12185268_GT")])  # X needs to be a matrix, not a data frame	
+drop_features <- c("FID_IID", "ResearchGroup", "UPDRS_part_I", "UPDRS_part_II", "UPDRS_part_III")	
+X <- data1[ , !(names(data1) %in% drop_features)]	
+X = as.matrix(X)   # remove columns: index, ResearchGroup, and y=(PDRS_part_I + UPDRS_part_II + UPDRS_part_III)	
+X <- X[data1.completeRowIndexes, ]; dim(X)	
+summary(X)	
+mode(X) <- 'numeric'	
+	
+Dx_label <- Dx_label[data1.completeRowIndexes]; length(Dx_label)
+```
+
+### Preparing the response vector	
+	
+The knockoff filter is designed to control the FDR under Gaussian noise. A quick inspection of the response vector shows that it is highly non-Gaussian.	
+
+```{r}
+hist(Y, breaks='FD')
+```
+
+A `log-transform` may help to stabilize the clinical response measurements:
+
+```{r}
+hist(log(Y), breaks='FD')
+```
+
+For **binary outcome variables**, or **ordinal categorical variables**, we can employ the `logistic curve` to transform the polytomous outcomes into real values.	
+	
+The Logistic curve is $y=f(x)=  \frac{1}{1+e^{-x}}$, 	
+where y and x represent probability and quantitative-predictor values, respectively. A slightly more general form is: $y=f(x)=  \frac{K}{1+e^{-x}}$, where the covariate $x \in (-\infty, \infty)$ and the response $y \in [0, K]$.	
+	
+## Running the knockoff filter	
+	
+We now run the knockoff filter along with the Benjamini-Hochberg (BH) procedure for controlling the false-positive rate of feature selection. More [details about the Knock-off filtering methods are available here](https://www.stat.uchicago.edu/~rina/knockoff/knockoff_slides.pdf).	
+	
+Before running either selection procedure, remove rows with missing values, reduce the design matrix by removing predictor columns that do not appear frequently (e.g., at least three times in the sample), and remove any columns that are duplicates.	
+
+```{r}
+library(knockoff)	
+	
+Y <- data1$UPDRS_part_I + data1$UPDRS_part_II + data1$UPDRS_part_III	
+table(Y)   # Show Clinically relevant classification	
+Y <- as.matrix(Y[data1.completeRowIndexes]); colnames(Y) <- "y"	
+mode(Y)	
+	
+# X = scale(ncaaData[,-20])  # Explicit Scaling is not needed, as glmnet auto standardizes predictors	
+# X = as.matrix(data1[,c("R_caudate_Volume", "R_putamen_Volume","Weight", "Age", "chr17_rs12185268_GT")])  # X needs to be a matrix, not a data frame	
+drop_features <- c("FID_IID", "ResearchGroup", "UPDRS_part_I", "UPDRS_part_II", "UPDRS_part_III")	
+X <- data1[ , !(names(data1) %in% drop_features)]	
+X = as.matrix(X)   # remove columns: index, ResearchGroup, and y=(PDRS_part_I + UPDRS_part_II + UPDRS_part_III)	
+X <- X[data1.completeRowIndexes,]; dim(X); mode(X)	
+	
+View(cbind(X,Y))	
+	
+# Direct call to knockoff filtering looks like this:	
+fdr <- 0.4	
+set.seed(1234)	
+result = knockoff.filter(X, Y, fdr=fdr, knockoffs=create.second_order); print(result$selected) # Old: knockoffs='equicorrelated')	
+# knockoff::create.fixed		Fixed-X knockoffs	
+#knockoff::create.gaussian		Model-X Gaussian knockoffs	
+#knockoff::create.second_order		Second-order Gaussian knockoffs	
+#knockoff::create.solve_asdp		Relaxed optimization for fixed-X and Gaussian knockoffs	
+#knockoff::create.solve_equi		Optimization for equi-correlated fixed-X and Gaussian knockoffs	
+#knockoff::create.solve_sdp		Optimization for fixed-X and Gaussian knockoffs	
+#knockoff::create_equicorrelated		Create equicorrelated fixed-X knockoffs.	
+#knockoff::create_sdp		Create SDP fixed-X knockoffs.	
+#knockoff::create.vectorize_matrix		Vectorize a matrix into the SCS format	
+	
+names(result$selected)	
+knockoff_selected <- names(result$selected)	
+  	
+# Run BH (Benjamini-Hochberg)	
+k = ncol(X)	
+lm.fit = lm(Y ~ X - 1) # no intercept	
+p.values = coef(summary(lm.fit))[,4]	
+cutoff = max(c(0, which(sort(p.values) <= fdr * (1:k) / k)))	
+BH_selected = names(which(p.values <= fdr * cutoff / k))	
+	
+knockoff_selected; BH_selected	
+	
+list(Knockoff = knockoff_selected, BHq = BH_selected)	
+	
+# Alternatively, for more flexible Knockoff invocation	
+set.seed(1234)	
+knockoffs = function(X) create.gaussian(X, 0, Sigma=diag(dim(X)[2])) # identify var-covar matrx Sigma of rank equal to the number of features	
+stats = function(X, Xk, y) stat.glmnet_coefdiff(X, Xk, y, nfolds=10) # The Output X_k is an n-by-p matrix of knockoff features	
+result = knockoff.filter(X, Y, fdr=fdr, knockoffs=knockoffs, statistic=stats); print(result$selected)	
+	
+# Housekeeping: remove the "X" prefixes in the BH_selected list of features	
+for(i in 1:length(BH_selected)){	
+  BH_selected[i] <- substring(BH_selected[i], 2)	
+}	
+	
+intersect(BH_selected,knockoff_selected)
+```
+
+We see that there are some features that are selected by both methods suggesting they may be indeed salient.	
 
 
