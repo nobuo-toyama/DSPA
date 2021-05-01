@@ -1,0 +1,945 @@
+---
+title: "18 Big Longtudinal Data Analysis"
+author: "nobuo"
+date: "2021/5/1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The time-varying (longitudinal) characteristics of large information flows represent a special case of the complexity, dynamic and multi-scale nature of big biomedical data that we discussed in the [DSPA Motivation section](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/00_Motivation.html). Previously, in [Chapter 3](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/03_DataVisualization.html), we saw space-time (4D) functional magnetic resonance imaging (fMRI) data, and in [Chapter 15](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/15_SpecializedML_FormatsOptimization.html) we discussed streaming data, which also has a natural temporal dimension.	
+	
+In this Chapter, we will expand our predictive data analytic strategies specifically for analyzing longitudinal data. We will interrogate datasets that track the same type of information, for same subjects, units or locations, over a period of time. Specifically, we will present time series analysis, forecasting using autoregressive integrated moving average (ARIMA) models, structural equation models (SEM), and longitudinal data analysis via linear mixed models.	
+	
+*Note*: This Chapter is purposely divided in two separate sections to reduce the page loading time, stratify the extensive computational tasks, and improve the user experiences. The separate [RNN/LSTM section is available here](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/18_BigLongitudinalDataAnalysis_RNN.html), and it includes:	
+	
+* Recurrent Neural Networks (RNN)	
+* Tensor Format Representation	
+* Simulated RNN case-study	
+* Climate Data Study	
+* Keras-based Multi-covariate LSTM Time-series Analysis and Forecasting.	
+	
+	
+# Time series analysis	
+	
+Time series analysis relies on models like [ARIMA (Autoregressive integrated moving average)](https://en.wikipedia.org/wiki/Autoregressive_integrated_moving_average) that utilize past longitudinal information to predict near future outcomes. Time series data tent to track univariate, sometimes multivariate, processes over a continuous time interval. The stock market, e.g., daily closing value of the [Dow Jones Industrial Average index](http://quotes.wsj.com/index/DJIA/historical-prices), or [electroencephalography (EEG) data](http://headit.org/) provide examples of such longitudinal datasets (time series).	
+	
+The basic concepts in time series analysis include:	
+	
+* The characteristics of *(second-order) stationary time series* (e.g., first two moments are stable over time) do not depend on the time at which the series process is observed.	
+* *Differencing* -- a transformation applied to time-series data to make it stationary. Differences between consecutive time-observations may be computed by $\displaystyle y_{t}'=y_{t}-y_{t-1}$. Differencing removes the level changes in the time series, eliminates trend, reduces seasonality, and stabilizes the mean of the time series. Differencing the time series repeatedly may yield a stationary time series. For example, a second order differencing: $$\displaystyle {\begin{aligned}y_{t}^{''}&=y_{t}'-y_{t-1}'\\&=(y_{t}-y_{t-1})-(y_{t-1}-y_{t-2})\\&=y_{t}-2y_{t-1}+y_{t-2}\end{aligned}}.$$	
+* *Seasonal differencing* is computed as a difference between one observation and its corresponding observation in the previous epoch, or season (e.g., annually, there are $m=4$ seasons), like in this example:	
+$$\displaystyle y_{t}'''=y_{t}-y_{t-m}\quad {\text{where }}m={\text{number of seasons}}.$$	
+The differenced data may then be used to estimate an ARMA model.	
+	
+We will use the [Beijing air quality PM2.5 dataset](https://umich.instructure.com/files/1823138/download?download_frd=1) as an example to demonstrate the analysis process. This dataset measures air pollutants - [PM2.5 particles in micrograms per cubic meter](data.worldbank.org/indicator/EN.ATM.PM25.MC.M3) during the past 9 years (2008-2016). It measures the *hourly average of the number of particles that are of size 2.5 microns (PM2.5)* once per hour in Beijing, China. 	
+	
+<!---	
+	
+files<-list.files(pattern="Beijing_+[0-9]")	
+beijing<-list()	
+for(i in 1:9){	
+  beijing[[i]]<-read.csv(files[i])	
+}	
+beijing.pm25<-rbindlist(beijing)	
+write.csv(beijing.pm25, file="beijing.pm25.csv")	
+	
+--->	
+	
+Let's first import the dataset into `R`.	
+
+```{r}
+beijing.pm25<-read.csv("https://umich.instructure.com/files/1823138/download?download_frd=1")	
+summary(beijing.pm25)
+```
+
+The `Value` column records PM2.5 AQI (Air Quality Index) for the past 8 years. We observe that there are some missing data in the `Value` column. By looking at the `QC.Name` column, we only have about 6.5% (4,408 observations) missing values. One way of solving the missingness is to replace them by the corresponding variable mean.	
+
+```{r}
+beijing.pm25[beijing.pm25$Value==-999, 9] <- NA	
+beijing.pm25[is.na(beijing.pm25$Value), 9] <- floor(mean(beijing.pm25$Value, na.rm = T))
+```
+
+ Here we first reassign the missing values into `NA` labels. Then we replace all `NA` labels with the *mean* computed using all non-missing observations. Note that the `floor()` function casts the arithmetic averages as integer numbers, which is needed as AQI values are expected to be whole numbers. 	
+	
+Now, let's observe the trend of hourly average PM2.5 across one day. You can see a significant pattern: The PM2.5 level peeks in the afternoons and is the lowest in the early mornings and exhibits approximate periodic boundary conditions (these patterns oscillate daily). 	
+
+```{r}
+require(ggplot2)	
+id = 1:nrow(beijing.pm25)	
+mat = matrix(0, nrow=24, ncol=3)	
+stat = function(x){	
+  c(mean(beijing.pm25[iid,"Value"]),quantile(beijing.pm25[iid,"Value"],c(0.2,0.8)))	
+}	
+for (i in 1:24){	
+  iid = which(id%%24==i-1)	
+  mat[i,] = stat(iid)	
+}	
+	
+mat <- as.data.frame(mat)	
+colnames(mat) <- c("mean","20%","80%")	
+mat$time = c(15:23,0:14)	
+require(reshape2)	
+dt <- melt(mat,id="time")	
+colnames(dt)	
+ggplot(data = dt,mapping = aes(x=time,y=value,color = variable))+geom_line()+	
+  scale_x_continuous(breaks = 0:23)+ggtitle("Beijing hour average PM2.5 from 2008-2016")
+```
+
+Are there any daily or monthly trends? We can start the data interrogation by building an ARIMA model and examining detailed patterns in the data.	
+	
+## Step 1: Plot time series	
+	
+To begin with, we can visualize the overall trend by plotting PM2.5 values against time. This can be achieved using the `plyr` package.	
+
+```{r}
+library(plyr)	
+ts <- ts(beijing.pm25$Value, start=1, end=69335, frequency=1)	
+ts.plot(ts)
+```
+
+The dataset is recorded hourly and the eight-year time interval includes about $69,335$ hours of records. Therefore, we start at the first hour and end with $69,335^{th}$ hour. Each hour has a univariate [PM2.5 AQI value measurement](https://airnow.gov/index.cfm?action=resources.conc_aqi_calc), so `frequency=1`.	
+	
+From this time series plot, we observe that the data has some peaks but most of the AQIs stay under 300 (which is consider hazardous).	
+	
+The original plot seems have no trend at all. Remember we have our measurements in hours. Will there be any difference if we use monthly average instead of hourly reported values? In this case, we can use Simple Moving Average (SMA) technique to smooth the original graph.	
+	
+To do this we need to install `TTR` package.
+
+```{r}
+# install.packages("TTR")	
+library(TTR)	
+bj.month <- SMA(ts, n=720)	
+plot.ts(bj.month, main="Monthly PM2.5 Level SMA", ylab="PM2.5 AQI")
+```
+
+Here we chose `n` to be $24*30=720$ and we can see some pattern. It seems that for the first 4 years (or approximately 35,040 hours) the AQI fluctuates less than the last 5 years. Let's see what happens if we use *exponentially-weighted mean*, instead of *arithmetic mean*.	
+
+```{r}
+bj.month<-EMA(ts, n=1, ratio = 2/(720+1))	
+plot.ts(bj.month, main="Monthly PM2.5 Level EMA", ylab="PM2.5 AQI")	
+```
+
+The pattern seems less obvious in this graph. Here we uses exponential smoothing ratio of $2/(n+1)$.	
+	
+## Step 2: Find proper parameter values for ARIMA model	
+	
+ARIMA models have 2 components -- autoregressive part (AR) and moving average part (MA). An $ARMA(p, d, q)$ model is a model with *p* terms in AR and *q* terms in MA, and *d* representing the order difference. Where differencing is used to make the original dataset approximately stationary. If we denote by $L$ the *lag operator*, by $\phi_i$ the parameters of the autoregressive part of the model, by $\theta_i$ the parameters of the moving average part, and by $\epsilon_t$ error terms, then the $ARMA(p, d, q)$ has the following analytical form:	
+	
+$$(1-\sum_{i=1}^p\phi_i L^i)(1-L)^d X_t=(1+\sum_{i=1}^q\theta_i L^i)\epsilon_t .$$	
+	
+## Check the differencing parameter	
+	
+First, let's try to determine the parameter *d*. To make the data stationary on the mean (remove any trend), we can use first differencing or second order differencing. Mathematically, first differencing is taking the difference between two adjacent data points:	
+$$y_t'=y_t-y_{t-1}.$$	
+While second order differencing is differencing the data twice:	
+$$y_t^*=y_t'-y_{t-1}'=y_t-2y_{t-1}+y_{t-2}.$$	
+Let's see which differencing method is proper for the Beijing PM2.5 dataset. Function `diff()` in R base can be used to calculate differencing. We can plot the differences by `plot.ts()`.	
+
+```{r}
+par(mfrow= c(2, 1))	
+bj.diff2<-diff(ts, differences=2)	
+plot.ts(bj.diff2, main="2nd differencing")	
+bj.diff<-diff(ts, differences=1)	
+plot.ts(bj.diff, main="1st differencing")
+```
+
+Neither of them appears quite stationary. In this case, we can consider using some smoothing techniques on the data like we just did above (`bj.month<-SMA(ts, n=720)`). Let's see if smoothing by exponentially-weighted mean (EMA) can help making the data approximately stationary.	
+
+```{r}
+par(mfrow=c(2, 1))	
+bj.diff2 <- diff(bj.month, differences=2)	
+plot.ts(bj.diff2, main="2nd differencing")	
+bj.diff <- diff(bj.month, differences=1)	
+plot.ts(bj.diff, main="1st differencing")
+```
+
+Both of these EMA-filtered graphs have tempered variance and appear pretty stationary with respect to the first two moments, mean and variance.	
+	
+## Identifying the AR and MA parameters	
+	
+To decide the auto-regressive (AR) and moving average (MA) parameters in the model we need to create **autocorrelation factor (ACF)** and **partial autocorrelation factor (PACF) plots**. PACF may suggest a value for the AR-term parameter $p$, and ACF may help us determine the MA-term parameter $q$. We plot the ACF and PACF, we use approximately stationary time series `bj.diff` objects.	
+
+```{r}
+par(mfrow=c(1, 2))	
+acf(ts(bj.diff), lag.max = 20, main="ACF")	
+pacf(ts(bj.diff), lag.max = 20, main="PACF")
+```
+
+* Pure AR model, ($p=0$), will have a cut off at lag $q$ in the PACF. 	
+* Pure MA model, ($q=0$), will have a cut off at lag $p$ in the ACF. 	
+* ARIMA(p, q) will (eventually) have a decay in both.	
+	
+All spikes in the plots are outside of insignificant zone in the ACF plot while 2 of them are significant in the PACF plot. In this case, the best ARIMA model is likely to have both AR and MA parts. 	
+	
+We can examine for seasonal effects in the data using `stats::stl()`, a flexible function for decomposing and forecasting the series, which uses averaging to calculate the seasonal component of the series and then subtracts the seasonality. Decomposing the series and removing the seasonality can be done by subtracting the seasonal component from the original series using `forecast::seasadj()`. The frequency parameter in the `ts()` object specifies the periodicity of the data or the number of observations per period, e.g., 30 (for monthly smoothed daily data).	
+
+```{r}
+count_ma = ts(bj.month, frequency=30*24)	
+decomp = stl(count_ma, s.window="periodic")	
+deseasonal_count <- forecast::seasadj(decomp)	
+plot(decomp)
+```
+
+The augmented Dickey-Fuller (ADF) test, `tseries::adf.test` can be used to examine the time series stationarity. The *null hypothesis is that the series is non-stationary*. The ADF test quantifies if the change in the series can be explained by a lagged value and a linear trend. Non-stationary series can be *corrected* by differencing to remove trends or cycles. 	
+
+```{r}
+tseries::adf.test(count_ma, alternative = "stationary")	
+tseries::adf.test(bj.diff, alternative = "stationary")
+```
+
+ We see that we can reject the null and therefore, there is no statistically significant non-stationarity in the `bj.diff` time series.	
+	
+## Step 3: Build an ARIMA model	
+	
+As we have some evidence suggesting *d=1*, the `auto.arima()` function in the `forecast` package can help us to find the optimal estimates for the remaining pair parameters of the ARIMA model, *p* and *q*.  	
+
+```{r}
+# install.packages("forecast")	
+library(forecast)	
+fit <- auto.arima(bj.month, approx=F, trace = F)	
+fit	
+Acf(residuals(fit))
+```
+
+Finally, the optimal model determined by the step-wise selection is `ARIMA(1, 1, 4)`.	
+	
+We can also use external information to fit ARIMA models. For example, if we want to add the month information, in case we suspect a seasonal change in PM2.5 AQI, we can use the following script.	
+
+```{r}
+fit1<-auto.arima(bj.month, xreg=beijing.pm25$Month, approx=F, trace = F)	
+fit1	
+fit3<-arima(bj.month, order = c(2, 1, 0))	
+fit3
+```
+
+We want the model AIC and BIC to be as small as possible. This model is actually worse than the last model without `Month` predictor in terms of AIC and BIC. Also, the coefficient is very small and not significant (according to the t-test). Thus, we can remove the `Month` term.	
+	
+We can examine further the ACF and the PACF plots and the residuals to determine the model quality.  When the model order parameters and structure are correctly specified, we expect no significant autocorrelations present in the model residual plots. 	
+
+```{r}
+tsdisplay(residuals(fit), lag.max=45, main='(1,1,4) Model Residuals')
+```
+
+There is a clear pattern present in ACF/PACF plots suggesting that the model residuals repeat with an approximate lag of 12 or 24 months. We may try a modified model with a different parameters, e.g., $p = 24$ or $q = 24$. We can define a new `displayForecastErrors()` function to show a histogram of the forecasted errors.	
+
+```{r}
+fit24 <- arima(deseasonal_count, order=c(1,1,24)); fit24	
+tsdisplay(residuals(fit24), lag.max=36, main='Seasonal Model Residuals')	
+	
+displayForecastErrors <- function(forecastErrors)	
+  {	
+     # Generate a histogram of the Forecast Errors	
+     binsize <- IQR(forecastErrors)/4	
+     sd   <- sd(forecastErrors)	
+     min  <- min(forecastErrors) - sd	
+     max  <- max(forecastErrors) + sd	
+     	
+     # Generate 5K normal(0,sd) RVs 	
+     norm <- rnorm(5000, mean=0, sd=sd)	
+     min2 <- min(norm)	
+     max2 <- max(norm)	
+     if (min2 < min) { min <- min2 }	
+     if (max2 > max) { max <- max2 }	
+     	
+     # Plot red histogram of the forecast errors	
+     bins <- seq(min, max, binsize)	
+     hist(forecastErrors, col="red", freq=FALSE, breaks=bins)	
+     	
+     myHist <- hist(norm, plot=FALSE, breaks=bins)	
+     	
+     # Overlay the Blue normal curve on top of forecastErrors histogram	
+     points(myHist$mids, myHist$density, type="l", col="blue", lwd=2)	
+}	
+	
+displayForecastErrors(residuals(fit24))
+```
+
+## Step 4: Forecasting with ARIMA model	
+	
+Now, we can use our models to make predictions for future PM2.5 AQI. We will use the function `forecast()` to make predictions. In this function, we have to specify the number of periods we want to forecast. Note that the data has been smoothed. Let's make predictions for the next month or July 2016. Then there are $24\times30=720$ hours, so we specify a horizon `h=720`. 	
+
+```{r}
+par(mfrow=c(1, 1))	
+ts.forecasts<-forecast(fit, h=720)	
+plot(ts.forecasts, include = 2880)
+```
+
+When plotting the forecasted values with the original smoothed data, we include only the last 3 months in the original smoothed data to see the predicted values clearer. The shaded regions indicate ranges of expected errors. The darker (inner) region represents by *80% confidence range* and the lighter (outer) region bounds by the *95% interval*. Obviously near-term forecasts have tighter ranges of expected errors, compared to longer-term forecasts where the variability naturally expands. 	
+	
+## Autoregressive Integrated Moving Average *Extended/Exogenous* (ARIMAX) Model	
+	
+The [classical ARIMA model](https://books.google.com/books?hl=en&lr=&id=rNt5CgAAQBAJ) makes prediction of a univariate outcome based only on the past values of the specific forecast variable. It assumes that future values of the outcome linearly depend on an additive representation of the effects of it previous values and some stochastic components. 	
+	
+The [extended, or exogeneous feature, (vector-based) time-series model (ARIMAX)](https://books.google.com/books?hl=en&lr=&id=ZCmFI5U1j6cC) allows forecasting of the univariate outcome based on multiple independent (predictor) variables. Similarly to going from simple linear regression to multivariate linear models, ARIMAX generalizes the ARIMA model accounting for autocorrelation present in residuals of the linear regression to improve the accuracy of a time-series forecast. ARIMAX models, also called dynamic regression models, represent a combination of ARIMA, regression, and single-input-single-output transfer function models.	
+	
+When there are no covariates, traditional time-series $y_1, y_2, \dots,y_n$ can be modeled by ARMA$(p,q)$ model:	
+	
+$$y_t = \phi_1 y_{t-1} + \phi_2 y_{t-2} + \cdots + \phi_p y_{t-p} - \left ( \theta_1 \epsilon_{t-1} + \theta_2 \epsilon_{t-2} + \dots + \theta_q \epsilon_{t-q}\right ) + \epsilon_t,$$	
+
+where $\epsilon_t \sim N(0,1)$ is a white Gaussian noise.	
+	
+The extended dynamic time-series model, ARIMAX, adds the covariates to the right hand side:	
+	
+$$ y_t = \left ( \displaystyle\sum_{k=1}^K{\beta_k x_{k,t}}\right ) + \phi_1 y_{t-1} + \phi_2 y_{t-2} + \cdots + \phi_p y_{t-p} - \left ( \theta_1 \epsilon_{t-1} + \theta_2 \epsilon_{t-2} + \dots + \theta_q z_{t-q}\right ) + \epsilon_t, $$	
+where $x_{k,t}$ is the value of the $k^{th}$ covariate at time $t$ and $\beta_k$ is its regression coefficient. In the ARIMAX models, the interpretation of the covariate coefficient, $\beta_k$, is somewhat different from the linear modeling case; $\beta_k$ does not really represent the effect of increasing $x_{k,t}$ by 1 on $y_t$. The coefficients $\beta_k$ may be interpreted as conditional effects of the predictor $x_k$ on the prior values of the response variable, $y$, as the right hand side of the equation mean includes lagged values of the response variable.	
+	
+Using the short-hand back-shift operator representation, the ARMAX model is:	
+	
+$$\phi(B)y_t = \left ( \displaystyle\sum_{k=1}^K{\beta_k x_{k,t}}\right ) + \theta(B)\epsilon_t.$$ 	
+Alternatively,	
+$$y_t = \displaystyle\sum_{k=1}^K{\left (\frac{\beta_k}{\phi(B)}x_{k,t}\right )} + \frac{\theta(B)}{\phi(B)}\epsilon_t,$$	
+where $\phi(B)=1-\left ( \phi_1 B + \phi_2 B\cdots + \phi_p B^p\right )$ and $\theta(B)= 1- \left (\theta_1 B + \theta_2 B \cdots + \theta_qB^q\right)$.	
+	
+As the auto-regressive coefficients get mixed up with both the covariate and the error terms. To clarify these effects, we can look at the regression models with ARMA errors:	
+	
+$$\begin{equation}	
+y_t = \displaystyle\sum_{k=1}^K{\left (\frac{\beta_k}{\phi(B)}x_{k,t}\right )} + \eta_t,\\	
+\eta_t = \left (\phi_1 \eta_{t-1} + \phi_2 \eta_{t-2} +\cdots + \phi_p \eta_{t-p}\right ) - \left (\theta_1 \epsilon_{t-1} + \theta_2 \epsilon_{t-2} +\dots + \theta_q z_{t-q} + \epsilon_t \right )	
+\end{equation}.$$	
+	
+In this formulation, the regression coefficients have a more natural interpretation. Both formulations lead to the same model-based forecasting, but the second one helps with explication and interpretation of the effects.</p>	
+	
+The back-shift model formulation is:	
+$$y_t = \displaystyle\sum_{k=1}^K{\left (\frac{\beta_k}{\phi(B)}x_{k,t}\right )} + \frac{\theta(B)}{\phi(B)}\epsilon_t.$$	
+
+Transfer function models generalize both of these models.	
+	
+$$ y_t = \displaystyle\sum_{k=1}^K{\left (\frac{\beta_k(B)}{v(B)} x_{k,t}\right )}  + \frac{\theta(B)}{\phi(B)}\epsilon_t. $$	
+
+It represents the lagged effects of covariates (by the $\beta_k(B)$ back-shift operator) and allows for decaying effects of covariates (by the $v(B)$ back-shift operator).	
+	
+The Box-Jenkins method for selecting the orders of a transfer function model is often challenging in practice. An alternative order-selection protocol is presented in the [Hyndman's 1998 forecasting textbook](https://robjhyndman.com/forecasting/).	
+	
+To estimate the ARIMA errors when dealing with non-stationary data, we can replace $\phi(B)$ with $\nabla^d\phi(B)$, where $\nabla=(1-B)$ is the differencing operator. This accomplishes both differencing in $y_t$ and $x_t$ prior to fitting ARIMA models with errors. For model consistency and to avoid spurious regression effects, we do need to difference all variables before we estimate models with non-stationary errors.	
+	
+There are alternative R functions to implement ARIMAX models, e.g., `forecast::arima()`, `forecast::Arima()`, and `forecast::auto.arima()` fit extended ARIMA models with multiple covariates and error terms. Remember that there are differences in the signs of the moving average coefficients between the alternative model parameterization formulations. Also, the `TSA::arimax()` function fits the *transfer function model*, not the ARIMAX model.	
+	
+Let's look at one ARIMAX simulated example.	
+
+```{r}
+library(forecast)	
+	
+# create the 4D synthetic data, t=700 days, 100 weeks, 	
+# Y=eventArrivals, X=(weekday, NewYearsHoliday, day)	
+weeks <- 100	
+days <- 7*weeks	
+	
+# define holiday effect (e.g., more customers go to stores to shop)	
+holidayShopping <- rep(0, days)	
+y <- rep(0, days)	
+for (i in 1:days) {	
+  # Binary feature: Holiday	
+  if (i %% 28 == 0) holidayShopping[i] = 1	
+  else holidayShopping[i] = 0	
+  # Outcome (Y)	
+  if (i %% 56 == 0) y[i] = rpois(n=1, lambda=1500)	
+  else y[i] = rpois(n=1, lambda=1000)	
+  if (i>2) y[i] = (y[i-2] + y[i-1])/2 + rnorm(n=1, mean=0, sd=3)	
+  if (i %% 56 == 0) y[i] = rpois(n=1, lambda=1050)	
+}	
+	
+plot(y)	
+	
+synthData <- data.frame(eventArrivals = y, # expected number of arrivals=1000	
+                         weekday = rep(1:7, weeks),     # weekday idicator variable	
+                         NewYearsHoliday = holidayShopping, # Binary feature: Holiday	
+                         day=1:days)  # day indicator	
+	
+# Create matrix of numeric predictors	
+covariatesX <- cbind(weekday = model.matrix(~as.factor(synthData$weekday)), 	
+                     Day = synthData$day,	
+                     Holiday=synthData$NewYearsHoliday)	
+# Generate prospective covariates for external validation/prediction	
+pred_length <- 56	
+newCovX <- cbind(weekday = model.matrix(~as.factor(synthData$weekday[1:pred_length])), 	
+                     Day = synthData$day[1:pred_length],	
+                     Holiday=synthData$NewYearsHoliday[1:pred_length])	
+# Remove the intercept	
+synthX_Data <- covariatesX[,-1]	
+	
+# Rename columns	
+colnames(synthX_Data) <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Day", "Holiday")	
+colnames(newCovX) <- c("Intercept", colnames(synthX_Data)); colnames(newCovX[,-1])	
+	
+# Response (Y) to be modeled as a time-series, weekly oscillations (7-days)	
+observedArrivals <- ts(synthData$eventArrivals, frequency=7) 	
+	
+# Estimate the ARIMAX model	
+fitArimaX <- auto.arima(observedArrivals, xreg=synthX_Data); fitArimaX	
+	
+# Predict prospective arrivals (e.g., volumes of customers)	
+predArrivals <- predict(fitArimaX, n.ahead = pred_length, newxreg = newCovX[,-1])	
+plot(predArrivals$pred, main="Forward time-series predictions (fitArimaX)")	
+plot(forecast(fitArimaX, xreg = newCovX[,-1]))
+```
+
+There are also [Vector Autoregressive Moving-Average Time Series (VARMA)](http://faculty.chicagobooth.edu/ruey.tsay/teaching/mtsbk/) models that can be used to fit multivariate linear time series for stationary processes.	
+	
+## Google Trends Analytics (Data Science)	
+	
+We can use dynamic Google Trends data to retrieve information, identify temporal patters and motifs dues to various human experiences, conduct time-series analyses, and forecast future trends. If we retrieve data for multiple terms (keywords or phrases) over different periods of time and across geographic locations the problem can certainly get complex. We will utilize the R packages `gtrendsR` and `prophet`.	
+
+```{r}
+# install.packages("prophet")	
+# install.packages("devtools")	
+# install.packages("ps"); install.packages("pkgbuild")	
+# devtools::install_github("PMassicotte/gtrendsR")	
+	
+library(gtrendsR)	
+library(ggplot2)	
+library(prophet)
+```
+
+ Let's search *Google Trends* for `Big Data`, `data science` and `predictive analytics` searches in the USA over the past ten years. Note that a time span can be specified via:	
+
+* "now 1-H": Last hour	
+* "now 4-H": Last four hours	
+* "now 1-d": Last day	
+* "now 7-d": Last seven days	
+* "today 1-m": Past 30 days	
+* "today 3-m": Past 90 days	
+* "today 12-m": Past 12 months	
+* "today+5-y": Last five years (default)	
+* "all": Since the beginning of Google Trends (2004)	
+* "Y-m-d Y-m-d": Time span between two dates (e.g., "2010-01-01 2020-01-01")	
+
+```{r}
+DSPA_trends_US <- gtrends(c("Big Data", "data science", "predictive analytics", 	
+                            "Artificial Intelligence"), 	
+                          geo = c("US"), gprop = "web", 	
+                          time = "2010-01-01 2020-01-01")[[1]]	
+	
+ggplot(data = DSPA_trends_US, aes(x = date, y = hits, group = keyword)) +	
+  geom_line(size = 1.5, alpha = 0.8, aes(color = keyword)) +	
+  geom_point(size = 1.6) +	
+  ylim(0, NA) +	
+  theme(legend.title=element_blank(), axis.title.x = element_blank()) +	
+  theme(legend.position="bottom") +	
+  ylab("Phrase Search Freq") + 	
+  ggtitle("USA: Google Trends (Big Data, Data Science, Predictive Analytics): 2010-2020")	
+```
+
+And similarly, we can contrast the *Google Trends* for `Big Data`, `data science` and `predictive analytics` global (worldwide) searches over the past ten years.	
+
+```{r}
+DSPA_trends_World <- gtrends(c("Big Data", "data science", "predictive analytics",	
+                               "Artificial Intelligence"), 	
+                          gprop = "web", time = "2010-01-01 2020-01-01")[[1]]	
+	
+ggplot(data = DSPA_trends_World, aes(x = date, y = hits, group = keyword)) +	
+  geom_line(size = 1.5, alpha = 0.8, aes(color = keyword)) +	
+  geom_point(size = 1.6) +	
+  ylim(0, NA) +	
+  theme(legend.title=element_blank(), axis.title.x = element_blank()) +	
+  theme(legend.position="bottom") +	
+  ylab("Phrase Search Freq") + 	
+  ggtitle("World: Google Trends (Big Data, Data Science, Predictive Analytics): 2010-2020")	
+```
+
+We can also examine global geographic trends in searches for "data science", e.g., US, China, UK.	
+
+```{r}
+DSPA_trends_Global <- gtrends(c("data science"), 	
+                          geo = c("US","CN","GB"), gprop = "web", 	
+                          time = "2010-01-01 2020-01-01")[[1]]	
+DSPA_trends_Global$hits[is.na(DSPA_trends_Global$hits)] <- "0"	
+DSPA_trends_Global$hits	
+	
+ggplot(data = DSPA_trends_Global, aes(x = date, 	
+                     y = as.numeric(hits), group = geo)) +	
+  geom_line(size = 1.5, alpha = 0.8, aes(color = geo)) +	
+  geom_point(size = 1.6) +	
+  ylim(0, NA) +	
+  theme(legend.title=element_blank(), axis.title.x = element_blank()) +	
+  theme(legend.position="bottom") +	
+  ylab("Data Science Search Freq'") + 	
+  ggtitle("Global 'Data Science' Google Trends (US, CN, GB): 2010-2020")
+```
+
+What interesting patterns, trends and behavior is evident in the plot above?	
+	
+Next, we can use the `prophet` package to automatically identify patterns provide forecasts of future searches. The `prophet()` function call requires the input data-frame to have columns "ds" and "y" representing the time-series dates and values, respectively.	
+
+```{r}
+US_ts <- DSPA_trends_US[which(DSPA_trends_US$keyword == "data science"), 	
+                        names(DSPA_trends_US) %in% c("date","hits")]	
+# US_ts <- dplyr::select(filter(DSPA_trends_US, keyword=='data science'), c("date","hits"))	
+	
+colnames(US_ts) <-c("ds","y")	
+US_ts_prophet <- prophet(US_ts)
+```
+
+To generate forward looking predictions, we will use the method `predict()`.
+
+```{r}
+future_df <- make_future_dataframe(US_ts_prophet, periods = 730)	
+US_ts_prophet_pred <- predict(US_ts_prophet, future_df)	
+plot(US_ts_prophet, US_ts_prophet_pred)
+```
+
+Finally, we can extract daily, monthly, quarterly, and yearly patterns.
+
+```{r}
+prophet_plot_components(US_ts_prophet, US_ts_prophet_pred)
+```
+
+Try to fit an ARIMA time-series model to the US data.
+
+```{r}
+library(forecast)	
+fit_US_ts <- auto.arima(US_ts$y, approx=F, trace = F)	
+fit_US_ts	
+Acf(residuals(fit_US_ts))	
+tsdisplay(residuals(fit_US_ts), lag.max=45, main='(0,1,0) Model Residuals')	
+	
+fit_US_ts_forecasts <- forecast(fit_US_ts, h=10, level=20)	
+plot(fit_US_ts_forecasts, include = 100)
+```
+
+You can try to apply some of the time-series methods to the Google-Trends "hits" for some specific queries you are interested.	
+	
+	
+# Structural Equation Modeling (SEM)-latent variables	
+	
+The time series analysis provides an effective strategy to interrogate longitudinal univariate data. What happens if we have multiple, potentially associated, measurements recorded at each time point?	
+	
+SEM is a general multivariate statistical analysis technique that can be used for causal modeling/inference, path analysis, confirmatory factor analysis (CFA), covariance structure modeling, and correlation structure modeling. This method allows *separation of observed and latent variables*. Other standard statistical procedures may be viewed as special cases of SEM, where statistical significance may be less important, and covariances are the core of structural equation models.	
+	
+*Latent variables* are features that are not directly observed but may be inferred from the actually observed variables. In other words, a combination or transformation of observed variables can create latent features, which may help us reduce the dimensionality of data. Also, SEM can address multi-collinearity issues when we fit models because we can combine some high collinearity variables to create a single (latent) variable, which can then be included into the model.	
+	
+## Foundations of SEM 	
+	
+SEMs consist of two complementary components - a *path model*, quantifying specific cause-and-effect relationships between observed variables, and a *measurement model*, quantifying latent linkages between unobservable components and observed variables. The LISREL (LInear Structural RELations) framework represent a unifying mathematical strategy to specify these linkages, see [Grace]( https://books.google.com/books?isbn=1139457845).	
+	
+The most general kind of SEM is a structural regression path model with latent variables, which accounts for measurement errors of observed variables. *Model identification* determines whether the model allows for unique parameter estimates and may be based on model degrees of freedom ($df_M \geq 0$) or a known scale for every latent feature. If $\nu$ represents the number of observed variables, then the total degrees of freedom for a SEM, $\frac{\nu(1+\nu)}{2}$, corresponds to the number of variances and unique covariances in a variance-covariance matrix for all the features, and the model degrees of freedom, $df_M = \frac{\nu(1+\nu)}{2} - l$, where $l$ is the number of estimated parameters.	
+	
+Examples include:	
+	
+* *just-identified model* ($df_M=0$) with unique parameter estimates, 	
+* *over-identified model* ($df_M>0$) desirable for model testing and assessment,	
+* *under-identified model* ($df_M<0$) is not guaranteed unique solutions for all parameters. In practice, such models occur when the effective degrees of freedom are reduced due to two or more highly-correlated features, which presents problems with parameter estimation. In these situations, we can exclude or combine some of the features boosting the degrees of freedom.	
+	
+The latent variables' *scale* property reflects their unobservable, not measurable, characteristics. The latent scale, or unit, may be inferred from one of its observed constituent variables, e.g., by imposing a unit loading identification constraint fixing at $1.0$ the factor loading of one observed variable.	
+	
+An SEM model with appropriate *scale* and degrees of freedom conditions may be identifiable subject to [Bollen's two-step identification rule]( https://books.google.com/books?isbn=111861903X). When both the CFA path components of the SEM model are identifiable, then the whole SR model is identified, and model fitting can be initiated.	
+	
+* For the confirmatory factor analysis (CFA) part of the SEM, identification requires (1) a minimum of two observed variables for each latent feature, (2) independence between measurement errors and the latent variables, and (3) independence between measurement errors. 	
+* For the path component of the SEM, ignoring any observed variables used to measure latent variables, model identification requires: (1) errors associated with endogenous latent variables to be uncorrelated, and (2) all causal effects to be unidirectional. 	
+	
+The LISREL representation can be summarized by the following matrix equations:	
+	
+$$\text{measurement model component} 	
+\begin{cases} 	
+   x=\Lambda_x\xi +\delta, \\ 	
+   y=\Lambda_y\eta +\epsilon	
+\end{cases}.$$	
+	
+And	
+	
+$$ \text{path model component:  } 	
+   \eta = B\eta +\Gamma\xi + \zeta,$$	
+ 	
+where $x_{p\times1}$ is a vector of observed *exogenous variables* representing a linear function of $\xi_{j\times 1}$ vector of *exogenous latent variables*, $\delta_{p\times 1}$ is a *vector of measurement error*, $\Lambda_x$ is a $p\times j$ matrix of factor loadings relating $x$ to $\xi$, $y_{q\times1}$ is a vector of observed *endogenous variables*, $\eta_{k\times 1}$ is a vector of *endogenous latent variables*, $\epsilon_{q\times 1}$ is a vector of *measurement error for the endogenous variables*, and $\Lambda_y$ is a $q\times k$ matrix of factor loadings relating $y$ to $\eta$. Let's also denote the two variance-covariance matrices, $\Theta_{\delta}(p\times p)$ and $\Theta_{\epsilon}(q\times q)$ representing the variance-covariance matrices among the measurement errors $\delta$ and $\epsilon$, respectively. The third equation describing the LISREL path model component as relationships among latent variables includes $B_{k\times k}$ a matrix of path coefficients describing the *relationships among endogenous latent variables*, $\Gamma_{k\times j}$ as a matrix of path coefficients representing the *linear effects of exogenous variables on endogenous variables*, $\zeta_{k\times 1}$ as a vector of *errors of endogenous variables*, and the corresponding two variance-covariance matrices $\Phi_{j\times j}$ of the *latent exogenous variables*, and $\Psi_{k\times k}$ of the *errors of endogenous variables*.	
+	
+The basic statistic for a typical SEM implementations is based on covariance structure modeling and model fitting relies on optimizing an objective function, $\min f(\Sigma, S)$, representing the difference between the model-implied variance-covariance matrix, $\Sigma$,  predicted from the causal and non-causal associations specified in the model, and the corresponding observed variance-covariance matrix $S$, which is estimated from observed data. The objective function, $f(\Sigma, S)$ can be estimated as follows, see [Shipley](https://books.google.com/books?isbn=1107442591). 	
+	
+* In general, causation implies correlation, suggesting that if there is a causal relationship between two variables, there must also be a systematic relationship between them. Specifying a set of theoretical causal paths, we can reconstruct the model-implied variance-covariance matrix, $\Sigma$, from total effects and unanalyzed associations. The LISREL strategy specifies the following mathematical representation:	
+	
+$$\Sigma = \begin{vmatrix} 	
+\Lambda_yA(\Gamma\Phi\Gamma'+\Psi)A'\Lambda'_y+\Theta_{\epsilon} & \Lambda_yA\Gamma\Phi\Lambda'_x \\ 	
+\Lambda_x\Phi\Gamma'A'\Lambda'_y & \Lambda_x\Phi\Lambda'_x+\Theta_{\delta}	
+\end{vmatrix},$$	
+	
+where $A=(I-B)^{-1}$. This representation of $\Sigma$ does not involve the observed and latent exogenous and endogenous variables, $x,y,\xi,\eta$. Maximum likelihood estimation (MLE) may be used to obtain the $\Sigma$ parameters via iterative searches for a set of optimal parameters minimizing the element-wise deviations between $\Sigma$ and $S$. 	
+	
+The process of optimizing the objective function $f(\Sigma, S)$  can be achieved by computing the log likelihood ratio, i.e., comparing the the likelihood of a given fitted model to the likelihood of a perfectly fit model. MLE estimation requires multivariate normal distribution for the endogenous variables and Wishart distribution for the observed variance-covariance matrix, $S$. 	
+	
+Using MLE estimation simplifies the objective function to:	
+$$f(\Sigma, S) = \ln|\Sigma| +tr(S\times \Sigma^{-1}) -\ln|S| -tr(SS^{-1}),$$	
+	
+where $tr()$ is the trace of a matrix. The optimization of 	
+$f(\Sigma, S)$ also requires that independent and identically distributed observations, and positive definite matrices. The iterative MLE optimization generates estimated variance-covariance matrices and path coefficients for the specified model. More details on model assessment (using Root Mean Square Error of Approximation (RMSEA) and Goodness of Fit Index) and the process of defining a priori SEM hypotheses are available in [Lam & Maguire](http://dx.doi.org/10.1155/2012/263953).	
+	
+## SEM components	
+	
+The R `Lavaan` package uses the following SEM syntax to represent relationships between variables. We can follow the following table to specify `Lavaan` models:	
+	
+Formula Type               | Operator | Explanation	
+---------------------------|----------|----------------	
+Latent variable definition | =~       | Is measured by	
+Regression                 | ~        | Is regressed on	
+(Residual) (co)variance    | ~~       | Is correlated with	
+Intercept                  | ~1       | Intercept	
+	
+For example in R we can write the following model	
+`model <- `	
+`'`	
+`# regressions`	
+$$y1 + y2 \sim f1 + f2 + x1 + x2$$	
+$$f1 \sim f2 + f3$$	
+$$f2 \sim f3 + x1 + x2$$	
+`# latent variable definitions`	
+$$f1 =\sim y1 + y2 + y3$$	
+$$f2 =\sim y4 + y5 + y6$$	
+$$f3 =\sim y7 + y8 + y9 + y10$$	
+`# variances and covariances`	
+$$y1 \sim\sim y1$$	
+$$y1 \sim\sim y2$$	
+$$f1 \sim\sim f2$$	
+`# intercepts`	
+$$y1 \sim 1$$	
+$$f1 \sim 1$$	
+`'`	
+	
+Note that the two "$'$" symbols (in the beginning and ending of a model description) are very important in the `R`-syntax.	
+
+## Case study - Parkinson's Disease (PD)	
+	
+Let's use the PPMI dataset in our class file as an example to illustrate SEM model fitting.	
+	
+### Step 1 - collecting data	
+	
+The [Parkinson's Disease Data](https://wiki.socr.umich.edu/index.php/SOCR_Data_PD_BiomedBigMetadata) represents a realistic simulation case-study to examine associations between clinical, demographic, imaging and genetics variables for Parkinson's disease. This is an example of Big Data for investigating important neurodegenerative disorders. 	
+	
+### Step 2 - exploring and preparing the data	
+	
+Now, we can import the dataset into R and recode the `ResearchGroup` variable into a binary variable.	
+
+```{r}
+par(mfrow=c(1, 1))	
+PPMI <- read.csv("https://umich.instructure.com/files/330397/download?download_frd=1")	
+summary(PPMI)	
+PPMI$ResearchGroup <- ifelse(PPMI$ResearchGroup=="Control", "1", "0")	
+# PPMI <- PPMI[ , !(names(PPMI) %in% c("FID_IID", "time_visit"))] # remove Subject ID/time
+```
+
+This large dataset has 1,746 observations and 31 variables with missing data in some of them. A lot of the variables are highly correlated. You can inspect high correlation using *heat maps*, which reorders these covariates according to correlations to illustrate clusters of high-correlations.	
+
+```{r}
+pp_heat <- PPMI[complete.cases(PPMI), -c(1, 20, 31)]	
+corr_mat = cor(pp_heat)	
+# Remove upper triangle	
+corr_mat_lower = corr_mat	
+corr_mat_lower[upper.tri(corr_mat_lower)] = NA	
+# Melt correlation matrix and make sure order of factor variables is correct	
+corr_mat_melted = melt(corr_mat_lower)	
+colnames(corr_mat_melted) <- c("Var1", "Var2", "value")	
+corr_mat_melted$Var1 = factor(corr_mat_melted$Var1, levels=colnames(corr_mat))	
+corr_mat_melted$Var2 = factor(corr_mat_melted$Var2, levels=colnames(corr_mat))	
+# Plot	
+corr_plot = ggplot(corr_mat_melted, aes(x=Var1, y=Var2, fill=value)) +	
+  geom_tile(color='white') +	
+  scale_fill_distiller(limits=c(-1, 1), palette='RdBu', na.value='white',	
+                       name='Correlation') +	
+  ggtitle('Correlations') +	
+  coord_fixed(ratio=1) +	
+  theme_minimal() +	
+  scale_y_discrete(position="right") +	
+  theme(axis.text.x=element_text(angle=90, vjust=1, hjust=1),	
+        axis.title.x=element_blank(),	
+        axis.title.y=element_blank(),	
+        panel.grid.major=element_blank(),	
+        legend.position=c(0.1,0.9),	
+        legend.justification=c(0,1))	
+corr_plot
+```
+
+And there are some specific correlations.
+
+```{r}
+cor(PPMI$L_insular_cortex_ComputeArea, PPMI$L_insular_cortex_Volume)	
+cor(PPMI$UPDRS_part_I, PPMI$UPDRS_part_II, use = "complete.obs")	
+cor(PPMI$UPDRS_part_II, PPMI$UPDRS_part_III, use = "complete.obs")
+```
+
+One way to solve this is to create some latent variables. We can consider the following model.	
+
+```{r}
+model1<-	
+  ' 	
+    Imaging =~ L_cingulate_gyrus_ComputeArea  + L_cingulate_gyrus_Volume+R_cingulate_gyrus_ComputeArea+R_cingulate_gyrus_Volume+R_insular_cortex_ComputeArea+R_insular_cortex_Volume	
+    UPDRS=~UPDRS_part_I+UPDRS_part_II+UPDRS_part_III	
+    DemoGeno =~ Weight+Sex+Age	
+	
+    ResearchGroup ~ Imaging + DemoGeno + UPDRS	
+  '
+```
+
+Here we try to create three latent variables-`Imaging`, `DemoGeno`, and `UPDRS`. Let's fit a SEM model using `cfa()`(confirmatory factor analysis) function. Before fitting the data, we need to scale our dataset. However, we don't need to scale our binary response variable. We can use the following chunk of code to do the job.	
+
+```{r}
+mydata <- scale(PPMI[, -c(1,20,31)]) # avoid scaling ID, Dx, Time	
+mydata <- data.frame(PPMI$FID_IID, mydata, cbind(PPMI$time_visit, PPMI$ResearchGroup))	
+colnames(mydata)[1] <- "FID_IID"	
+colnames(mydata)[30] <- "time_visit"	
+colnames(mydata)[31] <- "ResearchGroup"
+```
+
+### Step 3 - fitting a model on the data	
+	
+Now, we can start to build the model. The `cfa()` function we will use shortly belongs to `lavaan` package.	
+
+```{r}
+# install.packages("lavaan")	
+# install.packages("pbivnorm")	
+library(lavaan)	
+# lavaan requires all variables to be ordered	
+# mydata[,] <- lapply(mydata[,], ordered)	
+mydata$ResearchGroup <- as.ordered(mydata$ResearchGroup)	
+mydata$time_visit <- as.ordered(mydata$time_visit)	
+	
+# See Lavaan's protocol for handling categorical engo/exogen covariates: 	
+# http://lavaan.ugent.be/tutorial/cat.html	
+#fit <- lavaan::cfa(model1, data=mydata, missing = 'WLSMV')	
+fit <- lavaan::cfa(model1, data=mydata, estimator = "PML")
+```
+
+Here we can see some warning messages. Both our covariance and error term matrices are not positive definite. Non-positive definite matrices can cause the estimates of our model to be biased. There are many factors that can lead to this problem. In this case, we might create some latent variables that are not a good fit for our data. Let's try to delete the `DemoGeno` latent variable. We can add `Weight`, `Sex`, and `Age` directly to the regression model.	
+
+```{r}
+model2 <-	
+    '      # (1) Measurement Model	
+      Imaging =~  L_cingulate_gyrus_ComputeArea +	
+        L_cingulate_gyrus_Volume+R_cingulate_gyrus_ComputeArea+R_cingulate_gyrus_Volume+	
+        R_insular_cortex_ComputeArea+R_insular_cortex_Volume	
+      UPDRS =~  UPDRS_part_I  +UPDRS_part_II + UPDRS_part_III	
+          # (2) Regressions	
+      ResearchGroup ~ Imaging + UPDRS +Age+Sex+Weight	
+    '	
+```
+
+When fitting `model2`, the warning messages are gone. We can see that falsely adding a latent variable can cause those matrices to be not positive definite. Currently, the `lavaan` functions `sem()` and `cfa()` are the same. 	
+
+```{r}
+#fit2<-cfa(model2, data=mydata, missing = 'FIML')	
+fit2 <- lavaan::cfa(model2, data=mydata, optim.gradient = "numerical")	
+summary(fit2, fit.measures=TRUE)
+```
+
+## Outputs of Lavaan SEM	
+	
+In the output of our model, we have information about how to create these two latent variables (`Imaging`, `UPDRS`) and the estimated regression model. Specifically, it gives the following information.	
+	
+(1) First six lines are called the header contains the following information:	
+	
+* lavaan version number	
+* lavaan converge info (normal or not), and # iterations needed	
+* the number of observations that were effectively used in the analysis	
+* the number of missing patterns identified, if any	
+* the estimator that was used to obtain the parameter values (here: ML)	
+* the model test statistic, the degrees of freedom, and a corresponding p-value	
+	
+(2)	Next, we have the Model test baseline model and the value for the SRMR	
+	
+(3)	The last section contains the parameter estimates, standard errors (if the information matrix is expected or observed, and if the standard errors are standard, robust, or based on the bootstrap).  Then, it tabulates all free (and fixed) parameters that were included in the model.  Typically, first the latent variables are shown, followed by covariances and (residual) variances.  The first column (Estimate) contains the (estimated or fixed) parameter value for each model parameter;  the second column (Std.err) contains  the  standard  error  for  each  estimated  parameter;  the  third  column  (Z-value)  contains  the  Wald statistic (which is simply obtained by dividing the parameter value by its standard error), and the last column contains the p-value for testing the null hypothesis that the parameter equals zero in the population.	
+	
+# Longitudinal data analysis-Linear Mixed model	
+	
+As mentioned earlier, longitudinal studies take measurements for the same individual repeatedly through a period of time. Under this setting, we can measure the change after a specific treatment. However, the measurements for the same individual may be correlate with each other. Thus, we need special models that deal with this type of internal inter-dependencies.	
+	
+If we use the latent variable UPDRS (created in the output of SEM model) rather than research group as our response we can conduct the following longitudinal analysis. In longitudinal analysis, time is often an important variable in the model.	
+	
+## Mean trend	
+	
+According to the output of model `fit`, our latent variable `UPDRS` is a combination of three observed variables-`UPDRS_part_I`, `UPDRS_part_II`, and `UPDRS_part_III`. We can visualize how average `UPDRS` differ in different research groups over time. 	
+
+```{r}
+mydata$UPDRS<-mydata$UPDRS_part_I+1.890*mydata$UPDRS_part_II+2.345*mydata$UPDRS_part_III	
+mydata$Imaging<-mydata$L_cingulate_gyrus_ComputeArea  +0.994*mydata$L_cingulate_gyrus_Volume+0.961*mydata$R_cingulate_gyrus_ComputeArea+0.955*mydata$R_cingulate_gyrus_Volume+0.930*mydata$R_insular_cortex_ComputeArea+0.920*mydata$R_insular_cortex_Volume	
+```
+
+The above chunk of code stored `UPDRS` and `Imaging` variables into `mydata`. By now, we are experienced with using the package `ggplot2` for data visualization. Now, we will use it to set the *x* and *y* axes as `time` and `UPDRS`, and then display the trend of the individual level `UPDRS`.	
+
+```{r}
+require(ggplot2)	
+p<-ggplot(data=mydata, aes(x=time_visit, y=UPDRS, group=FID_IID))	
+# dev.off()	
+p+geom_point()+geom_line()
+```
+
+This graph is not shown as it is uninformative without a clear pattern emerging. Let's see if group-level graphs may provide more intuition. We will use the `aggregate()` function to get the mean, minimum and maximum of `UPDRS` for each time point. Then, we will use separate color for the two research groups and examine their mean trends.	
+
+```{r}
+ppmi.mean<-aggregate(UPDRS~time_visit+ResearchGroup, FUN = mean, data=mydata[, c(30, 31, 32)])	
+ppmi.min<-aggregate(UPDRS~time_visit+ResearchGroup, FUN = min, data=mydata[, c(30, 31, 32)])	
+ppmi.max<-aggregate(UPDRS~time_visit+ResearchGroup, FUN = max, data=mydata[, c(30, 31, 32)])	
+ppmi.boundary<-merge(ppmi.min, ppmi.max, by=c("time_visit", "ResearchGroup"))	
+ppmi.all<-merge(ppmi.mean, ppmi.boundary, by=c("time_visit", "ResearchGroup"))	
+pd <- position_dodge(0.1) 	
+p1<-ggplot(data=ppmi.all, aes(x=time_visit, y=UPDRS, group=ResearchGroup, colour=ResearchGroup))	
+p1+geom_errorbar(aes(ymin=UPDRS.x, ymax=UPDRS.y, width=0.1))+geom_point()+geom_line()	
+```
+
+Despite slight overlaps in some lines, the resulting graph illustrates better the mean differences between the two cohorts. The control group (1) appears to have relative lower means and tighter ranges compared to the PD patient group (0). However, we need further data interrogation to determine if this visual (EDA) evidence translates into statistically significant group differences.	
+	
+Generally speaking we can always use the *General Linear Modeling (GLM)* framework. However, GLM may ignore the individual differences. So, we can try to fit a *Linear Mixed Model (LMM)* to incorporate different intercepts for each individual participant. Consider the following GLM:	
+	
+$$UPDRS_{ij}\sim \beta_0+\beta_1*Imaging_{ij}+\beta_2*ResearchGroup_i+\beta_3*{time\_visit}_j+\beta_4*ResearchGroup_i*time\_visit_j+\beta_5*Age_i+\beta_6*Sex_i+\beta_7*Weight_i+\epsilon_{ij}$$	
+
+If we fit a different intercept for each individual (indicated by FID_IID) we obtain the following LMM model:	
+	
+$$UPDRS_{ij}\sim \beta_0+\beta_1*Imaging+\beta_2*ResearchGroup+\beta_3*time_visit_j+\beta_4*ResearchGroup_i*time_visit_j+\beta_5*Age_i+\beta_6*Sex_i+\beta_7*Weight_i+b_i+\epsilon_{ij}$$	
+
+The LMM actually has two levels:	
+	
+***Stage 1***	
+$$Y_{i}=Z_i\beta_i+\epsilon_i,$$	
+where both $Z_i$ and $\beta_i$ are matrices.	
+	
+***Stage 2***	
+The second level allows fitting random effects in the model.	
+$$\beta_i=A_i*\beta+b_i.$$	
+So, the full model in matrix form would be:	
+$$Y_i=X_i*\beta+Z_i*b_i+\epsilon_i.$$	
+	
+In this case study, we only consider random intercept and avoid including random slopes, however the model can indeed be extended. In other words, $Z_i=1$ in our model. Let's compare the two models (GLM and LMM). One R package implementing LMM is `lme4`.	
+
+```{r}
+#install.packages("lme4")	
+#install.packages("arm")	
+library(lme4)	
+library(arm)	
+#GLM	
+model.glm<-glm(UPDRS~Imaging+ResearchGroup*time_visit+Age+Sex+Weight, data=mydata)	
+summary(model.glm)	
+#LMM	
+model.lmm<-lmer(UPDRS~Imaging+ResearchGroup*time_visit+Age+Sex+Weight+(1|FID_IID), data=mydata)	
+summary(model.lmm)	
+display(model.lmm)
+```
+
+Note that we use the notation `ResearchGroup*time_visit` that is same as `ResearchGroup+time_visit+ResearchGroup*time_visit` where R will include both terms and their interaction into the model. According to the model outputs, the LMM model has a relatively smaller AIC. In terms of AIC, LMM may represent a better model fit than GLM.	
+	
+## Modeling the correlation	
+	
+In the summary of LMM model we can see a section called `Correlation of Fixed Effects`. The original model made no assumption about the correlation (unstructured correlation). In R, we usually have the following 4 types of correlation models.	
+	
+* **Independence**: no correlation.	
+$$	
+\left(\begin{array}{ccc} 	
+1 & 0 &0\\	
+0 & 1 &0\\	
+0&0&1	
+\end{array}\right)	
+$$	
+	
+* **Exchangeable**: correlations are constant across measurements.	
+	
+$$	
+\left(\begin{array}{ccc} 	
+1 & \rho &\rho\\	
+\rho & 1 &\rho\\	
+\rho&\rho&1	
+\end{array}\right)	
+$$	
+	
+* **Autoregressive order 1(AR(1))**: correlations are stronger for closer measurements and weaker for more distanced measurements.	
+	
+$$	
+\left(\begin{array}{ccc} 	
+1 & \rho &\rho^2\\	
+\rho & 1 &\rho\\	
+\rho^2&\rho&1	
+\end{array}\right)	
+$$	
+	
+* **Unstructured**: correlation is different for each occasion.	
+	
+$$	
+\left(\begin{array}{ccc} 	
+1 & \rho_{1, 2} &\rho_{1, 3}\\	
+\rho_{1, 2} & 1 &\rho_{2, 3}\\	
+\rho_{1, 3}&\rho_{2, 3}&1	
+\end{array}\right)	
+$$	
+	
+In the LMM model, the output also seems unstructured. So, we needn't worry about changing the correlation structure. However, if the output under unstructured correlation assumption looks like an Exchangeable or AR(1) structure, we may consider changing the LMM correlation structure accordingly.	
+
+# Generalized estimating equations (GEE)	
+	
+Much like the generalized linear mixed models (GLMM), generalized estimating equations (GEE) may be utilized for longitudinal data analysis. If the response is a binary variable like `ResearchGroup`, we need to use General Linear Mixed Model (GLMM) instead of LMM. Although GEE represents the marginal model of GLMM, GLMM and GEE are actually different.	
+	
+In situations where the responses are discrete, there may not be a uniform or systematic strategy for dealing with the joint multivariate distribution of $Y_{i} = \{(Y_{i1}, Y_{i2}, ..., Y_{in})\}^T$, . That's where the GEE method comes into play as it's based on the concept of estimating equations. It provides a general approach for analyzing discrete and continuous responses with marginal models. 	
+	
+**GEE is applicable when**:	
+	
+(1)	$\beta$, a generalized linear model regression parameter, characterizes systematic variation across covariate levels, 	
+(2)	the data represents repeated measurements, clustered data, multivariate response, and 	
+(3)	the correlation structure is a nuisance feature of the data. 	
+	
+**Notation** 	
+	
+* Response variables: $\{Y_{i, 1}, Y_{i, 2}, ..., Y_{i, n_t} \}$, where $i \in [1, N]$ is the index for clusters or subjects, and $j\in [1, n_t ]$  is the index of the measurement within cluster/subject. 	
+* Covariate vector: $\{X_{i, 1}, X_{i, 2} , ..., X_{i, n_t} \}$. 	
+	
+The primary focus of GEE is the estimation of the **mean model**: 	
+	
+$E(Y_{i, j}  |X_{i, j} )=\mu_{i, j}$, where $$g(\mu_{i, j} )=\beta_0  +\beta_1  X_{i, j}  (1)+\beta_2  X_{i, j}  (2)+\beta_3  X_{i, j}  (3)+...+\beta_p  X_{i, j}  (p)=X_{i, j} \times \beta.$$	
+This mean model can be any generalized linear model. For example: 	
+$P(Y_{i, j} =1|X_{i, j} )=\pi_{i, j}$	
+(marginal probability, as we don't condition on any other variables):	
+	
+$$g(\mu_{i, j})=\ln (\frac{\pi_{i, j}}{1- \pi_{i, j} }) = X_{i, j} \times \beta.$$ 	
+	
+Since the data could be clustered (e.g., within subject, or within unit), we need to choose a correlation model. Let	
+$$V_{i, j} = var(Y_{i, j}|X_i),$$	
+$$A_i=diag(V_{i, j}),$$	
+the paired correlations are denoted by:	
+$$\rho_{i, {j, k}}=corr(Y_{i, j}, Y_{i, k}|X_i),$$	
+	
+the correlation matrix: 	
+$$R_i=(\rho_{i, {j, k}}), \ \text{for all}\ j\ \text{and} \ k,$$	
+	
+and the paired predictor-response covariances are: 	
+$$V_i=cov(Y_i |X_i)=A_i^{1/2} R_i A_i^{1/2}.$$	
+	
+Assuming different correlation structures in the data leads to alternative models, see examples above. 	
+
+**Summary** 	
+	
+* GEE is a semi-parametric technique because: 	
+   + The specification of a mean model, $\mu_{i, j}(\beta)$, and a correlation model, $R_i(\alpha)$, does not identify a complete probability model for $Y_i$	
+   + The model $\{\mu_{i, j}(\beta), R_i(\alpha)\}$ is semi-parametric since it only specifies the first two multivariate moments (mean and covariance) of $Y_i$. Higher order moments are not specified. 	
+* Without an explicit likelihood function, to estimate the parameter vector $\beta$, (and perhaps the covariance parameter matrix $R_i(\alpha)$) and perform valid statistical inference that takes the dependence into consideration, we need to construct an unbiased estimating function: 	
+  + $D_i (\beta) = \frac{ \partial \mu_i}{\partial \beta}$, the partial derivative, w.r.t. $\beta$, of the mean-model for subject *i*.	
+  + $D_i (j, k) = \frac{ \partial \mu_{i, j}}{\partial \beta_k}$, the partial derivative, w.r.t. the *k*th regression coefficient ($\beta k$), of the mean-model for subject *i* and measurement (e.g., time-point) *j*. 	
+	
+Estimating (cost) function: 	
+$$U(\beta)=\sum_{i=1}^N D_i^T (\beta) V_i^{-1}  (\beta, \alpha)\{Y_i-\mu_i (\beta)\}.$$ 	
+	
+Solving the Estimating Equations leads to parameter estimating solutions: 	
+$$0=U(\hat{\beta})=\sum_{i=1}^N\underbrace{D_i^T(\hat{\beta})}_{\text{scale}}\underbrace{(V_i^{-1} \hat{\beta}, \alpha)}_{\text{variance weight}}\underbrace{ \{ Y_i-\mu_i (\hat{\beta}) \} }_{\text{model mean}}.$$	
+**Scale:** a change of scale term transforming the scale of the mean, $\mu_i$, to the scale of the regression coefficients (covariates) .	
+	
+**Variance weight:** the inverse of the variance-covariance matrix is used to weight in the data for subject *i*, i.e., giving more weight to differences between observed and expected values for subjects that contribute more information.	
+	
+**Model Mean:** specifies the mean model, $\mu_i(\beta)$, compared to the observed data, $Y_i$. This fidelity term minimizes the difference between actually-observed and mean-expected (within the *i*th cluster/subject).	
+	
+See also [SMHS EBook](https://wiki.socr.umich.edu/index.php/SMHS_GEE).	
+
+## GEE vs. GLMM	
+	
+There is a difference in the interpretation of the model coefficients between GEE and GLMM. The fundamental difference between GEE and GLMM is in the target of inference: population-average vs. subject-specific. For instance, consider an example where the observations are dichotomous outcomes (Y), e.g., single Bernoulli trials or death/survival of a clinical procedure, that are grouped/clustered into hospitals and units within hospitals, with N additional demographic, phenotypic, imaging and genetics predictors. To model the failure rate between genders (males vs. females) in a hospital, where all patients are spread among different hospital units (or clinical teams), let Y represent the binary response (death or survival).	
+	
+In GLMM, the model will be pretty similar with the LMM model.	
+$$log\left (\frac{P(Y_{ij}=1)}{P(Y_{ij}=0)}|X_{ij}, b_i \right )=\beta_0+\beta_1x_{ij}+b_i+\epsilon_{ij}.$$	
+The only difference between GLMM and LMM in this situation is that GLMM used a *logit link* for the binary response.	
+	
+With GEE, we don't have random intercept or slope terms.	
+$$log\left (\frac{P(Y_{ij}=1)}{P(Y_{ij}=0)}|X_{ij}, b_i\right )=\beta_0+\beta_1x_{ij}+\epsilon_{ij}.$$	
+In the marginal model (GEE), we are ignoring differences among hospital-units and just aim to obtain population (hospital-wise) rates of failure (patient death) and its association with patient gender. The GEE model fit estimates the odds ratio representing the population-averaged (hospital-wide) odds of failure associated with patient gender.	
+	
+Thus, parameter estimates ($\hat{\beta}$) from GEE and GLMM models may differ because they estimate different things. 	
+
+# PD/PPMI Case-Study: SEM, GLMM, and GEE modeling	
+	
+Let's use the [PD/PPMI dataset (05_PPMI_top_UPDRS_Integrated_LongFormat1.csv)](https://umich.instructure.com/files/330397/download?download_frd=1) to show longitudinal SEM, GEE, and GLMM data modeling.	
+	
+## Some exploratory data analytics
+
+
+
+
