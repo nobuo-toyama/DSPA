@@ -940,6 +940,311 @@ Let's use the [PD/PPMI dataset (05_PPMI_top_UPDRS_Integrated_LongFormat1.csv)](h
 	
 ## Some exploratory data analytics
 
+```{r}
+# install.packages("lavaan")	
+library(lavaan)	
+#load data   05_PPMI_top_UPDRS_Integrated_LongFormat1.csv ( dim(myData) 1764   31 )	
+# setwd("/dir/")	
+dataPD <-	
+  read.csv("https://umich.instructure.com/files/330397/download?download_frd=1",	
+           header = TRUE)	
+	
+# dichotomize the "ResearchGroup" variable	
+dataPD$ResearchGroup <-	
+  ifelse(dataPD$ResearchGroup == "Control", 1, 0)	
+head(dataPD)	
+hist(dataPD$time_visit)	
+	
+	
+# factorize the categorical features	
+dataPD_new <- dataPD	
+dataPD_new$ResearchGroup <- factor(dataPD_new$ResearchGroup)	
+dataPD_new$Sex <- factor(dataPD_new$Sex)	
+dataPD_new$chr12_rs34637584_GT <- factor(dataPD_new$chr12_rs34637584_GT)	
+dataPD_new$chr17_rs11868035_GT <- factor(dataPD_new$chr17_rs11868035_GT)	
+	
+# by chr17_rs11868035_GT genotype and ResearchGroup	
+ggplot(dataPD_new, aes(x=time_visit, y=UPDRS_part_I, group=FID_IID)) +	
+  ggtitle("PD/PPMI Data chr17_rs11868035_GT genotype and ResearchGroup") + 	
+  geom_line(aes(color=ResearchGroup)) +	
+  geom_point(aes(color=ResearchGroup)) + facet_wrap(~chr17_rs11868035_GT)	
+	
+# by chr17_rs11868035_GT genotype and subjectID	
+ggplot(dataPD_new, aes(x=time_visit, y=UPDRS_part_I, group=FID_IID)) +	
+  ggtitle("PD/PPMI Data chr17_rs11868035_GT genotype and SubjectID") + 	
+  geom_line(aes(color=FID_IID)) +	
+  geom_point(aes(color=FID_IID)) + 	
+  facet_wrap(~chr17_rs11868035_GT)	
+	
+# by ResearchGroup and chr17_rs11868035_GT genotype	
+ggplot(dataPD_new, aes(x=time_visit, y=UPDRS_part_I, group=FID_IID)) +	
+  ggtitle("PD/PPMI Data by Genotype (chr17_rs11868035_GT) & ResearchGroup") + 	
+  geom_line(aes(color=chr17_rs11868035_GT))+	
+  geom_point(aes(color=chr17_rs11868035_GT))+	
+  facet_wrap(~ResearchGroup)	
+	
+# by ResearchGroup + chr17_rs11868035_GT genotype subgroups	
+ggplot(dataPD_new, aes(x=time_visit, y=UPDRS_part_I, group=FID_IID)) +	
+  ggtitle("PD/PPMI Data chr17_rs11868035_GT genotype and SubjectID") + 	
+  geom_line(aes(color=FID_IID))+	
+  geom_point(aes(color=FID_IID))+	
+  facet_wrap(~ResearchGroup + chr17_rs11868035_GT)
+```
 
+## SEM
 
+```{r}
+# time_visit is incongruent between cases, we make it ordinal category	
+# conver the long-to-wide data format to unwind the time	
+library(reshape2)	
+	
+# check this R-blog post for some common data aggregation, melting, casting and other operations ...	
+# https://www.r-statistics.com/2012/01/aggregation-and-restructuring-data-from-r-in-action/	
+	
+subsetPD <-	
+  dataPD[, c(	
+    "FID_IID",	
+    "L_insular_cortex_ComputeArea",	
+    "R_insular_cortex_ComputeArea",	
+    "L_cingulate_gyrus_ComputeArea",	
+    "R_cingulate_gyrus_ComputeArea",	
+    "L_putamen_Volume" ,	
+    "R_putamen_Volume",	
+    "Sex"  ,	
+    "Weight" ,	
+    "ResearchGroup" ,	
+    "Age" ,	
+    "chr12_rs34637584_GT" ,	
+    "chr17_rs11868035_GT",	
+    "UPDRS_part_I",	
+    "UPDRS_part_II" ,	
+    "UPDRS_part_III",	
+    "time_visit"	
+  )]	
+	
+subsetPD$time_visit <-	
+  c("T1", "T2", "T3", "T4")   # convert all times to 1:4	
+	
+# First Wide to long for UPDRS variable.names	
+subsetPD_long <-	
+  melt(	
+    subsetPD,	
+    id.vars = c(	
+      "FID_IID",	
+      "L_insular_cortex_ComputeArea",	
+      "R_insular_cortex_ComputeArea",	
+      "L_cingulate_gyrus_ComputeArea",	
+      "R_cingulate_gyrus_ComputeArea",	
+      "L_putamen_Volume" ,	
+      "R_putamen_Volume",	
+      "Sex"  ,	
+      "Weight" ,	
+      "ResearchGroup" ,	
+      "Age" ,	
+      "chr12_rs34637584_GT" ,	
+      "chr17_rs11868035_GT",	
+      "time_visit"	
+    ),	
+    variable.name = "UPDRS",	
+    value.name = "UPDRS_value"	
+  )	
+	
+# Need to concatenate 2 columns "UPDRS" & "time_visit"	
+subsetPD_long$UPDRS_Time <-	
+  do.call(paste, c(subsetPD_long[c("UPDRS", "time_visit")], sep = "_"))	
+# remove the old "UPDRS" & "time_visit" columns	
+subsetPD_long1 <-	
+  subsetPD_long[,!(names(subsetPD_long) %in% c("UPDRS", "time_visit"))]	
+# View(subsetPD_long1)	
+	
+# Convert Long to Wide format	
+library(reshape2)	
+# From the source:	
+# "FID_IID", "L_insular_cortex_ComputeArea",  "R_insular_cortex_ComputeArea", "L_cingulate_gyrus_ComputeArea", "R_cingulate_gyrus_ComputeArea", "L_putamen_Volume" ,  "R_putamen_Volume",  "Sex"  , "Weight" ,   "ResearchGroup" , "Age" , "chr12_rs34637584_GT" , "chr17_rs11868035_GT", are columns we want to keep the same	
+# "time_visit" is the column that contains the names of the new columns to put things in	
+# "UPDRS_part_I", "UPDRS_part_II" , "UPDRS_part_III" hold the measurements	
+subsetPD_wide <-	
+  dcast(	
+    subsetPD_long,	
+    FID_IID + L_insular_cortex_ComputeArea + R_insular_cortex_ComputeArea +	
+      L_cingulate_gyrus_ComputeArea + R_cingulate_gyrus_ComputeArea + L_putamen_Volume +	
+      R_putamen_Volume + Sex + Weight + ResearchGroup + Age + chr12_rs34637584_GT +	
+      chr17_rs11868035_GT ~ UPDRS_Time,	
+    value.var = "UPDRS_value",	
+    fun.aggregate = mean	
+  )	
+	
+# Variables:	
+# "FID_IID", "L_insular_cortex_ComputeArea" ,"R_insular_cortex_ComputeArea",  "L_cingulate_gyrus_ComputeArea","R_cingulate_gyrus_ComputeArea","L_putamen_Volume", "R_putamen_Volume", "Sex","Weight", "ResearchGroup" ,"Age" , "chr12_rs34637584_GT", "chr17_rs11868035_GT","UPDRS_part_I_T1","UPDRS_part_I_T2"               "UPDRS_part_I_T3", "UPDRS_part_I_T4", "UPDRS_part_II_T1","UPDRS_part_II_T2","UPDRS_part_II_T3", "UPDRS_part_II_T4","UPDRS_part_III_T1","UPDRS_part_III_T2", "UPDRS_part_III_T3", "UPDRS_part_III_T4"	
+	
+# SEM modeling	
+model1 <- '	
+# latent variable definitions - defining how the latent variables are "manifested by" a set of observed	
+# (or manifest) variables, aka "indicators"	
+# (1) Measurement Model	
+Imaging =~ L_cingulate_gyrus_ComputeArea + R_cingulate_gyrus_ComputeArea + L_putamen_Volume + R_putamen_Volume	
+DemoGeno =~ Weight+Sex+Age	
+UPDRS =~ UPDRS_part_I_T1	
+# UPDRS =~ UPDRS_part_II_T1 + UPDRS_part_II_T2 + UPDRS_part_II_T3 + UPDRS_part_II_T4	
+	
+# (2) Regressions	
+ResearchGroup ~ Imaging + DemoGeno + UPDRS	
+'	
+	
+# confirmatory factor analysis (CFA)	
+# The baseline is a null model constraining the observed variables to covary with no other variables.	
+# That is, the covariances are fixed to 0 and only individual variances are estimated. This is represents	
+# a "reasonable worst-possible fitting model", against which the new fitted model is compared	
+# to calculate appropriate model-quality indices (e.g., CFA).	
+	
+summary(subsetPD_wide)	
+# selective scale features (e.g., avoid scaling Subject ID's)	
+dataPD2 <-	
+  as.data.frame(cbind(scale(subsetPD_wide[,!(	
+    names(subsetPD_wide) %in% c(	
+      "FID_IID",	
+      "Sex",	
+      "ResearchGroup",	
+      "chr12_rs34637584_GT",	
+      "chr17_rs11868035_GT"	
+    )	
+  )]), subsetPD_wide[, (	
+    names(subsetPD_wide) %in% c(	
+      "FID_IID",	
+      "Sex",	
+      "ResearchGroup",	
+      "chr12_rs34637584_GT",	
+      "chr17_rs11868035_GT"	
+    )	
+  )]))	
+	
+summary(dataPD2)	
+	
+# fitSEM3 <- cfa(model3, data= dataPD2, missing='FIML') 		# deal with missing values (missing='FIML')	
+# summary(fitSEM3, fit.measures=TRUE)	
+	
+fitSEM1 <- sem(model1, data = dataPD2, estimator = "MLM")	
+# Check the SEM model covariances	
+fitSEM1@SampleStats@cov	
+summary(fitSEM1)	
+# report the standardized coefficients of the model	
+# standardizedSolution(fitSEM1)	
+# variation explained by model components (The R-square value for all endogenous variables)	
+inspect(fitSEM1, "r2")  # lavInspect()	
+	
+# install.packages("semPlot")	
+library(semPlot)	
+semPlot::semPaths(	
+  fitSEM1,	
+  intercept = FALSE,	
+  whatLabel = "est",	
+  residuals = FALSE,	
+  exoCov = FALSE,	
+  edge.label.cex = 1.0,	
+  label.cex = 1.5,	
+  sizeMan = 8	
+)
+```
 
+## GLMM
+
+```{r}
+# scale some features	
+dataPD_new$L_cingulate_gyrus_ComputeArea <- scale(dataPD_new$L_cingulate_gyrus_ComputeArea)	
+dataPD_new$L_cingulate_gyrus_Volume <- scale(dataPD_new$L_cingulate_gyrus_Volume)	
+dataPD_new$R_cingulate_gyrus_ComputeArea <- scale(dataPD_new$R_cingulate_gyrus_ComputeArea)	
+dataPD_new$R_cingulate_gyrus_Volume<-scale(dataPD_new$R_cingulate_gyrus_Volume)	
+dataPD_new$R_insular_cortex_ComputeArea<-scale(dataPD_new$R_insular_cortex_ComputeArea)	
+dataPD_new$R_insular_cortex_Volume<-scale(dataPD_new$R_insular_cortex_Volume)	
+	
+# define the outcome UPDRS and imaging latent feature	
+dataPD_new$UPDRS<-dataPD_new$UPDRS_part_I+1.890*dataPD_new$UPDRS_part_II+2.345*dataPD_new$UPDRS_part_III	
+dataPD_new$Imaging<-dataPD_new$L_cingulate_gyrus_ComputeArea  +0.994*dataPD_new$L_cingulate_gyrus_Volume+0.961*dataPD_new$R_cingulate_gyrus_ComputeArea+0.955*dataPD_new$R_cingulate_gyrus_Volume+0.930*dataPD_new$R_insular_cortex_ComputeArea+0.920*dataPD_new$R_insular_cortex_Volume	
+	
+model.glmm<-glmer(ResearchGroup~UPDRS+Imaging+Age+Sex+Weight+(1|FID_IID), data=dataPD_new, family="binomial")	
+arm::display(model.glmm)	
+dataPD_new$predictedGLMM <- predict(model.glmm, newdata=dataPD_new[1:1764, !(names(dataPD_new) %in% c("ResearchGroup", "UPDRS_part_II_T4"))], allow.new.levels=T, type="response")  # lme4::predict.merMod()	
+# factorize the predictions	
+dataPD_new$predictedGLMM <- factor(ifelse(dataPD_new$predictedGLMM<0.5, "0", "1"))	
+	
+# compare overall the GLMM-predicted values against observed ResearchGroup labels values 	
+# install.packages("caret")	
+# library("caret")	
+caret::confusionMatrix(dataPD_new$predictedGLMM, dataPD_new$ResearchGroup)	
+	
+# compare predited and observed by Sex	
+ggplot(dataPD_new, aes(predictedGLMM, fill=ResearchGroup)) + 	
+   geom_bar() + facet_grid(. ~ Sex) 	
+	
+# compare predited and observed by Genotype (chr12_rs34637584_GT)	
+ggplot(dataPD_new, aes(predictedGLMM, fill=ResearchGroup)) + 	
+   geom_bar() + facet_grid(. ~ chr12_rs34637584_GT)	
+```
+
+## GEE	
+	
+We can use several alternative R packages to fit and interpret GEE models, e.g., `gee` and `geepack`. Below we will demonstrate GEE modeling of the PD data using `gee`.	
+
+```{r}
+# install.packages("geepack")	
+# library("geepack")	
+#gee.fit <- geeglm(ResearchGroup~Imaging+Age+Sex+Weight+UPDRS_part_I, data=dataPD_new[complete.cases(dataPD_new), ], family = "binomial", id = FID_IID, corstr = "exchangeable", scale.fix = TRUE)	
+	
+library(gee)	
+# Full GEE model	
+gee.fit <- gee(ResearchGroup~Imaging+Age+Sex+Weight+UPDRS_part_I, data=dataPD_new, family = "binomial", id = FID_IID, corstr = "exchangeable", scale.fix = TRUE)	
+# reduced model (-UPDRS_part_I)	
+gee.fit2 <- gee(ResearchGroup~Imaging+Age+Sex+Weight, data=dataPD_new, family = "binomial", id = FID_IID, corstr = "exchangeable", scale.fix = TRUE)	
+summary(gee.fit)	
+	
+# anova(gee.fit, gee.fit2) # compare two GEE models	
+# To test whether a categorical predictor with more than two levels should be retained in a GEE model we need to test the entire set of dummy variables simultaneously as a single construct. 	
+# The geepack package provides a method for the anova function for a multivariate Wald test	
+# When the anova function is applied to a single geeglm object it returns sequential Wald tests for individual predictors with the tests carried out in the order the predictors are listed in the model formula.	
+	
+# Individual Wald test and confidence intervals for each covariate	
+predictors <- coef(summary(gee.fit))	
+gee.fit.CI <- with(as.data.frame(predictors), cbind(lwr=Estimate-1.96*predictors[, 4], est=Estimate, upr=Estimate+1.96*predictors[, 4])) # predictors[, 4] == "Robust S.E."	
+rownames(gee.fit.CI) <- rownames(predictors)	
+gee.fit.CI	
+	
+# exponentiate the interpret the results as "odds", instead of log-odds	
+UPSRS_est <- coef(gee.fit)["UPDRS_part_I"]	
+UPDRS_se <- summary(gee.fit)$coefficients["UPDRS_part_I", "Robust S.E."]	
+	
+exp(UPSRS_est + c(-1, 1) * UPDRS_se * qnorm(0.975))
+```
+
+The results show that the estimated `UPDRS`-assessment effect of the clinical diagnosis (`ResearchGroup`) taken from the GEE model exchangeable structure (`summary(gee.fit)$working.correlation`) is $-0.458$. We can use the robust standard errors (`Robust S.E.`) to compute the associated 95% confidence interval, $[-0.65;\ -0.33972648]$. Finally, remember that in the binomial/logistic outcome modeling, these effect-size estimates are on a log-odds scale. Interpretation of the results is simpler if we exponentiate the values to get the effects in terms of (simple raw) odds. This	
+gives a UPDRS effect of $0.632$ and a corresponding 95% confidence interval of $[0.548;\ 0.729]$. This CI clearly excludes the origin and suggests a strong association between `UPDRS_part_I` (non-motor experiences of daily living) and `ResearchGroup` (clinical diagnosis).	
+	
+The three models are not directly comparable because they are so intrinsically different. The table below reports the AIC, but we can also compute other model-quality metrics, for SEM, GLMM, and GEE. 	
+
+```{r}
+AIC(fitSEM1)	
+AIC(model.glmm)	
+# install.packages("MuMIn")	
+library("MuMIn")	
+# to rank several models based on QIC:	
+# model.sel(gee.fit, gee.fit2, rank = QIC)	
+QIC(gee.fit)
+```
+
+.       |   SEM   |     GLMM    |   GEE    	
+--------|---------|-------------|----------	
+AIC     |   4871  |     96.8    |   773.9  	
+
+Try to apply some of these longitudinal data analytics on:	
+	
+* The fMRI data we discussed in [Chapter 3 (Visualization)](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/03_DataVisualization.html#63_3d_and_4d_visualizations), and 	
+* The [Diet-Exer-Pulse Data](https://umich.instructure.com/files/6009692/download?download_frd=1) fitting models for  *Time* as a linear predictor of *Pulse*, accounting for the study design (diet by exercise).	
+	
+# Recurrent (RNN) and Long Short-Term Memory (LSTM) Networks	
+	
+This Chapter is purposely divided in two separate sections to reduce the page loading time, stratify the extensive computational tasks, and improve the user experiences. The separate [RNN/LSTM section is available here](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/18_BigLongitudinalDataAnalysis_RNN.html), and it includes:	
+	
+* Recurrent Neural Networks (RNN)	
+* Tensor Format Representation	
+* Simulated RNN case-study	
+* Climate Data Study	
+* Keras-based Multi-covariate LSTM Time-series Analysis and Forecasting.	
