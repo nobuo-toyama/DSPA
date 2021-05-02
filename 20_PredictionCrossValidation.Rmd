@@ -1,0 +1,987 @@
+---
+title: "20 Cross Validation"
+author: "nobuo"
+date: "2021/5/2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Start by reviewing [Chapter 13 (Model Performance Assessment)](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/13_ModelEvaluation.html). Cross-validation is a strategy for validating predictive methods, classification models and clustering techniques by assessing the reliability and stability of the results of the corresponding statistical analyses (e.g., predictions, classifications, forecasts) based on independent datasets. For prediction of trend, association, clustering, and classification, a model is usually trained on one dataset (*training data*) and subsequently tested on new data (*testing or validation data*). Statistical internal cross-validation defines a test dataset to evaluate the model predictive performance as well as assess its power to avoid overfitting. *Overfitting* is the process of computing a predictive or classification model that describes random error, i.e., fits to the noise components of the observations, instead of identifying actual relationships and salient features in the data.	
+	
+In this Chapter, we will use Google Flu Trends, Autism, and Parkinson's disease case-studies to illustrate (1) alternative forecasting types using linear and non-linear predictions, (2) exhaustive and non-exhaustive internal statistical cross-validation, and (3) explore complementary predictor functions.	
+	
+# Forecasting types and assessment approaches	
+In [Chapter 6](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/06_LazyLearning_kNN.html) we discussed the types of classification and prediction methods, including `supervised` and `unsupervised` learning. The former are direct and predictive (there are known outcome variables that can be predicted and the corresponding forecasts can be evaluated) and the latter are indirect and descriptive (there are no *a priori* labels or specific outcomes).	
+	
+There are alternative metrics used for evaluation of model performance, see [Chapter 13](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/13_ModelEvaluation.html). For example, assessment of supervised prediction and classification methods depends on the type of the labeled **outcome responses** - `categorical` (binary or polytomous) vs. `continuous`. 	
+	
+* `Confusion matrices` reporting [accuracy, FP, FN, PPV, NPV, LOR and other metrics](https://wiki.socr.umich.edu/index.php/SMHS_PowerSensitivitySpecificity) may be used to assess predictions of dichotomous (binary) or `polytomous outcomes`.	
+	
+* $R^2$, correlations (between predicted and observed outcomes), and [RMSE](https://en.wikipedia.org/wiki/Root-mean-square_deviation) measures may be used to quantify the performance of various supervised forecasting methods on `continuous features`.	
+
+Overfitting  	
+	
+Before we go into the cross-validation of predictive analytics, we will present several examples of *overfitting* that illustrate why certain amount of skepticism and mistrust may be appropriate when dealing with forecasting models based on large and complex data.	
+	
+## Example (US Presidential Elections)	  	
+By 2017, there were only **57 US presidential elections** and **45 presidents**. That is a small dataset, and learning from it may be challenging. For instance:	
+	
+* If the predictor space expands to include things like *having false teeth*, it's pretty easy for the model to go from fitting the generalizable features of the data (the signal, e.g., presidential actions) to matching noise patterns (e.g., irrelevant characteristics like gender of the children of presidents, or types of dentures they may wear).	
+* When overfitting noise patterns takes place, the quality of the model fit assessed on the historical data may improve (e.g., better $R^2$, more about the [Coefficient of Determination is available here](https://en.wikipedia.org/wiki/Coefficient_of_determination)). At the same time, however, the model performance may be suboptimal when used to make inferences about prospective data, e.g., future presidential elections.  	
+	
+This cartoon illustrates some of the (unique) noisy presidential characteristics that are thought to be unimportant to presidential elections or presidential performance. ![Cartoon of noisy presidential characteristics](https://imgs.xkcd.com/comics/electoral_precedent.png)	
+	
+## Example (Google Flu Trends)	  	
+A March 14, 2014 article in Science ([DOI: 10.1126/science.1248506](https://doi.org/10.1126/science.1248506)), identified problems in [Google Flu Trends (GFT)](https://www.google.org/flutrends/about/#US), [DOI  10.1371/journal.pone.0023610](https://doi.org/10.1371/journal.pone.0023610), which may be attributed in part to overfitting. The GFT was built to predict the future Centers for Disease Control and Prevention (CDC) reports of doctor office visits for influenza-like illness (ILI). In February 2013, Nature reported that GFT was predicting more than double the proportion of doctor visits compared to the CDC forecast for the same period.   	
+ 	
+The GFT model found the best matches among 50 million web search terms to fit 1,152 data points. It predicted quite high odds of finding search terms that match the propensity of the flu but are structurally unrelated and hence are not prospectively predictive. In fact, the GFT investigators reported weeding out unrelated to the flu seasonal search terms may have been strongly correlated to the CDC data, e.g., high school basketball season. The big GFT data may have overfitted the relatively small number of cases. This false-alarm result was also paired with a false-negative finding. The GFT model also missed the non-seasonal 2009 H1N1 influenza pandemic, which provides a cautionary tale about prediction, overfitting, and prospective validation.	
+	
+## Example (Autism)	
+Autistic brains constantly overfit visual and cognitive stimuli. To an autistic person, a general conversation of several adults may seem like a cacophony due to super-sensitive detail-oriented hearing and perception tuned to literally pick up all elements of the conversation and clues of the surrounding environment. At the same time, autistic brains downplay body language, sarcasm and non-literal cues. We can `miss the forest for the trees` when we start "overfitting", over-interpreting the noise on top of the actual salient information. Ambient noise, trivial observations and unrelated perceptions may hide the true communication details.  	
+ 	
+Human conversations and communications involve exchanges of both critical information and random noise. Fitting a perfect model requires focus only on the "relevant" information. Overfitting occurs when attention is (excessively) consumed with peripheral noise, or worse, overwhelmed by inconsequential noise drowning the salient aspects of the communication exchange.  	
+   	
+Any dataset is a mix of signal and noise. The main task of our brains is to sort these components and interpret the information (i.e., ignore the noise). 	
+	
+**"One person's noise is another person's treasure map!"**	
+	
+Our predictions are most accurate if we can model as much of the signal and as little of the noise as possible. Note that in these terms, $R^2$ is a poor metric to identify predictive power - it measures how much of the signal **and** the noise is explained by our model. In practice, it's hard to always identify what's signal and what's noise. This is why practical applications tends to favor simpler models, since the more complicated a model is, the easier it is to overfit the noise component of the observed information.  	
+	
+# Internal Statistical Cross-validation is an iterative process	
+	
+Internal statistical cross-validation assesses the expected performance of a prediction method in cases (subject, units, regions, etc.) drawn from a similar population as the original training data sample. `Internal` validation is distinct from `external` validation, as the latter potentially allows for the existence of differences between the populations (training data, used to develop or train the technique, and testing data, used to independently quantify the performance of the technique).	
+	
+Each step in the internal statistical cross-validation protocol involves:	
+ 	
+* Randomly partitioning a sample of data into 2 complementary subsets (training + testing).	
+* Performing the analysis, fitting or estimating the model using the training set.	
+* Validating the analysis or evaluating the performance of the model using the separate testing set.	
+* Increasing the iteration index and repeating the process. Various termination criteria can involve a fixed number, a desired mean variability, or an upper bound on the error-rate.    	
+ 	
+Here is one example of internal statistical cross-validation [Predictive diagnostic modeling in Parkinson's disease](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0157077).	
+	
+To reduce the noise and variability at each iteration, the final validation results may include the averaged performance results each iteration.  	
+ 	
+In cases when new observations are hard to obtain (due to costs, reliability, time, or other constraints), cross-validation guards against testing hypotheses suggested by the data themselves (also known as `Type III error` or False-Suggestion).   	
+ 	
+Cross-validation is different from *conventional-validation* (e.g. 80%-20% partitioning the data set into training and testing subsets) where the prediction error (e.g., [Root Mean Square Error, RMSE](https://wiki.socr.umich.edu/index.php/SMHS_BiasPrecision#Precision)) evaluated on the training data is not a useful estimator of model performance, as it does not generalize across multiple samples. 	
+	
+In general, the errors of the conventional-valuation are based on the results of a specific test dataset and may not accurately represent the model performance. A more appropriate strategy to properly estimate model prediction performance is to use cross-validation (CV), which combines (averages) prediction errors to measure the model performance. CV corrects for the expected stochastic nature of partitioning the training and testing sets and generates a more accurate and robust estimate of the expected model performance.  	
+	
+Relative to a simpler model, a more complex model may *overfit-the-data* if it has a short foresight, i.e., it generates accurate fitting results for known data but less accurate results when predicting based on new data. Knowledge from past experiences may include either *relevant* or *irrelevant* (noise) information. In challenging data-driven prediction models when uncertainty (entropy) is high, more noise is present in past information that needs to be accounted for in prospective forecasting. However, it is generally hard to discriminate patterns from noise in complex systems (i.e., deciding which part to model and which to ignore). Models that reduce the chance of fitting noise are called **robust**.	
+ 	
+# Example (Linear Regression)		
+Let's demonstrate a simple model assessment using linear regression. Suppose we observe the response values {${y_1, \cdots, y_n}$}, and the corresponding $k$ predictors represented as a $kD$ vector of covariates {${x_1, \cdots, x_n }$}, where subjects/cases are indexed by $1\leq i\leq n$, and the data-elements (variables) are indexed by $1\leq j\leq k$.  	
+ 	
+$$ \begin{pmatrix} x_{1, 1} &\cdots & x_{1, k}\\ \vdots &\ddots & \vdots \\x_{n, 1} &\cdots & x_{n, k} \\ \end{pmatrix} .$$	
+
+Using least squares to estimate the linear function parameters (effect-sizes), ${\beta _1, \cdots , \beta _k }$, allows us to compute a hyperplane $y = a + x\beta$ that best fits the observed data ${(x_i, y_i )}_{1\leq i \leq n}$. This is expressed as a matrix by:  	
+$$\begin{pmatrix} y_1\\ \vdots \\ y_n\\ \end{pmatrix} = \begin{pmatrix} a_1\\ \vdots \\ a_n\\ \end{pmatrix}+\begin{pmatrix} x_{1, 1} &\cdots & x_{1, k}\\ \vdots &\ddots & \vdots \\x_{n, 1} &\cdots & x_{n, k} \\ \end{pmatrix} \begin{pmatrix} \beta_1\\ \vdots \\ \beta_k\\ \end{pmatrix}.$$  	
+Corresponding to the system of linear hyperplanes:	
+	
+$$	
+\left\{	
+\begin{array}{c}	
+y_1=a_1+ x_{1, 1} \beta_1 +x_{1, 2} \beta_2 + \cdots +x_{1, k} \beta_k \\	
+y_2=a_2+ x_{2, 1} \beta_1 +x_{2, 2} \beta_2 + \cdots +x_{2, k} \beta_k \\	
+\vdots\\	
+y_n=a_n+ x_{n, 1} \beta_1 +x_{n, 2} \beta_2 + \cdots +x_{n, k} \beta_k	
+\end{array}	
+\right. .	
+$$   	
+ 	
+One measure to evaluate the model fit may be the mean squared error (MSE). The MSE for a given value of the parameters $\alpha$ and $\beta$ on the observed training data ${(x_i, y_i) }_{1\leq i\leq n}$ is expressed as:  	
+$$MSE=\frac{1}{n}\sum_{i=1}^{n} (y_i- \underbrace{(a_1+ x_{i, 1} \beta_1 +x_{i, 2} \beta_2 + \cdots +x_{i, k} \beta_k) }_{\text{predicted value } \hat{y}_i, \text{at } {x_{i, 1}, \cdots, x_{i, k}}}   )^2$$	
+
+And the corresponding root mean square error (RMSE) is:  	
+	
+$$RMSE=\sqrt{\frac{1}{n}\sum_{i=1}^{n} (y_1- \underbrace{(a_1+ x_{1, 1} \beta_1 +x_{1, 2} \beta_2 + \cdots +x_{1, k} \beta_k) }_{\text{predicted value } \hat{y}_1, \text{at } {x_{i, 1}, \cdots, x_{i, k}}}   )^2}.$$  	
+
+In the linear model case, the expected value of the MSE (over the distribution of training sets) for the **training set** is  $\frac{n - k - 1}{n + k + 1} E$, where $E$ is the expected value of the MSE for the **testing/validation data**. Therefore, fitting a model and computing the MSE on the training set, we may produce an over optimistic evaluation assessment (smaller RMSE) of how well the model may fit another dataset. This bias represents *in-sample* estimate of the fit, whereas we are interested in the cross-validation estimate as an *out-of-sample* estimate.  	
+ 	
+In the linear regression model, cross validation may not be as useful, since we can compute the **exact** correction factor $\frac{n - k - 1}{n + k + 1}$ to obtain as estimate of the exact expected *out-of-sample* fit using the *in-sample* MSE (under)estimate. However, even in this situation, cross-validation remains useful as it can be used to select an optimal regularized cost function.   	
+ 	
+In most other modeling procedures (e.g. logistic regression), there are no simple general closed-form expressions (formulas) to adjust the cross-validation error estimate from the in-sample fit estimate. Cross-validation is generally applicable way to predict the performance of a model on a validation set using stochastic computation instead of obtaining experimental, theoretical, mathematical, or analytic error estimates.	
+	
+## Cross-validation methods		
+There are 2 classes of cross-validation approaches, *exhaustive* and *non-exhaustive*.  	
+	
+## Exhaustive cross-validation	 	
+Exhaustive cross-validation methods are based on determining all possible ways to divide the original sample into training and testing data. For instance, the *Leave-m-out cross-validation* involves using $m$ observations for testing and the remaining ($n-m$) observations as training. The case when $m=1$, i.e., leave-1-out method, is only applicable when $n$ is small, due to its huge computational cost. This process is repeated on all partitions of the original sample. This method requires model fitting and validating $C_m^n$ times ($n$ is the total number of observations in the original sample and $m$ is the number left out for validation). This requires a very large number of *steps*.  	
+ 	
+## Non-exhaustive cross-validation		
+Non-exhaustive cross validation methods avoid computing estimates/errors using all possible partitionings of the original sample, but rather approximates these. For example, in the **k-fold cross-validation**, the original sample is randomly partitioned into $k$ equal sized subsamples, or *folds*. Of the $k$ subsamples, a single subsample is kept as final testing data for validation of the model. The other $k - 1$ subsamples are used as training data. The cross-validation process is then repeated $k$ times, corresponding to the $k$ folds.  Each of the $k$ subsamples is used once as the validation data. There are corresponding $k$ results that are averaged (or otherwise aggregated) to generate a final pooled model-quality estimation. In k-fold validation, all observations are used for both training and validation, and each observation is used for validation exactly once. In general, $k$ is a parameter that needs to be selected by investigator (common values may be $5$ or $10$).  	
+ 	
+A general case of the `k-fold validation` is $k=n$ (the total number of observations), when it coincides with the **leave-one-out cross-validation**.  	
+   	
+A variation of the k-fold validation is **stratified k-fold cross-validation**, where each fold has the same (approximately) mean response value. For instance, if the model represents a binary classification of cases (e.g., controls vs. patients), this implies that each fold contains roughly the same proportion of the two class labels.  	
+ 	
+**Repeated random sub-sampling validation** splits randomly the entire dataset into a training set, where the model is fit, and a testing set, where the predictive accuracy is assessed. Again, the results are averaged over all iterative splits. This method has an advantage over k-fold cross validation as that the proportion of the training/testing split is not dependent on the number of iterations (folds). However, its drawback is that some observations may never be selected whereas others may be selected multiple times in the testing/validation subsample. As validation subsets may overlap, the results may vary each time we repeat the validation protocol, unless we set a seed point in the algorithm.   	
+ 	
+Asymptotically, as the number of random splits increases, the *repeated random sub-sampling* validation approaches the *leave-k-out cross-validation*.  	
+	
+# Case-Studies	
+	
+In the examples below, we have intentionally suppressed some of the R output to save space. This is accomplished using this Rmarkdown command, `{r eval=TRUE, results='hide'}`, however, the reader is encouraged to try hands-on all the protocols, make modifications, inspect and interpret the outputs.	
+	
+## Example 1: Prediction of Parkinson's Disease using `Adaptive Boosting` (AdaBoost)	
+	
+This [Parkinson's Diseases Study](https://dx.doi.org/10.1371/journal.pone.0157077)	involves heterogeneous neuroimaging, genetics, clinical, and phenotypic data for over 600 volunteers produced multivariate data for three cohorts (HC=Healthy Controls, PD=Parkinson's, SWEDD=subjects without evidence for dopaminergic deficit).	
+
+Load the data: [06_PPMI_ClassificationValidationData_Short.csv](https://umich.instructure.com/files/330400/download?download_frd=1).	
+
+```{r}
+ppmi_data <-read.csv("https://umich.instructure.com/files/330400/download?download_frd=1", header=TRUE)
+```
+
+Binarize the Dx (clinical diagnoses) classes.
+
+```{r}
+# binarize the Dx classes	
+ppmi_data$ResearchGroup <- ifelse(ppmi_data$ResearchGroup == "Control", "Control", "Patient")	
+attach(ppmi_data)	
+	
+head(ppmi_data)	
+# View (ppmi_data)
+```
+
+Obtain a model-free predictive analytics, e.g., AdaBoost classification, and report the results.	
+
+```{r}
+# Model-free analysis, classification	
+# install.packages("crossval")	
+# install.packages("ada")	
+# library("crossval")	
+require(crossval)	
+require(ada)	
+#set up adaboosting prediction function	
+	
+# Define a new AdaBoost classification result-reporting function	
+my.ada <- function (train.x, train.y, test.x, test.y, negative, formula){	
+  ada.fit <- ada(train.x, train.y)	
+  predict.y <- predict(ada.fit, test.x)	
+  #count TP, FP, TN, FN, Accuracy, etc.	
+  out <- confusionMatrix(test.y, predict.y, negative = negative)	
+ # negative	 is the label of a negative "null" sample (default: "control").	
+  return (out)	
+}
+```
+
+When group sizes are imbalanced, we may need to rebalance them to avoid potential biases of the dominant cohorts. In this case, we will re-balance the groups using the package `SMOTE` [Synthetic Minority Oversampling Technique](https://cran.r-project.org/web/packages/unbalanced/). SMOTE may be used to handle class imbalance in binary classification.	
+
+```{r}
+# balance cases	
+# SMOTE: Synthetic Minority Oversampling Technique to handle class misbalance in binary classification.	
+set.seed(1000)	
+# install.packages("unbalanced") to deal with unbalanced group data	
+require(unbalanced)	
+ppmi_data$PD <- ifelse(ppmi_data$ResearchGroup=="Control", 1, 0) 	
+uniqueID <- unique(ppmi_data$FID_IID) 	
+ppmi_data <- ppmi_data[ppmi_data$VisitID==1, ]	
+ppmi_data$PD <- factor(ppmi_data$PD)	
+	
+colnames(ppmi_data)	
+# ppmi_data.1<-ppmi_data[, c(3:281, 284, 287, 336:340, 341)]	
+n <- ncol(ppmi_data)	
+output.1 <- ppmi_data$PD	
+	
+# ppmi_data$PD <- ifelse(ppmi_data$ResearchGroup=="Control", 1, 0) 	
+# remove Default Real Clinical subject classifications! 	
+input <- ppmi_data[ , -which(names(ppmi_data) %in% c("ResearchGroup", "PD", "X", "FID_IID"))]	
+# output <- as.matrix(ppmi_data[ , which(names(ppmi_data) %in% {"PD"})])	
+output <- as.factor(ppmi_data$PD)	
+c(dim(input), dim(output))	
+	
+#balance the dataset	
+set.seed(123)	
+data.1<-ubBalance(X= input, Y=output, type="ubSMOTE", percOver=300, percUnder=150, verbose=TRUE)	
+balancedData<-cbind(data.1$X, data.1$Y)	
+table(data.1$Y)	
+	
+nrow(data.1$X); ncol(data.1$X)	
+nrow(balancedData); ncol(balancedData)	
+nrow(input); ncol(input)	
+	
+colnames(balancedData) <- c(colnames(input), "PD")
+```
+
+Next, we'll check the re-balanced cohort sizes.
+
+```{r}
+###Check balance	
+## T test	
+alpha.0.05 <- 0.05	
+test.results.bin <- NULL		# binarized/dichotomized p-values	
+test.results.raw <- NULL		# raw p-values	
+	
+# get a better error-handling t.test function that gracefully handles NA's and trivial variances	
+my.t.test.p.value <- function(input1, input2) {	
+obj <- try(t.test(input1, input2), silent=TRUE)	
+if (is(obj, "try-error")) 	
+  return(NA) 	
+else 	
+  return(obj$p.value)	
+} 	
+	
+for (i in 1:ncol(balancedData)) 	
+{		
+test.results.raw[i]  <- my.t.test.p.value(input[, i], balancedData [, i])	
+  	test.results.bin[i] <- ifelse(test.results.raw[i]  > alpha.0.05, 1, 0)   	
+# binarize the p-value (0=significant, 1=otherwise) 	
+	print(c("i=", i, "var=", colnames(balancedData[i]), "t-test_raw_p_value=", test.results.raw[i]))	
+}	
+	
+# we can also employ (e.g., FDR, Bonferonni) correction for multiple testing!	
+	# test.results.corr <- stats::p.adjust(test.results.raw, method = "fdr", n = length(test.results.raw)) 	
+	# where methods are "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none")	
+	# plot(test.results.raw, test.results.corr)	
+	# sum(test.results.raw < alpha.0.05, na.rm=T)/length(test.results.raw)  #check proportion of inconsistencies	
+# sum(test.results.corr < alpha.0.05, na.rm =T)/length(test.results.corr)	
+	
+qqplot(input[, 5], balancedData [, 5]) # check visually for differences between the distributions of the raw (input) and rebalanced data (for only one variable, in this case)	
+	
+# Now, check visually for differences between the distributions of the raw (input) and rebalanced data.	
+# par(mar=c(1,1,1,1))	
+# par(mfrow=c(10,10))	
+# for(i in c(1:62,64:101)){ qqplot(balancedData [, i],input[, i]) } #except VisitID	
+	
+# as the sample-size is changed:	
+length(input[, 5]); length(balancedData [, 5])	
+# to plot raw vs. rebalanced pairs (e.g., var="L_insular_cortex_Volume"), we need to equalize the lengths	
+#plot (input[, 5] +0*balancedData [, 5], balancedData [, 5])   # [, 5] == "L_insular_cortex_Volume"	
+	
+# print(c("T-test results: ", test.results))	
+# zeros (0) are significant independent between-group T-test differences, ones (1) are insignificant	
+	
+for (i in 1:(ncol(balancedData)-1)) 	
+{	
+	test.results.raw [i]  <- wilcox.test(input[, i], balancedData [, i])$p.value	
+  	test.results.bin [i] <- ifelse(test.results.raw [i] > alpha.0.05, 1, 0)	
+	print(c("i=", i, "Wilcoxon-test=", test.results.raw [i]))	
+}	
+print(c("Wilcoxon test results: ", test.results.bin))	
+# test.results.corr <- stats::p.adjust(test.results.raw, method = "fdr", n = length(test.results.raw)) 	
+# where methods are "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none")	
+# plot(test.results.raw, test.results.corr)	
+#' 	
+#' 	
+#' The next step will be the actual `Cross validation`.	
+#' 	
+#' 	
+# using raw data:	
+X <- as.data.frame(input); Y <- output	
+neg <- "1"   # "Control" == "1"	
+	
+# using Rebalanced data: 	
+X <- as.data.frame(data.1$X); Y <- data.1$Y	
+# balancedData<-cbind(data.1$X, data.1$Y); dim(balancedData)	
+	
+# Side note: There is a function name collision for "crossval", the same method is present in the "mlr" (machine Learning in R) package and in the "crossval" package.  	
+# To specify a function call from a specific package do:  packagename::functionname()	
+	
+set.seed(115) 	
+cv.out <- crossval::crossval(my.ada, X, Y, K = 5, B = 1, negative = neg)	
+	# the label of a negative "null" sample (default: "control")	
+out <- diagnosticErrors(cv.out$stat) 
+```
+
+```{r}
+print(cv.out$stat)	
+print(out)
+```
+
+As we can see from the reported metrics, the overall averaged AdaBoost-based diagnostic predictions are quite good.	
+	
+## Example 2: Sleep dataset	
+	
+These data contain the effect of two soporific drugs to increase hours of sleep (treatment-compared design) on 10 patients. The data is available by default (`sleep {datasets}`)	
+	
+First, load the data and report some graphs and summaries.
+
+```{r}
+data(sleep); str(sleep)	
+X = as.matrix(sleep[, 1, drop=FALSE]) # increase in hours of sleep, 	
+	# drop is logical, if TRUE the result is coerced to the lowest possible dimension. 	
+# The default is to drop if only one column is left, but not to drop if only one row is left.	
+Y = sleep[, 2] # drug given 	
+plot(X ~ Y)	
+levels(Y) # "1" "2"	
+dim(X) # 20  1
+```
+
+Next, we will define a new LDA (linear discriminant analysis) predicting function and perform the `Cross-validation` (CV) on the resulting predictor.	
+
+```{r}
+require("MASS") # for lda function 	
+	
+predfun.lda = function(train.x, train.y, test.x, test.y, negative)	
+{	lda.fit = lda(train.x, grouping=train.y)	
+  	ynew = predict(lda.fit, test.x)$class	
+# count TP, FP etc.	
+  	out = confusionMatrix(test.y, ynew, negative=negative)	
+return( out )	
+}	
+```
+```{r}
+# install.packages("crossval")	
+library("crossval")	
+	
+set.seed(123456)	
+cv.out <- crossval::crossval(predfun.lda, X, Y, K=5, B=20, negative="1", verbose=FALSE)	
+cv.out$stat	
+diagnosticErrors(cv.out$stat)
+```
+
+Execute the above code and interpret the diagnostic results measuring the performance of the LDA prediction.	
+	
+## Example 3: Model-based (linear regression) prediction using the `attitude` dataset	
+	
+This data represents a survey of clerical employees of an organization with 35 employees of 30 (randomly selected) departments. Data is proportion of favorable responses to 7 questions in each department.	
+	
+Let's load and summarize the data, which is available by default in `attitude {datasets}`.	
+```{r}
+# ?attitude, colnames(attitude)	
+# Note: when using a data frame, a time-saver is to use "." to indicate "include all covariates" in the DF.  	
+# E.g., fit <- lm(Y ~ ., data = D)	
+	
+data("attitude")	
+y = attitude[, 1] 		# rating variable	
+x = attitude[, -1] 	# date frame with the remaining variables	
+is.factor(y)	
+summary( lm(y ~ . , data=x) ) 	# R-squared:  0.7326	
+# set up lm prediction function
+```
+
+We will demonstrate model-based analytics using `lm` and `lda`, and will validate the forecasting using CV.	
+
+```{r}
+predfun.lm = function(train.x, train.y, test.x, test.y)	
+{     lm.fit = lm(train.y ~ . , data=train.x)	
+       ynew = predict(lm.fit, test.x )	
+                     # compute squared error risk (MSE)	
+       out = mean( (ynew - test.y)^2)	
+  	        # note that, in general, when fitting linear model to continuous outcome variable (Y), 	
+            # we can't use the out<-confusionMatrix(test.y, ynew, negative=negative), as it requires a binary outcome	
+            # this is why we use the MSE as an estimate of the discrepancy between observed & predicted values	
+return(out)	
+}	
+	
+# require("MASS")	
+#predfun.lda = function(train.x, train.y, test.x, test.y, negative)	
+#{	lda.fit = lda(train.x, grouping=train.y)	
+#  	ynew = predict(lda.fit, test.x)$class	
+# count TP, FP etc.	
+#  	out = confusionMatrix(test.y, ynew, negative=negative)	
+#return( out )	
+#}	
+	
+# prediction MSE using all variables	
+set.seed(123456)	
+cv.out.lm = crossval::crossval(predfun.lm, x, y, K=5, B=20, verbose=FALSE)	
+c(cv.out.lm$stat, cv.out.lm$stat.se) 			# 72.581198  3.736784	
+# reducing to using only two variables	
+cv.out.lm = crossval::crossval(predfun.lm, x[, c(1, 3)], y, K=5, B=20, verbose=FALSE)	
+c(cv.out.lm$stat, cv.out.lm$stat.se)			
+# 52.563957  2.015109 
+```
+
+## Example 4: Parkinson's data (`ppmi_data`) 	
+	
+Let's go back to the more elaborate PD data starting with loading and preprocessing the [derived-PPMI data](https://github.com/SOCR/PBDA).
+
+```{r}
+# ppmi_data <-read.csv("https://umich.instructure.com/files/330400/download?download_frd=1", header=TRUE)	
+# ppmi_data$ResearchGroup <- ifelse(ppmi_data$ResearchGroup == "Control", "Control", "Patient")	
+# attach(ppmi_data); head(ppmi_data)	
+# install.packages("crossval")	
+# library("crossval")	
+# ppmi_data$PD <- ifelse(ppmi_data$ResearchGroup=="Control", 1, 0) 	
+# input <- ppmi_data[ , -which(names(ppmi_data) %in% c("ResearchGroup", "PD", "X", "FID_IID"))]	
+# output <- as.factor(ppmi_data$PD)	
+	
+# remove the irrelevant variables (e.g., visit ID)	
+output <- as.factor(ppmi_data$PD)	
+input <- ppmi_data[, -which(names(ppmi_data) %in% c("ResearchGroup", "PD", "X", "FID_IID", "VisitID"))]	
+X = as.matrix(input)	# Predictor variables	
+Y = as.matrix(output) 	#  Actual PD clinical assessment 	
+dim(X); 	
+dim(Y)
+```
+```{r}
+layout(matrix(c(1, 2, 3, 4), 2, 2)) 		# optional 4 graphs/page	
+fit <- lm(Y~X); 	
+plot(fit)			# plot the fit 	
+levels(as.factor(Y)) 			# "0" "1"	
+c(dim(X), dim(Y))			# 1043  103
+```
+
+Apply `Cross-validation` to assess the performance of the linear model.
+
+```{r}
+set.seed(12345)	
+# cv.out.lm = crossval::crossval(predfun.lm, as.data.frame(X), as.numeric(Y), K=5, B=20)	
+	
+cv.out.lda = crossval::crossval(predfun.lda, X, Y, K=5, B=20, negative="1", verbose=FALSE)	
+# K=Number of folds; B=Number of repetitions.
+```
+```{r}
+# Results	
+#cv.out.lda$stat; 	
+#cv.out.lda; 	
+diagnosticErrors(cv.out.lda$stat)	
+#cv.out.lm$stat; 	
+#cv.out.lm; 	
+#diagnosticErrors(cv.out.lm$stat)
+```
+
+# Summary of CV output	
+	
+The cross-validation (CV) output object includes the following components:	
+ 	
+*	`stat.cv`: Vector of statistics returned by predfun for each cross validation run	
+*	`stat`:  statistic returned by *predfun* averaged over all cross validation runs	
+*	`stat.se`: Variability: the corresponding standard error.	
+	
+# Alternative predictor functions		
+	
+We have already seen a number of `predict()` functions, e.g., [Chapter 17](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/17_RegularizedLinModel_KnockoffFilter.html). Below, we will add to the collection of predictive analytics and forecasting functions.	
+	
+## Logistic Regression		
+	
+We already saw the *logit* model in [Chapter 17](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/17_RegularizedLinModel_KnockoffFilter.html). Now, we will demonstrate a logit-predictor function.	
+
+```{r}
+# ppmi_data <-read.csv("https://umich.instructure.com/files/330400/download?download_frd=1", header=TRUE)	
+# ppmi_data$ResearchGroup <- ifelse(ppmi_data$ResearchGroup == "Control", "Control", "Patient")	
+# install.packages("crossval"); library("crossval")	
+# ppmi_data$PD <- ifelse(ppmi_data$ResearchGroup=="Control", 1, 0) 	
+	
+# remove the irrelevant variables (e.g., visit ID)	
+output <- as.factor(ppmi_data$PD)	
+input <- ppmi_data[, -which(names(ppmi_data) %in% c("ResearchGroup", "PD", "X", "FID_IID", "VisitID"))]	
+X = as.matrix(input)	# Predictor variables	
+Y = as.matrix(output)
+```
+
+Note that the predicted values are in $log$ terms, so they need to be *exponentiated* to interpret them correctly.	
+
+```{r}
+lm.logit <- glm(as.numeric(Y) ~ ., data = as.data.frame(X), family = "binomial")	
+ynew <- predict(lm.logit, as.data.frame(X)); #plot(ynew)	
+ynew2 <- ifelse(exp(ynew)<0.5, 0, 1); # plot(ynew2)	
+	
+predfun.logit = function(train.x, train.y, test.x, test.y, neg)	
+{ 	lm.logit <- glm(train.y ~ ., data = train.x, family = "binomial")	
+  	ynew = predict(lm.logit, test.x )	
+ # compute TP, FP, TN, FN	
+ynew2 <- ifelse(exp(ynew)<0.5, 0, 1)	
+  	out = confusionMatrix(test.y, ynew2, negative=neg)	# Binary outcome, we can use confusionMatrix	
+return( out )	
+}	
+# Reduce the bag of explanatory variables, purely to simplify the interpretation of the analytics in this example!	
+input.short <- input[, which(names(input) %in% c("R_fusiform_gyrus_Volume",                                                            	
+ 			"R_fusiform_gyrus_ShapeIndex", "R_fusiform_gyrus_Curvedness", 	
+ "Sex",  "Weight", "Age" , "chr12_rs34637584_GT", "chr17_rs11868035_GT",                                                              	
+ 			"UPDRS_Part_I_Summary_Score_Baseline", "UPDRS_Part_I_Summary_Score_Month_03",                                             	
+"UPDRS_Part_II_Patient_Questionnaire_Summary_Score_Baseline",                        	
+ 			"UPDRS_Part_III_Summary_Score_Baseline",                                             	
+ 			"X_Assessment_Non.Motor_Epworth_Sleepiness_Scale_Summary_Score_Baseline"     	
+))]	
+X = as.matrix(input.short)	
+	
+cv.out.logit = crossval::crossval(predfun.logit, as.data.frame(X), as.numeric(Y), K=5, B=2, neg="1", verbose=FALSE)	
+cv.out.logit$stat.cv	
+diagnosticErrors(cv.out.logit$stat)
+```
+
+**Caution**: Note that if you forget to exponentiate the predicted logistic model values (see *ynew2* in `predict.logit`), you will get nonsense results, e.g., all cases may be predicted to be in one class, trivial sensitivity or NPP.  	
+	
+## Quadratic Discriminant Analysis (QDA)	
+	
+In Chapters [7](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/07_NaiveBayesianClass.html) and [20](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/20_PredictionCrossValidation.html#72_quadratic_discriminant_analysis_(qda)) we discussed the *linear* and *quadratic* discriminant analysis models. Let's now introduce a `predfun.qda()` function.	
+
+```{r}
+predfun.qda = function(train.x, train.y, test.x, test.y, negative)	
+{	
+  require("MASS") # for lda function	
+  qda.fit = qda(train.x, grouping=train.y)	
+  ynew = predict(qda.fit, test.x)$class	
+  out.qda = confusionMatrix(test.y, ynew, negative=negative)	
+  return( out.qda )	
+}  	
+  	
+cv.out.qda = crossval::crossval(predfun.qda, as.data.frame(input.short), as.factor(Y), K=5, B=20, neg="1")	
+diagnosticErrors(cv.out.lda$stat); diagnosticErrors(cv.out.qda$stat);
+```
+
+This error message: "**Error in qda.default(x, grouping, ...) : rank deficiency in group 1**" indicates that there is a rank deficiency, i.e. some variables are collinear and one or more covariance matrices cannot be inverted to obtain the estimates in group 1 (Controls)!  	
+ 	
+**If you remove the strongly correlated data elements ("R_fusiform_gyrus_Volume", "R_fusiform_gyrus_ShapeIndex", and "R_fusiform_gyrus_Curvedness"), the rank-deficiency problem goes away!** 	
+
+```{r}
+input.short2 <- input[, which(names(input) %in% c("R_fusiform_gyrus_Volume",           	"Sex",  "Weight", "Age" , "chr17_rs11868035_GT",                                        "UPDRS_Part_I_Summary_Score_Baseline", 	
+"UPDRS_Part_II_Patient_Questionnaire_Summary_Score_Baseline",                        	
+ 			"UPDRS_Part_III_Summary_Score_Baseline",                                        	
+ 			"X_Assessment_Non.Motor_Epworth_Sleepiness_Scale_Summary_Score_Baseline"     	
+))]	
+X = as.matrix(input.short2)	
+cv.out.qda = crossval::crossval(predfun.qda, as.data.frame(X), as.numeric(Y), K=5, B=2, neg="1")
+```
+
+It makes sense to contrast the QDA and GLM/Logit predictions
+
+```{r}
+diagnosticErrors(cv.out.qda$stat); diagnosticErrors(cv.out.logit$stat)
+```
+
+Clearly, both the QDA and Logit model predictions are quite similar and reliable.	
+	
+## Foundation of LDA and QDA for prediction, dimensionality reduction or forecasting	
+	
+Previously, in [Chapter 7](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/07_NaiveBayesianClass.html) we saw some examples of LDA/QDA methods. Now, we'll talk more about the details. Both LDA (Linear Discriminant Analysis) and QDA (Quadratic Discriminant Analysis) use probabilistic models of the class conditional distribution of the data $P(X \mid Y=k)$ for each class $k$. Their predictions are obtained by using [Bayesian theorem](https://wiki.socr.umich.edu/index.php/SMHS_BayesianInference#Bayesian_Rule), see [Appendix](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/DSPA_Appendix_01_BayesianInference_MCMC_Gibbs.html):   	
+$$P(Y=k \mid X)= \frac{P(X \mid Y=k)P(Y=k)}{P(X)}=\frac{P(X \mid Y=k)P(Y=k)}{\sum_{l=0}^{\infty}P(X \mid Y=l)P(Y=l)}$$	
+and we select the class $k$, which **maximizes** this conditional probability (maximum likelihood estimation).	
+In linear and quadratic discriminant analysis, $P(X \mid Y)$  is modeled as a multivariate Gaussian distribution with density:  	
+$$
+P(X \mid Y=k)= \frac{1}{{(2 \pi)}^{\frac{n}{2}} {\vert{\Sigma_{k}}\vert}^{\frac{1}{2}}}\times e^{(-\frac{1}{2}{(X- \mu_k)}^T \Sigma_k^{-1}(X- \mu_k))}.
+$$	
+
+This model can be used to classify data by using the training data to **estimate**:  	
+ 	
+(1)	the class prior probabilities $P(Y=k)$ by counting the proportion of observed instances of class $k$,   	
+(2)	the class means $\mu_k$ by computing the empirical sample class means, and   	
+(3)	the covariance matrices by computing either the empirical sample class covariance matrices, or by using a regularized estimator, e.g., LASSO).   	
+ 	
+In the **linear case** (LDA), the Gaussians for each class are assumed to share the same covariance matrix:  	
+$\Sigma_k=\Sigma$ for each class $k$. This leads to linear decision surfaces between classes. This is clear from comparing the log-probability ratios of 2 classes ($k$ and $l$):   	
+$LOR=log\left (\frac{P(Y=k \mid X)}{P(Y=l \mid X)}\right )$, (the LOR=0 $\Longleftrightarrow$ the two probabilities are identical, i.e., same class).	
+$LOR=log\left (\frac{P(Y=k \mid X)}{P(Y=l \mid X)}\right )=0$ \Longleftrightarrow ${(\mu_k-\mu_l)}^T \Sigma^{-1} (\mu_k-\mu_l)= \frac{1}{2}(\mu_k^T \Sigma^{-1} \mu_k-\mu_l^T \Sigma^{-1} \mu_l)$.	
+	
+But, in the more general, **quadratic case** of QDA, there are no assumptions on the covariance matrices $\Sigma_k$ of the Gaussians, leading to quadratic decision surfaces.  	
+ 	
+### LDA (Linear Discriminant Analysis)	
+LDA is similar to GLM (e.g., ANOVA and regression analyses), as it also attempts to express one dependent variable as a linear combination of other features or data elements, However, ANOVA uses categorical independent variables and a continuous dependent variable, whereas LDA has continuous independent variables and a categorical dependent variable (i.e. Dx/class label). Logistic regression and probit regression are more similar to LDA than ANOVA, as they also explain a categorical variable by the values of continuous independent variables.	
+
+```{r}
+predfun.lda = function(train.x, train.y, test.x, test.y, neg)	
+{	
+  require("MASS")	
+  lda.fit = lda(train.x, grouping=train.y)	
+  ynew = predict(lda.fit, test.x)$class	
+  out.lda = confusionMatrix(test.y, ynew, negative=neg)	
+  return( out.lda )	
+}
+```
+
+### QDA (Quadratic Discriminant Analysis)	
+	
+Similarly to LDA, the QDA prediction function can be defined by:	
+
+```{r}
+predfun.qda = function(train.x, train.y, test.x, test.y, neg)	
+{	
+  require("MASS") # for lda function	
+  qda.fit = qda(train.x, grouping=train.y)	
+  ynew = predict(qda.fit, test.x)$class	
+  out.qda = confusionMatrix(test.y, ynew, negative=neg)	
+  return( out.qda )	
+}
+```
+
+## Neural Network	
+ 	
+We saw Neural Networks (NNs) in [Chapter 10](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/10_ML_NN_SVM_Class.html). Applying NNs is not straightforward. We have to create a design matrix with an indicator column for the response feature. In addition, we need to write a *predict function* to translate the output of `neuralnet()` into analytical forecasts.	
+
+```{r}
+# predict nn	
+library("neuralnet")	
+pred = function(nn, dat) {	
+    yhat = compute(nn, dat)$net.result	
+    yhat = apply(yhat, 1, which.max)-1	
+    return(yhat)	
+}	
+	
+my.neural <- function (train.x, train.y, test.x, test.y,method,layer=c(5,5)){	
+  train.x <- as.data.frame(train.x)	
+  train.y <- as.data.frame(train.y)	
+  colnames(train.x) <- paste0('V', 1:ncol(X)) 	
+  colnames(train.y) <- "V1"	
+  train_y_ind = model.matrix(~factor(train.y$V1)-1)	
+  colnames(train_y_ind) = paste0('out', 0:1)	
+  train = cbind(train.x, train_y_ind)	
+  y_names = paste0('out', 0:1)	
+  x_names = paste0('V', 1:ncol(train.x))	
+  nn = neuralnet(	
+    paste(paste(y_names, collapse='+'),	
+          '~',	
+          paste(x_names, collapse='+')),	
+    train,	
+    hidden=layer,	
+      linear.output=FALSE,	
+    lifesign='full', lifesign.step=1000)	
+  #predict	
+  predict.y <- pred(nn, test.x)	
+  out <- crossval::confusionMatrix(test.y, predict.y,negative = 0)	
+  return (out)	
+}	
+	
+set.seed(1234) 	
+cv.out.nn <- crossval::crossval(my.neural, scale(X), Y, K = 5, B = 1,layer=c(20,20),verbose = F) # scale predictors is necessary.	
+crossval::diagnosticErrors(cv.out.nn$stat)
+```
+
+## SVM 	
+	
+We also saw SVM in [Chapter 10](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/10_ML_NN_SVM_Class.html). Let's try cross validation on Linear and Gaussian (radial) kernel SVM. We can expect that linear SVM should achieve a close result to Gaussian or even better than Gaussian since this dataset have a large $k$ (# features) compared with $n$ (# cases), which we have studied in detail in [Chapter 10](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/10_ML_NN_SVM_Class.html).	
+
+```{r}
+library("e1071")	
+my.svm <- function (train.x, train.y, test.x, test.y,method,cost=1,gamma=1/ncol(dx_norm),coef0=0,degree=3){	
+  svm_l.fit <- svm(x = train.x, y=as.factor(train.y),kernel = method)	
+  predict.y <- predict(svm_l.fit, test.x)	
+  out <- crossval::confusionMatrix(test.y, predict.y,negative = 0)	
+  return (out)	
+}	
+	
+# Linear kernel	
+set.seed(123)	
+cv.out.svml <- crossval::crossval(my.svm, as.data.frame(X), Y, K = 5, B = 1,method = "linear",cost=tune_svm$best.parameters$cost,verbose = F) 	
+diagnosticErrors(cv.out.svml$stat)	
+	
+# Gaussian kernel	
+set.seed(123)	
+cv.out.svmg <- crossval::crossval(my.svm, as.data.frame(X), Y, K = 5, B = 1,method = "radial",cost=tune_svmg$best.parameters$cost,gamma=tune_svmg$best.parameters$gamma,verbose = F)	
+diagnosticErrors(cv.out.svmg$stat)
+```
+
+Indeed, both types of kernels yield good quality predictors according to the assessment metrics reported by the `diagnosticErrors()` method. 	
+	
+## k-Nearest Neighbors algorithm (k-NN)	
+	
+As we saw in [Chapter 6](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/06_LazyLearning_kNN.html), *k-NN* is a non-parametric method for either classification or regression, where the **input** consists of the k closest **training examples** in the feature space, but the **output** depends on whether k-NN is used for classification or regression:  	
+ 	
+* In *k-NN classification*, the output is a class membership (labels). Objects in the testing data are classified by a majority vote of their neighbors. Each object is assigned to a class that is most common among its k nearest neighbors ($k$ is always a small positive integer). When $k=1$, then an object is assigned to the class of its single nearest neighbor.	
+* In *k-NN regression*, the output is the property value for the object representing the average of the values of its $k$ nearest neighbors.	
+	
+Let's now build the corresponding `predfun.knn()` method.	
+
+```{r}
+# X = as.matrix(input)	# Predictor variables X = as.matrix(input.short2)	
+#  Y = as.matrix(output) 	# Outcome	
+# KNN (k-nearest neighbors)	
+library("class")	
+# knn.fit.test <- knn(X, X, cl = Y, k=3, prob=F); predict(as.matrix(knn.fit.test), X)$class	
+# table(knn.fit.test, Y); confusionMatrix(Y, knn.fit.test, negative="1")	
+# This can be used for polytomous variable (multiple classes)	
+	
+predfun.knn = function(train.x, train.y, test.x, test.y, neg)	
+{	
+  require("class")	
+  knn.fit = knn(train.x, test.x, cl = train.y, prob=T) 	# knn is already a prediction function!!!	
+  # ynew = predict(knn.fit, test.x)$class			# no need of another prediction, in this case	
+  out.knn = confusionMatrix(test.y, knn.fit, negative=neg)	
+  return( out.knn )	
+}		
+cv.out.knn = crossval::crossval(predfun.knn, X, Y, K=5, B=2, neg="1")	
+	
+cv.out.knn = crossval::crossval(predfun.knn, X, Y, K=5, B=2, neg="1")	
+#Compare all 3 classifiers (lda, qda, knn, and logit)	
+diagnosticErrors(cv.out.lda$stat); diagnosticErrors(cv.out.qda$stat); diagnosticErrors(cv.out.qda$stat); diagnosticErrors(cv.out.logit$stat);
+```
+
+We can also examine the performance of k-NN prediction on the PPMI (Parkinson's disease) data. Start by partitioning the data into `training` and `testing` sets. 	
+
+```{r}
+# TRAINING: 75% of the sample size	
+sample_size <- floor(0.75 * nrow(input))	
+## set the seed to make your partition reproducible	
+set.seed(1234)	
+input.train.ind <- sample(seq_len(nrow(input)), size = sample_size)	
+input.train <- input[input.train.ind, ]	
+output.train <- as.matrix(output)[input.train.ind, ]	
+	
+# TESTING DATA	
+input.test <- input[-input.train.ind, ]	
+output.test <- as.matrix(output)[-input.train.ind, ]
+```
+
+Then fit the k-NN model and report the results.
+
+```{r}
+library("class")	
+knn_model <- knn(train= input.train, input.test, cl=as.factor(output.train), k=2)	
+#plot(knn_model)	
+summary(knn_model)	
+attributes(knn_model)	
+	
+# cross-validation	
+knn_model.cv <- knn.cv(train= input.train, cl=as.factor(output.train), k=2)	
+summary(knn_model.cv)	
+```
+
+## k-Means Clustering (k-MC)  	
+	
+In [Chapter 12](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/12_kMeans_Clustering.html), we showed that k-MC aims to partition $n$ observations into $k$ clusters where each observation belongs to the cluster with the nearest mean which acts as a prototype of a cluster. The k-MC partitions the data space into [Voronoi cells](https://en.wikipedia.org/wiki/Voronoi_diagram). In general, there is no computationally tractable solution for this, i.e., the problem is [NP-hard](https://en.wikipedia.org/wiki/NP-hardness). However, there are efficient algorithms that converge quickly to local optima, e.g., *expectation-maximization* algorithm for mixtures of Gaussian distributions via an iterative refinement approach.  	
+
+```{r}
+kmeans_model <- kmeans(input.train, 2)	
+table (output.train, kmeans_model$cluster-1)	
+	
+layout(matrix(1, 1))	
+# tiff("C:/Users/Dinov/Desktop/test.tiff", width = 10, height = 10, units = 'in', res = 300)	
+fpc::plotcluster(input.train, output.train, col = kmeans_model$cluster)	
+legend("topright", legend=c("0(trueLabel)+0(kmeansLabel)", "1(trueLabel)+0(kmeansLabel)", "0(trueLabel)+1(kmeansLabel)", "1(trueLabel)+1(kmeansLabel)"),	
+       col=c("red", "black", "black", "red"), 	
+       text.col=c("red", "black", "black", "red"), 	
+       pch = 15 , y.intersp=0.6, x.intersp=0.7,	
+       text.width = 5, cex=1)	
+	
+cluster::clusplot(input.train, kmeans_model$cluster, color=TRUE, shade=TRUE, labels=2, lines=0)	
+	
+par(mfrow=c(10,10))	
+# the next figure is very large and will not render in RStudio, you may need to save it as PDF file!	
+# pdf("C:/Users/Dinov/Desktop/test.pdf", width = 50, height = 50)	
+# with(ppmi_data[,1:10], pairs(input.train[,1:10], col=c(1:2)[kmeans_model$cluster])) 	
+# dev.off()	
+with(ppmi_data[,1:10], pairs(input.train[,1:10], col=c(1:2)[kmeans_model$cluster])) 	
+	
+# plot(input.train, col = kmeans_model$cluster) 	
+# points(kmeans_model$centers, col = 1:2, pch = 8, cex = 2)	
+	
+## cluster centers "fitted" to each obs.:	
+fitted.kmeans <- fitted(kmeans_model);  head(fitted.kmeans)	
+resid.kmeans <- (input.train - fitted(kmeans_model))	
+	
+# define the sum of squares function	
+ss <- function(data) sum(scale(data, scale = FALSE)^2)	
+	
+## Equalities 	
+cbind(kmeans_model[c("betweenss", "tot.withinss", "totss")], 	# the same two columns	
+         		c (ss(fitted.kmeans), ss(resid.kmeans),  ss(input.train)))	
+	
+# validation	
+stopifnot(all.equal(kmeans_model$totss,        ss(input.train)), 	
+	    all.equal(kmeans_model$tot.withinss, ss(resid.kmeans)), 	
+         ## these three are the same:	
+	    all.equal(kmeans_model$betweenss,    ss(fitted.kmeans)), 	
+	    all.equal(kmeans_model$betweenss, kmeans_model$totss - kmeans_model$tot.withinss), 	
+        ## and hence also	
+	    all.equal(ss(input.train), ss(fitted.kmeans) + ss(resid.kmeans))	
+)	
+# kmeans(input.train, 1)$withinss 			
+# trivial one-cluster, (its W.SS == ss(input.train))	
+clust_kmeans2 = kmeans(scale(X), center=X[1:2,],iter.max=100, algorithm='Lloyd')
+```
+
+We get empty cluster instead of two clusters when we randomly select two points as the initial centers. The way to solve this problem is using [k-means++](http://ilpubs.stanford.edu:8090/778/1/2006-13.pdf).	
+
+```{r}
+#' 	
+# k++ initialize	
+kpp_init = function(dat, K) {	
+  x = as.matrix(dat)	
+  n = nrow(x)	
+  # Randomly choose a first center	
+  centers = matrix(NA, nrow=K, ncol=ncol(x))	
+  centers[1,] = as.matrix(x[sample(1:n, 1),])	
+  for (k in 2:K) {	
+    # Calculate dist^2 to closest center for each point	
+    dists = matrix(NA, nrow=n, ncol=k-1)	
+    for (j in 1:(k-1)) {	
+      temp = sweep(x, 2, centers[j,], '-')	
+      dists[,j] = rowSums(temp^2)	
+    }	
+    dists = rowMeans(dists)	
+    # Draw next center with probability proportional to dist^2	
+    cumdists = cumsum(dists)	
+    prop = runif(1, min=0, max=cumdists[n])	
+    centers[k,] = as.matrix(x[min(which(cumdists > prop)),])	
+  }	
+  return(centers)	
+}	
+clust_kmeans2_plus = kmeans(scale(X), kpp_init(scale(X), 2), iter.max=100, algorithm='Lloyd')
+```
+
+Now let's evaluate the model. The first step is to justify the selection of `k=2`. We use `silhouette()` in package `cluster`. Recall from [Chapter 13](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/13_ModelEvaluation.html) that the *silhouette value* is between -1 and 1 and negative value represent "mis-clustered" cases.	
+
+```{r}
+clust_k2 = clust_kmeans2_plus$cluster	
+require(cluster)	
+# X = as.matrix(input.short2)	
+# as the data is too large for the silhouette plot, we'll just subsample and plot 100 random cases	
+subset_int <- sample(nrow(X),100)  #100 cases from 661 total cases	
+dis = dist(as.data.frame(scale(X[subset_int,])))	
+sil_k2 = silhouette(clust_k2[subset_int],dis) #best	
+plot(sil_k2)	
+summary(sil_k2)	
+mean(sil_k2<0)
+```
+
+The result is pretty good. Only very small number of samples are "mis-clustered" (having negative silhouette value).	
+	
+Further, you can observe that when `k=3` or `k=4`, the overall silhouette is smaller.	
+
+```{r}
+dis = dist(as.data.frame(scale(X)))	
+clust_kmeans3_plus = kmeans(scale(X), kpp_init(scale(X), 3), iter.max=100, algorithm='Lloyd')	
+summary(silhouette(clust_kmeans3_plus$cluster,dis))	
+clust_kmeans4_plus = kmeans(scale(X), kpp_init(scale(X), 4), iter.max=100, algorithm='Lloyd')	
+summary(silhouette(clust_kmeans4_plus$cluster,dis))	
+```
+
+Then, let's calculate the unsupervised classification error. Here, $p$ represents the percentage of class $0$ cases, which provides the weighting factor for labeling each cluster. 	
+
+```{r}
+mat = matrix(1,nrow = length(Y))	
+p = sum(Y==0)/length(Y)	
+for (i in 1:2){	
+  id = which(clust_k2==i)	
+  if(sum(Y[id]==0)>length(id)*p){	
+    mat[id] = 0	
+  }	
+}	
+caret::confusionMatrix(factor(Y), factor(mat))	
+#table(Y, mat)	
+# caret::confusionMatrix(factor(Y, levels=0:1), factor(mat, levels=0:1))
+```
+
+It achieves 75% accuracy, which is reasonable for unsupervised classification. 	
+	
+Finally, let's visualize the results by superimposing the data into the first two multi-dimensional scaling (MDS) dimensions.	
+
+```{r}
+library("ggplot2")	
+mds = as.data.frame(cmdscale(dis, k=2))	
+mds_temp = cbind(	
+  mds, as.factor(clust_k2))	
+names(mds_temp) = c('V1', 'V2', 'cluster k=2')	
+gp_cluster = ggplot(mds_temp, aes(x=V2, y=V1, color=as.factor(clust_k2))) +	
+  geom_point(aes(shape = as.factor(Y))) + theme()	
+gp_cluster
+```
+
+## Spectral Clustering		
+	
+Suppose the multivariate dataset is represented as a set of data points A. We can define a similarity matrix $S={s_{(i, j)}}$, where $s_{(i, j)}$ represents a measure of the similarity between points $i, j\in A.$  Spectral clustering uses the spectrum of the similarity matrix of the high-dimensional data and perform dimensionality reduction for clustering into fewer dimensions. The spectrum of a matrix is the set of its eigenvalues. In general, if $T:\Omega \stackrel{\text{linear operator}}{\rightarrow} \Omega$ maps a vector space $\Omega$ into itself, its spectrum is the set of scalars $\lambda=\{\lambda_i\}$ such that $(T-\lambda I)v=0$, where $I$ is the identity matrix and $v$ are the eigen-vectors (or eigen-functions) for the operator $T$. The **determinant** of the matrix equals the product of its eigenvalues, i.e., $det(T)=\Pi_i \lambda_i$ , the **trace** of the matrix $tr(T)=\Sigma_i \lambda_i$, and the **pseudo-determinant** for a singular matrix is the product of its nonzero eigenvalues, $pseudo_{det}(T)=\Pi_{\lambda_i \neq 0}\lambda_i.$    	
+	
+To partition the data points into two sets $(S_1, S_2)$ suppose $v$ is the second-smallest eigenvector of the Laplacian matrix:	
+	
+$$L = I - D^{-\frac{1}{2}}SD^{\frac{1}{2}}$$	
+	
+of the similarity matrix $S$, where $D$ is the diagonal matrix $D_{i, i}=\Sigma_j S_{i, j}.$   	
+ 	
+This actual $(S_1, S_2)$ partitioning of the cases in the data may be done in different ways. For instance, $S_1$ may use the median $m$ of the components in $v$ and group all data points whose component in $v$ is greater than $m$. Then the remaining cases can be labeled as part of $S_2$. This approach may be used iteratively for *hierarchical clustering* by repeatedly partitioning the subsets.  	
+ 	
+The $specc$ method in the $kernlab$ package implements a spectral clustering algorithm where the data-clustering is performed by embedding the data into the subspace of the eigenvectors of an affinity matrix.	
+
+```{r}
+# install.packages("kernlab")	
+library("kernlab")	
+	
+# review and choose a dataset (for example the Iris data	
+data()	
+#plot(iris)
+```
+
+Let's look at a few simple cases of spectral clustering. We are suppressing some of the outputs to save space (e.g., `#plot(my_data, col= data_sc)`).	
+	
+### Iris petal data	
+	
+Let's look at the *iris* dataset we saw in [Chapter 2](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/02_ManagingData.html).	
+
+```{r}
+my_data <- as.data.frame(cbind(iris$Petal.Length, iris$Petal.Width)); dim(my_data)	
+num_clusters <- 3	
+data_sc <- specc(my_data, centers= num_clusters)	
+data_sc	
+centers(data_sc)	
+withinss(data_sc)	
+#plot(my_data, col= data_sc)	
+plot(iris[,1:2], col=data_sc, pch=as.numeric(iris$Species), lwd=2)	
+legend("topright", legend=c("setosa", "versicolor", "virginica"), col=c("black", "red", "green"), 	
+      lty=as.numeric(iris$Species), cex=1.2)	
+legend("bottomright", legend=c("Clust1", "Clust2", "Clust3"), pch=unique(as.numeric(iris$Species)), 	
+       cex=1.2)
+```
+
+### Spirals data	
+	
+Another simple dataset is ``kernlab::spirals`.
+
+```{r}
+# library("kernlab")	
+data(spirals)	
+num_clusters <- 2	
+data_sc <- specc(spirals, centers= num_clusters)	
+data_sc	
+centers(data_sc)	
+withinss(data_sc)	
+plot(spirals, col= data_sc)
+```
+
+### Income data	
+	
+A customer *income* dataset representing a marketing survey is included in `kernlab::income`.	
+
+```{r}
+data(income)	
+num_clusters <- 2	
+data_sc <- specc(income, centers= num_clusters)	
+data_sc	
+centers(data_sc)	
+withinss(data_sc)	
+plot(income, col= data_sc)
+```
+
+# Compare the results	
+	
+Now let's compare all eight classifiers (`AdaBoost, LDA, QDA, knn, logit, Neural Network, linear SVM` and `Gaussian SVM`) we presented above.	
+
+```{r}
+# get AdaBoost CV results	
+set.seed(123)	
+cv.out.ada <- crossval::crossval(my.ada, as.data.frame(X), Y, K = 5, B = 1, negative = neg)	
+	
+# get k-Means CV results	
+my.kmeans <- function (train.x, train.y, test.x, test.y, negative, formula){	
+  kmeans.fit <- kmeans(scale(test.x), kpp_init(scale(test.x), 2), iter.max=100, algorithm='Lloyd')	
+  predict.y <- kmeans.fit$cluster	
+  #count TP, FP, TN, FN, Accuracy, etc.	
+  out <- confusionMatrix(test.y, predict.y, negative = negative)	
+ # negative	 is the label of a negative "null" sample (default: "control").	
+  return (out)	
+}	
+set.seed(123)	
+cv.out.kmeans <- crossval::crossval(my.kmeans, as.data.frame(X), Y, K = 5, B = 2, negative = neg)	
+	
+# get spectral clustering CV results	
+my.sc <- function (train.x, train.y, test.x, test.y, negative, formula){	
+  sc.fit <- specc(scale(test.x), centers= 2)	
+  predict.y <- sc.fit@.Data	
+  #count TP, FP, TN, FN, Accuracy, etc.	
+  out <- confusionMatrix(test.y, predict.y, negative = negative)	
+ # negative	 is the label of a negative "null" sample (default: "control").	
+  return (out)	
+}	
+set.seed(123)	
+cv.out.sc <- crossval::crossval(my.sc, as.data.frame(X), Y, K = 5, B = 2, negative = neg)	
+	
+require(knitr)	
+res_tab=rbind(diagnosticErrors(cv.out.ada$stat),diagnosticErrors(cv.out.lda$stat),diagnosticErrors(cv.out.qda$stat),diagnosticErrors(cv.out.knn$stat),diagnosticErrors(cv.out.logit$stat),diagnosticErrors(cv.out.nn$stat),diagnosticErrors(cv.out.svml$stat),diagnosticErrors(cv.out.svmg$stat),diagnosticErrors(cv.out.kmeans$stat),diagnosticErrors(cv.out.sc$stat))	
+rownames(res_tab) <- c("AdaBoost", "LDA", "QDA", "knn", "logit", "Neural Network", "linear SVM", "Gaussian SVM", "k-Means", "Spectral Clustering")	
+kable(res_tab,caption = "Compare Result")
+```
+
+Leaving `knn`, `kmeans` and `specc` aside, the other methods achieve pretty good results. With these data, the reason for the suboptimal results of some clustering methods may be rooted in lack of training (e.g., `specc` and `kmeans`) or the curse of (high) dimensionality, which we saw in [Chapter 6](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/06_LazyLearning_kNN.html). As the data is super sparse, predicting from the nearest neighbors may not be too reliable.	
+
+
+
+
+
+
+
+
+
