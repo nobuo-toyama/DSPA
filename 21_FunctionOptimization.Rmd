@@ -1,0 +1,284 @@
+---
+title: "21 Function Optimization"
+author: "nobuo"
+date: "2021/5/2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Most data-driven scientific inference, qualitative, quantitative and visual analytics involve formulating, understanding the behavior of, and optimizing objective (cost) functions. Presenting the mathematical foundations of representation and interrogation of diverse spectra of objective functions provides mechanisms for obtaining effective solutions to complex big data problems. (Multivariate) *function optimization* (minimization or maximization) is the process of searching for variables $x_1, x_2, x_3, \ldots, x_n$ that either minimize or maximize the multivariate cost (objective) function $f(x_1, x_2, x_3, \ldots, x_n)$. In this Chapter, we will specifically discuss (1) constrained and unconstrained optimization, (2) Lagrange multipliers, (3) linear, quadratic and (general) non-linear programming, and (4) data denoising.	
+	
+# General optimization approach	
+	
+In its most general framework most continuous optimization algorithms involve iterative traversing the domain and assessing the change of the objective function. The process may start by specifying specific initial conditions or randomly choosing the starting point in the domain, the traversal pattern and the updates of the cost-function estimates. The last part is computed step-wise using some fixed update mechanism that leads to the iterative estimation of the next domain point. The updating function typically involves the relative change of the objective function, e.g., gradient computed at past and the current and locations. *Gradient descent optimization* relies on updates computed using the negative gradient, whereas the updating of the points in *momentum-based optimization*, an alternative to [stochastic gradient descent](https://en.wikipedia.org/wiki/Stochastic_gradient_descent), uses scaled exponential moving average of the gradients. The main differences between alternative optimization algorithms are the *objective function* and the *update protocol*. The pseudo code below defined the general algorithmic framework for unconstrained continuous optimization. Following the (random or seeded) initialization of the algorithm ($x_o$) in the domain of the objective function, we traverse the domain by iteratively updating the current location ($x_i$) step-by-step using a predefined *learning rate*, or step-size, ($\gamma$), a momentum decay factor ($\alpha$), and a *functor* ($\phi$) of the objective function ($f$) and it's gradient ($\nabla f$), as well as the current location ($x_{i-1}$) and all the past locations ($\{x_j\}_{j=o}^{i-1}$):	
+	
+$$\begin{array}{rcl} 	
+\textbf{Generic} & \textbf{Pseudo Optimization} & \textbf{Algorithm} \\	
+Initialization: & \text{Objective function: } f, & \text{random (seeded) point in domain: } x_o  \\ 	
+Iterator: & \textbf{for } i=1, 2, 3,... & \textbf{do} \\ 	
+& \Delta x = & \phi\left ( \{x_j, f(x_j), \nabla f(x_j) \}_{j=0}^{i-1}\right )= \begin{cases} 	
+     \text{gradient descent:} & \phi(.)=-\gamma\nabla f(x_{i-1}) \\	
+     \text{stochastic gradient descent:} & \phi(.)=-\gamma\nabla f(x_{i-1})+\xi (i-1), \ \xi (i-1) \text{ is stochastic noise} \\	
+     \text{momentum method:} & \phi(.)=-\gamma \left ( \sum_{j=0}^{i-1}{\alpha^{(i-j-1)} \nabla f(x_{j})} \right ) \\	
+     \text{neural net ML:} & \phi(.): \ W_{i,j}^{layer}=W_{i,j}^{layer}-\gamma \frac{\partial J}{\partial W_{i,j}^{layer}},\ J=\text{NN error},\ W_{i,j}^{layer}=\text{weight coefficients}	
+  \end{cases} \\	
+& \text{If stopping criterion is met,} & \text{then return location: } x_{i-1} \\	
+& \text{Otherwise,} & \text{update the location: } x_i = x_{i-1}+\Delta x \\	
+& \text{End} & \textbf{for } \text{   loop}	
+\end{array}$$	
+	
+Various performance metrics may be used to drive the `learning` in the optimization process. Such loss metrics reward good optimizers or penalize bad optimizers, respectively. When minimizing an objective function, the loss representing the sum of the objective values over all iterations, i.e., the cumulative regret, leads to good optimizers that converge rapidly.	
+	
+# Free (unconstrained) optimization	
+	
+Unconstrained function optimization refers to searching for extrema without restrictions for the domain of the cost function, $\Omega \ni \{x_i\}$. The [extreme value theorem](https://en.wikipedia.org/wiki/Extreme_value_theorem) suggest that a solution to the free optimization processes, $\min_{x_1, x_2, x_3, \ldots, x_n}{f(x_1, x_2, x_3, \ldots, x_n)}$ or $\max_{x_1, x_2, x_3, \ldots, x_n}{f(x_1, x_2, x_3, \ldots, x_n)}$, may be obtained by a gradient vector descent method. This means that we can minimize/maximize the objective function by finding solutions to $\nabla f = \{\frac{d f}{d x_1}, \frac{d f}{d x_2}, \ldots, \frac{d f}{d x_n}\}=\{0, 0, \ldots, 0\}$.  Solutions to this equation, $x_1, \ldots, x_n$, will present candidate (local) minima and maxima.	
+	
+In general, identifying critical points using the gradient or tangent plane, where the partial derivatives are trivial, may not be sufficient to determine the *extrema* (*minima* or *maxima*) of multivariate objective functions. Some critical points may represent inflection points, or local extrema that are far from the global *optimum* of the objective function. The eigen-values of the [Hessian matrix](https://en.wikipedia.org/wiki/Second_partial_derivative_test), which includes the second order partial derivatives, at the critical points provide clues to pinpoint extrema. For instance, invertible Hessian matrices that (1) are positive definite (i.e., all eigenvalues are positive), yield a local minimum at the critical point, (2) are negative definite (all eigenvalues are negative) at the critical point suggests that the objective function has a local maximum, and (3) have both positive and negative eigenvalues yield a saddle point for the objective function at the critical point where the gradient is trivial.	
+	
+There are two complementary strategies to avoid being trapped in *local* extrema. First, we can run many iterations with different initial vectors. At each iteration, the objective function may achieve a (local) maximum/minimum/saddle point. Finally, we select the overall minimal (or maximal) value from all iterations. Another adaptive strategy involves either adjusting the step sizes or accepting solutions *in probability*, e.g., [simulated annealing](https://en.wikipedia.org/wiki/Simulated_annealing) is one example of an adaptive optimization.	
+	
+## Example 1: minimizing a univariate function (inverse-CDF)	
+	
+The cumulative distribution function (CDF) of a real-valued random process $X$, also known as the distribution function of $X$, represents the probability that the random variable $X$ does not exceed a certain level. Mathematically speaking, the CDF of $X$ is $F_X(x) = P(X\leq x)$. Recall the [Chapter 1](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/01_Foundation.html) discussions of Uniform, Normal, Cauchy, Binomial, Poisson and other discrete and continuous distributions. Try the [Probability Distributome Navigator](http://distributome.org/V3/). Also explore the [dynamic representations of density and distribution functions included in the Probability Distributome Calculators](http://www.distributome.org/V3/calc/index.html).	
+	
+For each $p\in [0,1]$, the *inverse distribution function*, also called *quantile function* (e.g., `qnorm`), yields the critical value ($x$) at which the probability of the random variable is less than or equal to the given probability ($p$). When the CDF $F_X$ is continuous and strictly increasing, the value of the inverse CDF at $p$, $F^{-1}(p)=x$, is the unique real number $x$ such that $F(x)=p$.	
+	
+Below, we will plot the probability density function (PDF) and the CDF for *Normal* distribution in R.	
+
+```{r}
+par(mfrow=c(1,2), mar=c(3,4,4,2))	
+	
+z<-seq(-4, 4, 0.1)  # points from -4 to 4 in 0.1 steps	
+q<-seq(0.001, 0.999, 0.001)  # probability quantile values from 0.1% to 99.9% in 0.1% steps	
+	
+dStandardNormal <- data.frame(Z=z,
+                              Density=dnorm(z, mean=0, sd=1),
+                              Distribution=pnorm(z, mean=0, sd=1)) 	
+	
+plot(z, dStandardNormal$Density, col="darkblue",
+     xlab="z", ylab="Density", type="l",lwd=2, cex=2, 
+     main="Standard Normal PDF", cex.axis=0.8)	
+# could also do	
+# xseq<-seq(-4, 4, 0.01); density<-dnorm(xseq, 0, 1); plot (density, main="Density")	
+	
+# Compute the CDF	
+xseq<-seq(-4, 4, 0.01); cumulative<-pnorm(xseq, 0, 1) 	
+# plot (cumulative, main="CDF")	
+plot(xseq, cumulative, col="darkred", 
+     xlab="", ylab="Cumulative Probability", type="l",lwd=2, cex=2,
+     main="CDF of (Simulated) Standard Normal", cex.axis=.8)
+```
+The example below shows a semi-interactive standard normal distribution calculator using `plot_ly`. You can see many other probability distribution calculators on the [Distributome site](http://www.distributome.org/V3/calc/index.html).	
+
+```{r}
+library(plotly)	
+library(quantmod)	
+	
+z<-seq(-4, 4, 0.1)  # points from -4 to 4 in 0.1 steps	
+q<-seq(0.001, 0.999, 0.01)  # probability quantile values from 0.1% to 99.9% in 0.1% steps	
+	
+dStandardNormal <- data.frame(Z=z, 
+                              Density=dnorm(z, mean=0, sd=1),
+                              Distribution=pnorm(z, mean=0, sd=1)) 	
+	
+# plot(z, dStandardNormal$Density, col="darkblue",xlab="z", ylab="Density", type="l",lwd=2, cex=2, main="Standard Normal PDF", cex.axis=0.8)	
+# polygon(z, dStandardNormal$Density, col="red", border="blue")	
+	
+dStandardNormal$ID <- seq.int(nrow(dStandardNormal))	
+	
+aggregate_by <- function(dataset, feature) {	
+  feature <- lazyeval::f_eval(feature, dataset)	
+  levels <- plotly:::getLevels(feature)	
+  aggData <- lapply(seq_along(levels), function(x) {	
+    cbind(dataset[feature %in% levels[seq(1, x)], ], frame = levels[[x]])	
+  })	
+  dplyr::bind_rows(aggData)	
+}	
+	
+dStandardNormal <- dStandardNormal %>% aggregate_by(~ID)	
+	
+plotMe <- dStandardNormal %>%	
+  plot_ly(	
+    x = ~Z, 	
+    y = ~Density, 	
+    frame = ~frame,	
+    type = 'scatter', 	
+    mode = 'lines', 	
+    fill = 'tozeroy', 	
+    fillcolor="red",	
+    line = list(color = "blue"),	
+    text = ~paste("Z: ", Z, "<br>Density: ", Density,	
+                  "<br>CDF: ", Distribution), 	
+    hoverinfo = 'text'	
+  ) %>%	
+  layout(	
+    title = "Standard Normal Distribution",	
+    yaxis = list(	
+      title = "N(0,1) Density", 	
+      range = c(0,0.45), 	
+      zeroline = F,	
+      tickprefix = "" # density value	
+    ),	
+    xaxis = list(	
+      title = "Z", 	
+      range = c(-4,4), 	
+      zeroline = T, 	
+      showgrid = T	
+    )	
+  ) %>% 	
+  animation_opts(	
+    frame = 100, 	
+    transition = 1, 	
+    redraw = FALSE	
+  ) %>%	
+  animation_slider(	
+    currentvalue = list(	
+      prefix = "Z: "	
+    )	
+  )	
+plotMe 	
+	
+# If you want to create a shareable plotly link to the Interactive Normal Distribution Calculator, see the API for establishing credentials: https://plot.ly/r/getting-started	
+# stdNormalCalculator = api_create(p, filename="SOCR/interactiveStdNormalCalculator")	
+# stdNormalCalculator	
+```
+
+Suppose we are interested in computing, or estimating, the inverse-CDF from first principles. Specifically, to invert the CDF, we need to be able to solve the following equation (representing our objective function):	
+$$CDF(x)-p=0.$$	
+	
+The `stats::uniroot` and `stats::nlm` R functions do *non-linear minimization* of a function $f$ using a [Newton-Raphson algorithm](https://en.wikipedia.org/wiki/Newton%27s_method). Let's test that optimization using $N(\mu=100,\sigma=20)$.	
+
+```{r}
+set.seed(1234)	
+x <- rnorm(1000, 100, 20)	
+pdf_x <- density(x)	
+	
+# Interpolate the density, the values returned when input x values are outside [min(x): max(x)] should be trivial 	
+f_x <- approxfun(pdf_x$x, pdf_x$y, yleft=0, yright=0)	
+	
+# Manual computation of the cdf by numeric integration	
+cdf_x <- function(x){	
+  v <- integrate(f_x, -Inf, x)$value	
+  if (v<0) v <- 0	
+  else if(v>1) v <- 1	
+  return(v)	
+}	
+	
+# Finding the roots of the inverse-CDF function by hand (CDF(x)-p=0)	
+invcdf <- function(p){	
+  uniroot(function(x){cdf_x(x) - p}, range(x))$root	
+  # alternatively, can use	
+  # nlm(function(x){cdf_x(x) - p}, 0)$estimate 		
+  # minimum - the value of the estimated minimum of f.	
+  # estimate - the point at which the minimum value of f is obtained.	
+}	
+invcdf(0.5)	
+	
+# We can validate that the inverse-CDF is correctly computed: F^{-1}(F(x))==x	
+cdf_x(invcdf(0.8))
+```
+
+The ability to compute exactly, or at least estimate, the inverse-CDF function is important for many reasons. For instance, generating random observations from a specified probability distribution (e.g., normal, exponential, or gamma distribution) is an important task in many scientific studies. One approach for such random number generation from a specified distribution evaluates the inverse CDF at random uniform $u\sim U(0,1)$ values. Recall that in [Chapter 15](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/15_SpecializedML_FormatsOptimization.html) we showed an example of generating random uniform samples using atmospheric noise. The key step is ability to quickly, efficiently and reliably estimate the inverse CDF function, which we just showed one example of.	
+	
+Let's see why inverting the CDF using random uniform data works. Consider the cumulative distribution function (CDF) of a probability distribution from which we are interested in sampling. If the CDF has a closed form analytic expression and is invertible, then we generate a random sample from that distribution by evaluating the inverse CDF at $u$, where $u \sim U(0,1)$. This is possible since a continuous CDF, $F$, is a one-to-one mapping of the domain of the CDF (range of $X$) into the interval $[0,1]$. Therefore, if $U$ is a uniform random variable on $[0,1]$, then $X = F^{-1}(U)$ has the distribution $F$. Suppose $U \sim Uniform[0,1]$, then $P(F^{-1}(U) \leq x)= P(U \leq F(x))$, by applying $F$ to both sides of this inequality, since $F$ is monotonic. Thus, $P(F^{-1}(U) \leq x)= F(x)$, since $P(U \leq u) = u$ for uniform random variables.	
+	
+## Example 2: minimizing a bivariate function	
+	
+Let's look at the function $f(x_1, x_2) = (x_1-3)^2 + (x_2+4)^2+x_1 x_2$. We define the function in R and utilize the `optim` function to obtain the extrema points in the support of the objective function and/or the extrema values at these critical points. Everyone can optimize in memory or by hand the simpler objective function 	
+$g(x_1, x_2) = (x_1-3)^2 + (x_2+4)^2$, which attains its minimum ($0$) at $x_1=3$ and $x_2=-4$.	
+
+```{r}
+require("stats")	
+f <- function(x) { (x[1] - 3)^2 + (x[2] +4)^2 + x[1]*x[2]}	
+initial_x <- c(0, -1)	
+x_optimal <- optim(initial_x, f, method="CG") # performs minimization	
+x_min <- x_optimal$par	
+# x_min contains the domain values where the (local) minimum is attained	
+x_min   # critical point/vector	
+x_optimal$value  # extrema value of the objective function
+```
+
+`optim` allows the use of 6 candidate optimization strategies:	
+	
+* **Nelder-Mead**: robust but relatively slow, works reasonably well for non-differentiable functions.	
+* **BFGS**: quasi-Newton method (also known as a variable metric algorithm), uses function values and gradients to build up a picture of the surface to be optimized.	
+* **CG**: conjugate gradients method, fragile, but successful in larger optimization problems because it's unnecessary to save large matrix.	
+* **L-BFGS-B**:  allows box constraints.	
+* **SANN**: a variant of simulated annealing, belonging to the class of stochastic global optimization methods.	
+* **Brent**:  for one-dimensional problems only, useful in cases where `optim()` is used inside other functions where only method can be specified.	
+	
+## Example 3: using simulated annealing to find the maximum of an oscillatory function	
+	
+Consider the function $f(x) = 10 \sin(0.3 x)\times \sin(1.3 x^2) - 0.00002 x^4 + 0.3 x+35$. Maximizing $f()$ is equivalent to minimizing $-f()$. Let's plot this oscillatory function, find and report its critical points and extremum values.	
+	
+The function `optim` returns two important results:	
+	
+* `par`: the best set of domain parameters found to optimize the function	
+* `value`: the extreme values of the function corresponding to par.	
+
+```{r}
+funct_osc <- function (x) { 	
+  -(10*sin(0.3*x)*sin(1.3*x^2) - 0.00002*x^4 + 0.3*x+35) 	
+}	
+res <- optim(16, funct_osc, method = "SANN",
+             control = list(maxit = 20000, temp = 20, parscale = 20))	
+res$par	
+res$value	
+plot(funct_osc, -50, 50, n = 1000, main = "optim() minimizing an oscillatory function")	
+abline(v=res$par, lty=3, lwd=4, col="red")
+```
+
+# Constrained Optimization	
+	
+## Equality constraints	
+	
+When there are support restrictions, dependencies or other associations between the domain variables $x_1, x_2, \ldots, x_n$, constrained optimization needs to be applied.	
+	
+For example, we can have $k$ equations specifying these restrictions, which may specify certain model characteristics:	
+$$\begin{cases}	
+g_1(x_1, x_2, \ldots, x_n) = 0\\	
+\ldots \\	
+g_k(x_1, x_2, \ldots, x_n) = 0	
+\end{cases} .$$	
+	
+Note that the right hand sides of these equations may always be assumed to be trivial ($0$), otherwise we can just move the non-trivial parts within the constraint functions $g_i$. [Linear Programming](https://en.wikipedia.org/wiki/Linear_programming), [Quadratic Programming](https://en.wikipedia.org/wiki/Quadratic_programming), and [Lagrange multipliers](https://en.wikipedia.org/wiki/Lagrange_multiplier) may be used to solve such equality-constrained optimization problems. 	
+	
+## Lagrange Multipliers	
+We can merge the equality constraints within the objective function ($f \longrightarrow f^*$). Lagrange multipliers represents a typical solution strategy that turns the *constrained* optimization problem ($\min_{x} {f(x)}$ subject to $g_i(x_1, x_2, \ldots, x_n)=0$, $1\leq i\leq k$), into an *unconstrained* optimization problem:	
+$$f^*(x_1, x_2, \ldots, x_n; \lambda_1, \lambda_2, \ldots, \lambda_k) = f(x_1, x_2, \ldots, x_n) + \sum_{i=1}^k {\lambda_i g_i(x_1, x_2, \ldots, x_n)}.$$	
+
+Then, we can apply traditional unconstrained optimization schemas, e.g., extreme value theorem, to minimize the unconstrained problem:	
+	
+$$f^*(x_1, x_2, \ldots, x_n; \lambda_1, \lambda_2, \ldots, \lambda_k) = f(x_1, x_2, \ldots, x_n) + \lambda_1 g_1(x_1, x_2, \ldots, x_n) + \ldots + \lambda_k g_k(x_1, x_2, \ldots, x_n).$$	
+
+This represent an unconstrained optimization problem using [Lagrange multipliers](https://en.wikipedia.org/wiki/Lagrange_multiplier).	
+	
+The solution of the constrained problem is also a solution to:	
+$$\nabla f^* = \left [\frac{d f}{d x_1}, \frac{d f}{d x_2}, \ldots, \frac{d f}{d x_n}; \frac{d f}{d \lambda_1}, \frac{d f}{d \lambda_2}, \ldots, \frac{d f}{d \lambda_k} \right ] = [0, 0, \ldots, 0].$$	
+
+## Inequality constrained optimization	
+There are no general solutions for arbitrary inequality constraints; however, partial solutions do exist when some restrictions on the form of constraints are present.  	
+	
+When both the constraints and the objective function are `linear functions` of the domain variables, then the problem can be solved by Linear Programming.	
+	
+### Linear Programming (LP)	
+LP works when the objective function is a linear function. The constraint functions are also linear combination of the same variables.	
+	
+Consider the following elementary (`minimization`) example:	
+$$ \min_{x_1, x_2, x_3} (-3x_1 -4x_2 -3x_3)$$	
+	
+subject to:	
+$$ \left\{	
+\begin{array}{rl}	
+  6x_1 + 2x_2 + 4x_3 & \leq 150 \\	
+   x_1 +  x_2 + 6x_3 & \geq 0 \\	
+  4x_1 + 5x_2 + 4x_3 & = 40 	
+\end{array} \right. $$ 	
+	
+The exact solution is $x_1 = 0, x_2 = 8, x_3 = 0$, and can be computed using the package `lpSolveAPI` to set up the constraint problem and the generic `solve()` method to find its solutions.	
+
+
+
