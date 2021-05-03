@@ -1,0 +1,1262 @@
+---
+title: "22 Deep Learning"
+author: "nobuo"
+date: "2021/5/3"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+ [Deep learning](https://en.wikipedia.org/wiki/Deep_learning#Deep_neural_%0Anetwork_architectures) is a special branch of machine learning using a collage of algorithms to model high-level motifs in data. Deep learning resembles the biological communications between brain neurons in the central nervous system (CNS), where synthetic graphs represent the CNS network as nodes/states and connections/edges between them. For instance, in a simple synthetic network consisting of a pair of connected nodes, an output send by one node is received by the other as an input signal. When more nodes are present in the network, they may be arranged in multiple levels (like a multiscale object) where the $i^{th}$ layer output serves as the input of the next $(i+1)^{st}$ layer. The signal is manipulated at each layer and sent as a layer output downstream and interpreted as an input to the next, $(i+1)^{st}$ layer, and so forth. Deep learning relies on multiple layers of nodes and many edges linking the nodes forming input/output (I/O) layered grids representing a multiscale processing network. At each layer, linear and non-linear transformations are converting inputs into outputs.
+
+In this chapter, we explore the R deep learning package `MXNetR` and demonstrate state-of-the-art deep learning models utilizing CPU and GPU for fast training (learning) and testing (validation). Other powerful deep learning frameworks include *TensorFlow*, *Theano*, *Caffe*, *Torch*, *CNTK* and *Keras*.	
+	
+*Neural Networks vs. Deep Learning*: Deep Learning is a machine learning strategy that learns a deep multi-level hierarchical representation of the affinities and motifs in the dataset. Machine learning Neural Nets tend to use shallower network models. Although there are no formal restrictions on the depth of the layers in a Neural Net, few layers are commonly utilized. Recent methodological, algorithmic, computational, infrastructure and service advances overcome previous limitations. In addition, the rise of *Big Data* accelerated the evolution of *classical Neural Nets* to *Deep Neural Nets*, which can now handle lots of layers and many hidden nodes per layer. The former is a precursor to the latter, however, there are also *non-neural* deep learning techniques. For example, *syntactic pattern recognition methods* and *grammar induction discover hierarchies*.	
+	
+# Deep Learning Training	
+	
+Review [Chapter 10 (Black Box Machine-Learning Methods: Neural Networks and Support Vector Machines)](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/10_ML_NN_SVM_Class.html) prior to proceeding.	
+	
+## Perceptrons	
+A **perceptron** is an artificial analogue of a neuronal brain cell that calculates a *weighted sum of the input values* and *outputs a thresholded version of that result*. For a bivariate perceptron, $P$, having two inputs, $(X,Y)$, denote the weights of the inputs by $A$ and $B$, respectively. Then, the weighted sum could be represented as: $$W = A X + B Y.$$	
+	
+At each layer $l$, the weight matrix, $W^{(l)}$, has the following properties:	
+	
+* The number of rows of $W^{(l)}$ equals the number of nodes/units in the previous $(l-1)^{st}$ layer, and 	
+* The number of columns of $W^{(l)}$ equals the number of units in the next $(l+1)^{st}$ layer. 	
+	
+Neuronal cells fire depending on the presynaptic inputs to the cell which causes constant fluctuations of the neuronal the membrane - depolarizing or hyperpolarizing, i.e., the cell membrane potential rises or falls. Similarly, perceptrons rely on thresholding of the weight-averaged input signal, which for biological cells corresponds to voltage increases passing a critical threshold. Perceptrons output non-zero values only when the weighted sum exceeds a certain threshold $C$. In terms of its input vector, $(X,Y)$, we can describe the output of each perceptron ($P$) by:	
+	
+$$ Output(P) = 	
+\left\{	
+\begin{array} {}	
+   1, & if A X + B Y > C \\          	
+   0, & if A X + B Y \leq C	
+\end{array}	
+\right. .$$	
+	
+Feed-forward networks are constructed as layers of perceptrons where the first layer ingests the inputs and the last layer generates the network outputs. The intermediate (internal) layers are not directly connected to the external world, and are called hidden layers. In *fully connected networks*, each perceptron in one layer is connected to every perceptron on the next layer enabling information "fed forward" from one layer to the next. There are no connections between perceptrons in the same layer. 	
+	
+Multilayer perceptrons (fully-connected feed-forward neural network) consist of several fully-connected layers representing an `input matrix` $X_{n \times m}$ and a generated `output matrix` $Y_{n \times k}$. The input $X_{n,m}$ is a matrix encoding the $n$ cases and $m$ features per case. The weight matrix $W_{m,k}^{(l)}$ for layer $l$ has rows ($i$) corresponding to the weights leading from all the units $i$ in the previous layer to all of the units $j$ in the current layer. The product matrix $X\times W$ has dimensions $n\times k$.	
+	
+The hidden size parameter $k$, the weight matrix $W_{m \times k}$, and the bias vector $b_{n \times 1}$ are used to compute the outputs at each layer:	
+	
+$$Y_{n \times k}^{(l)} =f_k^{(l)}\left ( X_{n \times m} W_{m \times k}+b_{k \times 1} \right ).$$	
+
+The role of the bias parameter is similar to the intercept term in linear regression and helps improve the accuracy of prediction by shifting the decision boundary along $Y$ axis. The outputs are fully-connected layers that feed into an `activation layer` to perform element-wise operations. Examples of **activation functions** that transform real numbers to probability-like values include:	
+	
+* the [sigmoid function]( https://en.wikipedia.org/wiki/Sigmoid_function), a special case of the [logistic function](https://en.wikipedia.org/wiki/Logistic_function), which converts real numbers to probabilities, 	
+* the rectifier (`relu`, [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))) function, which outputs the $\max(0, input)$,	
+* the [tanh (hyperbolic tangent function)](https://en.wikipedia.org/wiki/Hyperbolic_function#Hyperbolic_tangent).	
+
+```{r}
+sigmoid <- function(x) { 1 / (1 + exp(-x)) }	
+relu <- function(y) { pmin(pmax(0, y), 1) }	
+x_Llimit <- -10; x_Rlimit <- 10; y_Llimit <- 0; y_Rlimit <- 1	
+x <- seq(x_Llimit, x_Rlimit, 0.01)	
+plot(c(x_Llimit,x_Rlimit), c(y_Llimit,y_Rlimit), type="n", xlab="Input/Domain", ylab="Output/Range" ) 	
+lines(x, sigmoid(x), col="blue", lwd=3)	
+lines(x, (1/2)*(tanh(x)+1), col="green", lwd=3)	
+lines(x, relu(x), col="red", lwd=3)	
+legend("left", title="Probability Transform Functions",	
+       c("sigmoid","tanh","relu"), fill=c("blue", "green", "red"),	
+       ncol = 1, cex = 0.75)
+```
+
+The final fully-connected layer may be hidden of size equal to the number of classes in the dataset and may be followed by a `softmax` layer mapping the input into a probability score. For example, if a size ${n\times m}$ input is denoted by $X_{n\times m}$, then the probability scores may be obtained by the `softmax` transformation function, which maps real valued vectors to vectors of probabilities:	
+	
+$$\left ( \frac{e^{x_{i,1}}}{\displaystyle\sum_{j=1}^m e^{x_{i,j}}},\ldots, \frac{e^{x_{i,m}}}{\displaystyle\sum_{j=1}^m e^{x_{i,j}}}\right ).$$	
+
+Below is a schematic of fully-connected feed-forward neural network of nodes 	
+$$ \{ a_{j=node\ index, l=layer\ index} \}_{j=1, l=1}^{n_j, 4}.$$	
+
+```{r}
+# install.packages("GGally"); install.packages("sna"); install.packages("network")	
+# library("GGally"); library(network); library(sna); library(ggplot2)	
+	
+library('igraph')	
+#define node names	
+nodes <- c('a(1,1)','a(2,1)','a(3,1)','a(4,1)', 'a(5,1)', 'a(6,1)', 'a(7,1)',	
+           'a(1,2)','a(2,2)','a(3,2)','a(4,2)', 'a(5,2)',	
+           'a(1,3)','a(2,3)','a(3,3)',	
+           'a(1,4)','a(2,4)'	
+           )	
+# define node x,y coordinates	
+x <- c(rep(0,7), rep(2,5), rep(4,3), rep(6,2)	
+       )	
+y <- c(1:7, 2:6, 3:5, 4:5)	
+# x;y  # print x & y coordinates of all nodes	
+	
+#define edges	
+from <- c('a(1,1)','a(2,1)','a(3,1)','a(4,1)', 'a(5,1)', 'a(6,1)', 'a(7,1)',	
+          'a(1,1)','a(2,1)','a(3,1)','a(4,1)', 'a(5,1)', 'a(6,1)', 'a(7,1)',	
+          'a(1,1)','a(2,1)','a(3,1)','a(4,1)', 'a(5,1)', 'a(6,1)', 'a(7,1)',	
+          'a(1,1)','a(2,1)','a(3,1)','a(4,1)', 'a(5,1)', 'a(6,1)', 'a(7,1)',	
+          'a(1,1)','a(2,1)','a(3,1)','a(4,1)', 'a(5,1)', 'a(6,1)', 'a(7,1)',	
+          'a(1,2)','a(2,2)','a(3,2)','a(4,2)', 'a(5,2)',	
+          'a(1,2)','a(2,2)','a(3,2)','a(4,2)', 'a(5,2)',	
+          'a(1,2)','a(2,2)','a(3,2)','a(4,2)', 'a(5,2)',	
+          'a(1,3)','a(2,3)','a(3,3)',	
+          'a(1,3)','a(2,3)','a(3,3)'	
+          )	
+to <- c('a(1,2)','a(1,2)','a(1,2)','a(1,2)', 'a(1,2)', 'a(1,2)', 'a(1,2)',	
+        'a(2,2)','a(2,2)','a(2,2)','a(2,2)', 'a(2,2)', 'a(2,2)', 'a(2,2)',	
+        'a(3,2)','a(3,2)','a(3,2)','a(3,2)', 'a(3,2)', 'a(3,2)', 'a(3,2)',	
+        'a(4,2)','a(4,2)','a(4,2)','a(4,2)', 'a(4,2)', 'a(4,2)', 'a(4,2)',	
+        'a(5,2)','a(5,2)','a(5,2)','a(5,2)', 'a(5,2)', 'a(5,2)', 'a(5,2)',	
+        'a(1,3)','a(1,3)','a(1,3)','a(1,3)', 'a(1,3)',	
+        'a(2,3)','a(2,3)','a(2,3)','a(2,3)', 'a(2,3)',	
+        'a(3,3)','a(3,3)','a(3,3)','a(3,3)', 'a(3,3)',	
+        'a(1,4)','a(1,4)','a(1,4)',	
+        'a(2,4)','a(2,4)', 'a(2,4)'	
+        )	
+edge_names <- c("w(i=1,k=1,l=2)","","","", "", "", "",	
+        "","","","", "", "", "",	
+        "","","","w(i=4,k=3,l=2)", "", "", "",	
+        "","","","", "", "", "",	
+        "","","","", "", "", "w(i=5,k=7,l=2)",	
+        "","","","", "",	
+        "","","","", "",	
+        "","w(i=2,k=3,l=3)","", "", "",	
+        "w(i=1,k=1,l=4)","","",	
+        "","", "w(i=2,k=3,l=4)"	
+        )	
+  	
+NodeList <- data.frame(nodes, x ,y)	
+EdgeList <- data.frame(from, to, edge_names)	
+nn.graph <- graph_from_data_frame(vertices = NodeList, d= EdgeList, directed = TRUE) %>% set_edge_attr("label", value = edge_names)	
+# plot(nn.graph)
+```
+```{r}
+# igraph examples: http://michael.hahsler.net/SMU/LearnROnYourOwn/code/igraph.html	
+map <- function(x, range = c(0,1), from.range=NA) {	
+    if(any(is.na(from.range))) from.range <- range(x, na.rm=TRUE)	
+    	
+    ## check if all values are the same	
+    if(!diff(from.range)) return(	
+	    matrix(mean(range), ncol=ncol(x), nrow=nrow(x), 	
+		    dimnames = dimnames(x)))	
+    	
+    ## map to [0,1]	
+    x <- (x-from.range[1])	
+    x <- x/diff(from.range)	
+    ## handle single values	
+    if(diff(from.range) == 0) x <- 0 	
+    	
+    ## map from [0,1] to [range]	
+    if (range[1]>range[2]) x <- 1-x	
+    x <- x*(abs(diff(range))) + min(range)	
+    x[x<min(range) | x>max(range)] <- NA	
+    	
+    return(x)	
+}	
+	
+col <- rep("gray",length(V(nn.graph))) # input layer	
+col[c(1:7, 16:17)] <- "lightblue"      # hidden layer	
+col[16:17] <- "lightgreen"             # output layer	
+plot(nn.graph, vertex.color=col, vertex.size=map(betweenness(nn.graph),c(25,30)), ylab="Input Layer", xlab="A schematic of fully-connected feed-forward neural network")	
+	
+# plot(nn.graph, vertex.size=map(betweenness(nn.graph),c(20,30)), edge.width=map(edge.betweenness(nn.graph), c(1,5)))	
+```
+```{r}
+col <- rep("gray",length(V(nn.graph))) # input layer	
+col[c(1:7, 16:17)] <- "lightblue"      # hidden layer	
+col[16:17] <- "lightgreen"             # output layer	
+plot(nn.graph, vertex.color=col)	
+title(main="A schematic of fully-connected feed-forward neural network")	
+mtext("Input Layer (j=1)", side=2, line=-1, col="blue")	
+mtext("     Output Layer (j=4)", side=4, line=-2, col="green")	
+mtext("Hidden Layers (j=2,3)", side=1, line=0, col="gray")
+```
+
+The plot above illustrates the key elements in the action potential, or activation function, calculations and the corresponding training parameters:	
+$$a_{node=k,layer=l} = f\left ( \displaystyle\sum_{i}{w_{k,i}^l \times a_{i}^{l-1} +b_{k}^l} \right ),$$	
+where:	
+	
+* $f$ is the *activation function*, e.g., [logistic functin](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/17_RegularizedLinModel_KnockoffFilter.html) $f(x) = \frac{1}{1+e^{-x}}$. It converts the aggregate weights at each node to probability values,	
+* $w_{k,i}^l$ is the weight carried from the $i^{th}$ element of the $(l-1)^{th}$ layer to the $k^{th}$ element of the current $l^{th}$ layer,	
+* $b_{k}^l$ is the (residual) bias present in the $k^{th}$ element in the $l^{th}$ layer. This is effectively the information not explained by the training model.	
+	
+These parameters may be estimated using different techniques (e.g., using least squares, or stochastically using steepest decent methods) based on the training data.	
+
+# Biological Relevance	
+	
+There are parallels between biology (neuronal cells) and the mathematical models (perceptrons) for neural network representation. The human brain contain about $10^{11}$ neuronal cells connected by approximately $10^{15}$ synapses forming the basis of our functional phenotypes. The schematic below illustrates some of the parallels between brain biology and the mathematical representation using synthetic neural nets. Every neuronal cell receives multi-channel (afferent) input from its dendrites, generates output signals and disseminates the results via its (efferent) axonal connections and synaptic connections to dendrites of other neurons. 	
+	
+The perceptron is a mathematical model of a neuronal cell that allows us to explicitly determine algorithmic and computational protocols transforming input signals into output actions. For instance, signal arriving through an axon $x_0$ is modulated by some prior weight, e.g., synaptic strength, $w_0\times x_0$. Internally, within the neuronal cell, this input is aggregated (summed, or weight-averaged) with inputs from all other axons. Brain plasticity suggests that `synaptic strengths` (weight coefficients $w$) are strengthened by training and prior experience. This learning process controls the direction and strength of influence of neurons on other neurons. Either excitatory ($w>0$) or inhibitory ($w\leq 0$) influences are possible. Dendrites and axons carry signals to and from neurons, where the aggregate responses are computed and transmitted downstream. Neuronal cells only fire if action potentials exceed a certain threshold. In this situation, a signal is transmitted downstream through its axons. The neuron remains silent, if the summed signal is below the critical threshold. 	
+	
+Timing of events is important in biological networks. In the computational perceptron model, a first order approximation may ignore the timing of neuronal firing (spike events) and only focus on the frequency of the firing. The firing rate of a neuron with an activation function $f$ represents the frequency of the spikes along the axon. We saw some examples of activation functions earlier.	
+	
+The diagram below illustrates the parallels between the brain network-synaptic organization and an artificial synthetic neural network.	
+	
+[![](https://wiki.socr.umich.edu/images/a/a6/DSPA_22_DeepLearning_Fig1.png)](https://wiki.socr.umich.edu/images/a/a6/DSPA_22_DeepLearning_Fig1.png)	
+	
+	
+# Simple Neural Net Examples 	
+	
+Before we look at some examples of deep learning algorithms applied to model observed natural phenomena, we will develop a couple of simple networks for computing fundamental Boolean operations.	
+	
+## Exclusive OR (XOR) Operator	
+The [exclusive OR (XOR) operator](https://en.wikipedia.org/wiki/Exclusive_or) works as a bivariate binary-outcome function, mapping pairs of false (0) and true (1) values to dichotomous false (0) and true (1) outcomes.	
+	
+We can design a simple two-layer neural network that calculates `XOR`. The **values within each neurons represent its explicit threshold**, which can be normalized so that all neurons utilize the same threshold, typically $1$). The **value labels associated with network connections (edges) represent the weights of the inputs**. When the threshold is not reached, output is $0$, and then the threshold is reached, the output is correspondingly $1$.	
+
+```{r}
+# install.packages("network")	
+library('igraph')	
+#define node names	
+nodes <- c('X', 'Y',                            # Inputs (0,1)	
+           'H_1_1_th1','H_1_2_th2','H_1_3_th1', # Hidden Layer	
+           'Z'                                  # Output Layer (0,1)	
+           )	
+# define node x,y coordinates	
+x <- c(rep(0,2), rep(2,3), 4)	
+y <- c(c(1.5, 2.5), 1:3, 2)	
+##x;y  # print x & y coordinates of all nodes	
+	
+#define edges	
+from <- c('X', 'X', 	
+          'Y', 'Y',	
+          'H_1_1_th1', 'H_1_2_th2', 'H_1_3_th1',	
+          'Z'	
+          )	
+to <- c('H_1_1_th1', 'H_1_2_th2',	
+        'H_1_2_th2', 'H_1_3_th1', 	
+        'Z', 'Z', 'Z', 'Z'	
+        )	
+edge_names <- c(	
+        '1', '1',	
+        '1', '1',	
+        '1', '-2', '1', '1'	
+        )	
+  	
+NodeList <- data.frame(nodes, x ,y)	
+EdgeList <- data.frame(from, to, edge_names)	
+nn.graph <- graph_from_data_frame(vertices = NodeList, d= EdgeList, directed = TRUE) %>% set_edge_attr("label", value = edge_names)	
+# plot(nn.graph)	
+	
+# See the iGraph specs here: http://kateto.net/networks-r-igraph	
+	
+col <- rep("gray",length(V(nn.graph))) # input layer	
+col[c(3:5)] <- "lightblue"             # hidden layer	
+col[6] <- "lightgreen"                 # output layer	
+plot(nn.graph, vertex.color=col, vertex.shape="sphere", vertex.size=c(35, 35,   80, 80, 80, 35), edge.label.cex=1.5)	
+title(main="XOR Operator")	
+mtext("Input Layer: Bivariate (0,1)", side=2, line=-1, col="blue")	
+mtext("     Output Layer (XOR)", side=4, line=-2, col="green")	
+mtext("Hidden Layers (Neurons)", side=1, line=0, col="gray")
+```
+
+Let's work out manually the 4 possibilities:	
+	
+InputX|InputY|XOR Output(Z)    	
+------|------|-------------   	
+0 | 0 |	0	
+0 | 1 | 1	
+1 | 0 | 1	
+1 | 1 | 0	
+	
+We can validate that this network indeed represents an XOR operator by plugging in all four possible input combinations and confirming the expected results at the end.	
+
+```{r}
+par(mfrow=c(2,2))    # 2 x 2 design	
+nodes <- c('X=0', 'Y=0',                        # Inputs 	
+           'H_1_1_th1','H_1_2_th2','H_1_3_th1', # Hidden Layer	
+           'Z=0'                                # Output Layer (0,1)	
+           )	
+# define node x,y coordinates	
+x <- c(rep(0,2), rep(2,3), 4)	
+y <- c(c(1.5, 2.5), 1:3, 2)	
+# x;y  # print x & y coordinates of all nodes	
+	
+######### (0,0)	
+#define edges	
+from <- c('X=0', 'X=0', 	
+          'Y=0', 'Y=0',	
+          'H_1_1_th1', 'H_1_2_th2', 'H_1_3_th1',	
+          'Z=0'	
+          )	
+to <- c('H_1_1_th1', 'H_1_2_th2',	
+        'H_1_2_th2', 'H_1_3_th1', 	
+        'Z=0', 'Z=0', 'Z=0', 'Z=0'	
+        )	
+edge_names <- c(	
+        '1', '1',	
+        '1', '1',	
+        '1', '-2', '1', '1'	
+        )	
+  	
+NodeList <- data.frame(nodes, x ,y)	
+EdgeList <- data.frame(from, to, edge_names)	
+nn.graph <- graph_from_data_frame(vertices = NodeList, d= EdgeList, directed = TRUE) %>% set_edge_attr("label", value = edge_names)	
+	
+col <- rep("gray",length(V(nn.graph))) # input layer	
+col[c(3:5)] <- "lightblue"             # hidden layer	
+col[6] <- "lightgreen"                 # output layer	
+plot(nn.graph, vertex.color=col, vertex.shape="pie", vertex.size=c(30, 30,   40, 40, 40, 30), edge.label.cex=2,	
+     edge.arrow.size=0.25)	
+title(main="XOR Operator")	
+mtext("Input Layer: Bivariate (X=0,Y=0)", side=2,line=-1, col="blue")	
+mtext("     Output Layer (XOR), Z=0", side=4, line=-2, col="green")	
+mtext("Hidden Layers (Neurons)", side=1, line=0, col="gray")	
+	
+######### (0,1)	
+nodes <- c('X=0', 'Y=1',                        # Inputs 	
+           'H_1_1_th1','H_1_2_th2','H_1_3_th1', # Hidden Layer	
+           'Z=1'                                # Output Layer (0,1)	
+           )	
+#define edges	
+from <- c('X=0', 'X=0', 	
+          'Y=1', 'Y=1',	
+          'H_1_1_th1', 'H_1_2_th2', 'H_1_3_th1',	
+          'Z=1'	
+          )	
+to <- c('H_1_1_th1', 'H_1_2_th2',	
+        'H_1_2_th2', 'H_1_3_th1', 	
+        'Z=1', 'Z=1', 'Z=1',	
+        'Z=1'	
+        )	
+	
+NodeList <- data.frame(nodes, x ,y)	
+EdgeList <- data.frame(from, to, edge_names)	
+nn.graph <- graph_from_data_frame(vertices = NodeList, d= EdgeList, directed = TRUE) %>% set_edge_attr("label", value = edge_names)	
+	
+col <- rep("gray",length(V(nn.graph))) # input layer	
+col[c(3:5)] <- "lightblue"             # hidden layer	
+col[6] <- "lightgreen"                 # output layer	
+plot(nn.graph, vertex.color=col, vertex.shape="pie", vertex.size=c(30, 30,   40, 40, 40, 30), edge.label.cex=1,	
+     edge.arrow.size=0.25)	
+title(main="XOR Operator")	
+mtext("Input Layer: Bivariate (X=0,Y=1)",side=2,line=-1, col="blue")	
+mtext("     Output Layer (XOR), Z=1", side=4, line=-2, col="green")	
+mtext("Hidden Layers (Neurons)", side=1, line=0, col="gray")	
+	
+######### (1,0)	
+nodes <- c('X=1', 'Y=0',                        # Inputs 	
+           'H_1_1_th1','H_1_2_th2','H_1_3_th1', # Hidden Layer	
+           'Z=1'                                # Output Layer (0,1)	
+           )	
+#define edges	
+from <- c('X=1', 'X=1', 	
+          'Y=0', 'Y=0',	
+          'H_1_1_th1', 'H_1_2_th2', 'H_1_3_th1',	
+          'Z=1'	
+          )	
+to <- c('H_1_1_th1', 'H_1_2_th2',	
+        'H_1_2_th2', 'H_1_3_th1', 	
+        'Z=1', 'Z=1', 'Z=1',	
+        'Z=1'	
+        )	
+	
+NodeList <- data.frame(nodes, x ,y)	
+EdgeList <- data.frame(from, to, edge_names)	
+nn.graph <- graph_from_data_frame(vertices = NodeList, d= EdgeList, directed = TRUE) %>% set_edge_attr("label", value = edge_names)	
+	
+col <- rep("gray",length(V(nn.graph))) # input layer	
+col[c(3:5)] <- "lightblue"             # hidden layer	
+col[6] <- "lightgreen"                 # output layer	
+plot(nn.graph, vertex.color=col, vertex.shape="pie", vertex.size=c(30, 30,   40, 40, 40, 30), edge.label.cex=1,	
+     edge.arrow.size=0.25)	
+title(main="XOR Operator")	
+mtext("Input Layer: Bivariate (X=1,Y=0)", side=2,line=-1, col="blue")	
+mtext("     Output Layer (XOR), Z=1", side=4, line=-2, col="green")	
+mtext("Hidden Layers (Neurons)", side=1, line=0, col="gray")	
+	
+######### (1,1)	
+nodes <- c('X=1', 'Y=1',                        # Inputs 	
+           'H_1_1_th1','H_1_2_th2','H_1_3_th1', # Hidden Layer	
+           'Z=0'                                # Output Layer (1,1)	
+           )	
+#define edges	
+from <- c('X=1', 'X=1', 	
+          'Y=1', 'Y=1',	
+          'H_1_1_th1', 'H_1_2_th2', 'H_1_3_th1',	
+          'Z=0'	
+          )	
+to <- c('H_1_1_th1', 'H_1_2_th2',	
+        'H_1_2_th2', 'H_1_3_th1', 	
+        'Z=0', 'Z=0', 'Z=0',	
+        'Z=0'	
+        )	
+	
+NodeList <- data.frame(nodes, x ,y)	
+EdgeList <- data.frame(from, to, edge_names)	
+nn.graph <- graph_from_data_frame(vertices = NodeList, d= EdgeList, directed = TRUE) %>% set_edge_attr("label", value = edge_names)	
+	
+col <- rep("gray",length(V(nn.graph))) # input layer	
+col[c(3:5)] <- "lightblue"             # hidden layer	
+col[6] <- "lightgreen"                 # output layer	
+plot(nn.graph, vertex.color=col, vertex.shape="pie", vertex.size=c(30, 30,   40, 40, 40, 30), edge.label.cex=1.5,	
+     edge.arrow.size=0.25)	
+title(main="XOR Operator")	
+mtext("Input Layer: Bivariate (X=1,Y=1)",side=2,line=-1, col="blue")	
+mtext("     Output Layer (XOR), Z=0", side=4, line=-2, col="green")	
+mtext("Hidden Layers (Neurons)", side=1, line=0, col="gray")
+```
+
+## NAND Operator	
+Another binary operator is `NAND` ([negative AND, Sheffer stroke](https://en.wikipedia.org/wiki/NAND_gate)) that produces a false (0) output if and only if both of its operands are true (1), and generates true (1), otherwise. Below is the `NAND` input-output table.	
+	
+InputX|InputY|NAND Output(Z)	
+------|------|------------- 	
+0 | 0 |	1 	
+0 | 1 | 1	
+1 | 0 | 1	
+1 | 1 | 0	
+	
+Similarly to the `XOR` operator, we can design a one-layer neural network that calculates `NAND`. The **values within each neurons represent its explicit threshold**, which can be normalized so that all neurons utilize the same threshold, typically $1$). The **value labels associated with network connections (edges) represent the weights of the inputs**. When the threshold is not reached, the output is trivial ($0$) and when the threshold is reached, the output is correspondingly $1$. Here is a shorthand analytic expression for the `NAND` calculation:	
+	
+$$NAND(X,Y) = 1.3 - (1\times X + 1\times Y).$$	
+Check that $NAND(X,Y)=0$ if and only if $X=1$ and $Y=1$, otherwise it equals $1$.	
+
+```{r}
+# install.packages("network")	
+library('igraph')	
+#define node names	
+nodes <- c('X', 'Y',                            # Inputs (0,1)	
+           'H_th=1.3-(X+Y)',            # Hidden Layer	
+           'Z'                                  # Output Layer (0,1)	
+           )	
+# define node x,y coordinates	
+x <- c(rep(0,2), 2, 4)	
+y <- c(c(1.5, 2.5), 2, 2)	
+#x;y  # print x & y coordinates of all nodes	
+	
+#define edges	
+from <- c('X', 'Y', 	
+          'H_th=1.3-(X+Y)'	
+          )	
+to <- c('H_th=1.3-(X+Y)', 'H_th=1.3-(X+Y)',	
+        'Z'	
+        )	
+edge_names <- c(	
+        '-1', '-1',	
+        '1'	
+        )	
+  	
+NodeList <- data.frame(nodes, x ,y)	
+EdgeList <- data.frame(from, to, edge_names)	
+nn.graph <- graph_from_data_frame(vertices = NodeList, d= EdgeList, directed = TRUE) %>% set_edge_attr("label", value = edge_names)	
+# plot(nn.graph)	
+	
+# See the iGraph specs here: http://kateto.net/networks-r-igraph	
+	
+col <- rep("gray",length(V(nn.graph))) # input layer	
+col[c(3)] <- "lightblue"             # hidden layer	
+col[4] <- "lightgreen"                 # output layer	
+plot(nn.graph, vertex.color=col, vertex.shape="sphere", vertex.size=c(35, 35,   80,    35), edge.label.cex=2)	
+title(main="NAND Operator")	
+mtext("Input Layer: Bivariate (X,Y)", side=2, line=-1, col="blue")	
+mtext("     Output Layer (NAND)", side=4, line=-2, col="green")	
+mtext("Hidden Layers (Neurons)", side=1, line=0, col="gray")
+```
+
+## Complex networks designed using simple building blocks 	
+	
+Observe that stringing some of these primitive networks together, or/and increasing the number of hidden layers, allows us to model problems with exponentially increasing complexity. For instance, constructing a 4-input `NAND` function would simply require repeating several of our 2-input `NAND` operators. This will increase the space of possible outcomes from $2^2$ to $2^4$. Of course, introducing more depth in the **hidden layers** further expands the complexity of the problems that can be modeled using neural nets.	
+	
+You can interactively manipulate the [Google's TensorFlow Deep Neural Network Webapp](https://playground.tensorflow.org) to gain additional intuition and experience with the various components of deep learning networks. 	
+	
+The [ConvnetJS demo provide another hands-on example using 2D classification with 2-layer neural network]( http://cs.stanford.edu/people/karpathy/convnetjs/demo/classify2d.html).	
+	
+# Neural Network Modeling using `Keras`	
+	
+There are many different neural-net and deep-learning frameworks. The table below summarizes some of the main deep learning `R` packages.	
+	
+Package     | Description	
+----------  | --------------------------------------------------------------------	
+nnet 	      |   Feed-forward neural networks using 1 hidden layer	
+neuralnet 	| 	Training backpropagation neural networks	
+tensorflow  |   Google TensorFlow used in TensorBoard (see [SOCR UKBB Demo](https://socr.umich.edu/HTML5/SOCR_TensorBoard_UKBB/))	
+deepnet     |  	Deep learning toolkit	
+darch       | 	Deep Architectures based on Restricted Boltzmann Machines	
+rnn         |   Recurrent Neural Networks (RRNs)	
+rcppDL      |   Multi-layer machine learning methods including dA (Denoising Autoencoder), SdA (Stacked Denoising Autoencoder), RBM (Restricted Boltzmann machine), and DBN (Deep Belief Nets)	
+deepr       |   DL training, fine-tuning and predicting processes using darch and deepnet	
+MXNetR 	    | 	Flexible and efficient ML/DL tools utilizing CPU/GPU computing	
+kerasR      |   RStudio's keras DL implementation wrapping C++/Python executable libraries	
+Keras       |   Python based neural networks API, connecting Google TensorFlow, Microsoft Cognitive Toolkit (CNTK), and Theano	
+	
+Most DL/ML `R` packages provide interfaces (APIs) to libraries that are build using foundational languages like C/C++ and Java. Most of the Python libraries also act as APIs to lower-level executables compiled for specific platforms (Mac, Linux, PC).	
+	
+The `keras` package uses the `pipe` operator (`%>%`) to join multiple functions	
+or operators, which streamlines the readability of the script protocol.	
+	
+The `kerasR` package contains analogous functions to the ones in `keras` and utilizes the $\$$ operator to create models. There are parallels between the core `Python` methods and their `keras` counterparts: `compile()` and `keras_compile()`, `fit()` and `keras_fit()`, `predict()` and `keras_predict()`.	
+	
+Below we will demonstrate the utilization of the `Keras` package for deep neural network analytics. This will require installation of `keras` and `TensorFlow` via `R` `devtools::install_github("rstudio/keras")`.	
+
+```{r}
+# devtools::install_github("rstudio/keras")	
+library("keras")
+# install_keras()	
+	
+#install.packages("tensorflow")	
+library(tensorflow)	
+#install_tensorflow()
+```
+The [`Keras` package](https://keras.rstudio.com/) includes built-in datasets with `load()` functions, e.g., `mnist.load_data()` and `imdb.load_data()`.	
+
+```{r}
+mnist <- dataset_mnist()	
+imdb <- dataset_imdb()
+```
+
+## Use-Case: Predicting Titanic Passenger Survival	
+	
+Instead of using the default data provided in the `keras` package, we will utilize one of the datasets on the [DSPA Case-Studies Website](https://umich.instructure.com/courses/38100/files/folder/Case_Studies), can also be loaded much like [we have done before](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/02_ManagingData.html). Below, we download the [Titanic Passenger Dataset](https://umich.instructure.com/courses/38100/files/folder/data/16_TitanicPassengerSurvivalDataset).	
+
+```{r}
+library(reshape)	
+library(caret)	
+dat <- read.csv("https://umich.instructure.com/files/9372716/download?download_frd=1")	
+	
+# Inspect for missing values (empty or NA):	
+dat.miss <- melt(apply(dat[, -2], 2, function(x) sum(is.na(x) | x=="")))	
+cbind(row.names(dat.miss)[dat.miss$value>0], dat.miss[dat.miss$value>0,])	
+	
+# We can exclude the "Cabin" feature which includes 80% missing values. 	
+	
+# Impute the few missing Embarked values using the most common value (S)	
+table(dat$embarked)	
+dat$embarked[which(is.na(dat$embarked) | dat$embarked=="")] <- "S"	
+	
+# Some "fare"" values may represent total cost of group purchases	
+# We can derive a new variable "price" representing fare per person	
+# Update missing fare value with 0	
+dat$fare[which(is.na(dat$fare))] <- 0 	
+# calculate ticket Price (Fare per person)	
+ticket.count <- aggregate(dat$ticket, by=list(dat$ticket), function(x) sum( !is.na(x) ))	
+dat$price <- apply(dat, 1, function(x) as.numeric(x["fare"]) /	
+            ticket.count[which(ticket.count[, 1] == x["ticket"]), 2])	
+	
+# Impute missing prices (price=0) using the median price per passenger class	
+pclass.price<-aggregate(dat$price, by = list(dat$pclass), FUN = function(x) median(x, na.rm = T))	
+dat[which(dat$price==0), "price"] <- 	
+  apply(dat[which(dat$price==0), ] , 1, function(x)	
+    pclass.price[pclass.price[, 1]==x["pclass"], 2])	
+	
+# Define a new variable "ticketcount" coding the number of passengers sharing the same ticket number	
+dat$ticketcount <- 	
+  apply(dat, 1, function(x) ticket.count[which(ticket.count[, 1] ==	
+                                                 x["ticket"]), 2])	
+	
+# Capture the passenger title	
+dat$title <- 	
+  regmatches(as.character(dat$name),	
+             regexpr("\\,[A-z ]{1,20}\\.", as.character(dat$name)))	
+dat$title <-	
+  unlist(lapply(dat$title,	
+            FUN=function(x) substr(x, 3, nchar(x)-1)))	
+table(dat$title)	
+	
+# Bin the 17 alternative title groups into 4 common 4 titles (factors)	
+dat$title[which(dat$title %in% c("Mme", "Mlle"))] <- "Miss"	
+dat$title[which(dat$title %in% 	
+                  c("Lady", "Ms", "the Countess", "Dona"))] <- "Mrs"	
+dat$title[which(dat$title=="Dr" & dat$sex=="female")] <- "Mrs"	
+dat$title[which(dat$title=="Dr" & dat$sex=="male")] <- "Mr"	
+dat$title[which(dat$title %in% c("Capt", "Col", "Don", 	
+                  "Jonkheer", "Major", "Rev", "Sir"))] <- "Mr"	
+dat$title <- as.factor(dat$title) 	
+table(dat$title)	
+	
+# Impute missing ages using median age for each title group	
+title.age <- aggregate(dat$age, by = list(dat$title), 	
+                    FUN = function(x) median(x, na.rm = T))	
+dat[is.na(dat$age), "age"] <- apply(dat[is.na(dat$age), ] , 1, 	
+              function(x) title.age[title.age[, 1]==x["title"], 2])	
+```
+
+	
+## EDA/Visualization	
+We can start by some [simple EDA plots](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/03_DataVisualization.html), reporting some numerical summaries, examining pairwise correlations, and showing the distributions of some features in this dataset.	
+
+```{r}
+library(ggplot2)	
+summary(dat)	
+	
+cols <- c("red","green")[unclass(dat$survived)]	
+	
+plot(dat$ticketcount, dat$fare, pch=21, cex=1.5,	
+     bg=alpha(cols, 0.4),	
+     xlab="Number of Tickets per Party", ylab="Passenger Fare", 	
+     main="Titanic Passenger Data (TicketCount vs. Fare) Color Coded by Survival")	
+legend("topright", inset=.02, title="Survival",	
+   c("0","1"), fill=c("red", "green"), horiz=F, cex=0.8)	
+	
+ggplot(dat, aes(x=survived, y=fare, fill=sex)) + 	
+  #geom_dotplot(binaxis='y', stackdir='center',	
+  #               position=position_dodge(1)) +	
+  #scale_fill_manual(values=c("#999999", "#E69F00")) +	
+  geom_violin(trim=FALSE) +	
+  theme(legend.position="top")	
+	
+library(GGally)	
+ggpairs(dat[ , c("pclass", "age", "sibsp", "parch", 	
+                 "fare", "price", "ticketcount", "survived")], 	
+        aes(colour = as.factor(survived), alpha = 0.4))
+```
+
+## Data Preprocessing	
+	
+Before we go into modeling the data, we need to preprocess it, e.g., normalize the numerical values and split it into training and testing sets.	
+
+```{r}
+dat1 <- dat[ , c("pclass", "age", "sibsp", "parch", "fare", 	
+                 "price", "ticketcount", "survived")]	
+dat1$pclass <- as.factor(dat1$pclass)	
+dat1$age <- as.numeric(dat1$age)	
+dat1$sibsp <- as.factor(dat1$sibsp)	
+dat1$parch <- as.factor(dat1$parch)	
+dat1$fare <- as.numeric(dat1$fare)	
+dat1$price <- as.numeric(dat1$price)	
+dat1$ticketcount <- as.numeric(dat1$ticketcount)	
+dat1$survived <- as.factor(dat1$survived)	
+	
+# Set the `dimnames` to `NULL`	
+# dimnames(dat1) <- NULL	
+dim(dat1)
+```
+
+Use `keras::normalize()` to normalize the numerical data
+
+```{r}
+# devtools::install_github("rstudio/keras")	
+# First install Anaconda/Python: https://www.anaconda.com/download/#windows	
+# install_keras()	
+# reticulate::py_config()	
+# library("keras")	
+# use_python("C:/Users/Dinov/AppData/Local/Programs/Python/Python37/python.exe")	
+# install_keras()	
+# install_keras(method = "conda")	
+library("keras")	
+# Normalize the data	
+summary(dat1[ , c(2,5,6,7)])	
+dat2 <- dat1[ , c(2,5,6,7)]	
+dat2 <- as.matrix(dat2)	
+dimnames(dat2) <- NULL	
+# May be best to avoid normalizing the ordinal variable "ticketcount"	
+dat2.norm <- keras::normalize(dat2)	
+	
+# report the summary`	
+summary(dat2.norm)	
+colnames(dat2.norm) <- c("age", "fare", "price", "ticketcount")
+```
+
+Next, we'll partition the raw data into *training* (80%) and *testing* (20%) sets that will be utilized to build the forecasting model (to predict Titanic passenger survival) and assess the model performance, respectively. 	
+
+```{r}
+train_set_ind <- sample(nrow(dat2.norm), floor(nrow(dat2.norm)*0.8)) # 80:20 plot training:testing	
+train_dat2.X <- dat2.norm[train_set_ind, ]	
+train_dat2.Y <- dat1[train_set_ind , 8]  # Outcome "survived" column:8	
+	
+test_dat2.X <- dat2.norm[-train_set_ind, ]	
+test_dat2.Y <- dat1[-train_set_ind , 8]  # Outcome "survived" column:8	
+	
+# double check the size/dimensions of the training and testing data (predictors and responses)	
+dim(train_dat2.X); length(train_dat2.Y); dim(test_dat2.X); length(test_dat2.Y)
+```
+
+## Keras Modeling	
+	
+For *multi-class classification problems* via NN modeling, the `keras::to_categorical()` function allows us to transform the outcome attribute from a vector of class labels to a matrix of Boolean features, one for each class label. In this case, we have a bivariate (binary classification), passenger survival indicator.	
+	
+Keras modeling starts with first initializing a sequential model using the `keras::keras_model_sequential()` function. 	
+	
+We will try to predict the passenger survival using a fully-connected multi-layer perceptron NN. We will need to choose an activation function, e.g., `relu`, `sigmoid`. A rectifier activation function (relu) may be used in a hidden layer and a `softmax` activation function may be used in the final output layer so that the outputs represent (posterior) probabilities between 0 and 1, corresponding to the odds of survival. In the first layer, we can specify 8 hidden nodes (`units`), an `input_shape` of 4, to reflect the 4 features in the training data *age*, *fare*, *price*, *ticketcount*, and the output layer with 2 output values, one for each of the survival categories. We can also inspect the structure of the NN model using:	
+	
+ - `summary()`: print a summary representation of your model,	
+ - `get_config()`: return a list that contains the configuration of the model,	
+ - `get_layer()`: return the layer configuration,	
+ - `$layers`: NN model attribute retrieves a flattened list of the model's layers,	
+ - `$inputs`: NN model attribute listing the input tensors,	
+ - `$outputs`: NN model attribute retrieve the output tensors.	
+
+```{r}
+model.1 <- keras_model_sequential() 	
+	
+# Add layers to the model	
+model.1 %>% 	
+    layer_dense(units = 8, activation = 'relu', input_shape = c(4)) %>% 	
+    layer_dense(units = 2, activation = 'softmax')	
+	
+# NN model summary	
+summary(model.1)	
+# Report model configuration	
+get_config(model.1)	
+# report layer configuration	
+get_layer(model.1, index = 1)	
+# Report model layers	
+model.1$layers	
+# List the input tensors	
+model.1$inputs	
+# List the output tensors	
+model.1$outputs	
+```
+
+Once the model architecture is specified, we need to estimate (fit) the NN model using the `training` data. The adaptive momentum (`ADAM`) optimizer along with `categorical_crossentropy` objective function may be used to **compile** the NN model. Specifying `accuracy` as a metrics argument allows us to inspect the quality of the NN model fit during the training phase (training data validation). The *optimizer* and the *objective* (loss) function are the pair of require arguments for model compilation. 	
+	
+In addition to *ADAM*, alternative optimization algorithms include Stochastic Gradient Descent (*SGD*) and Root Mean Square proportion (*RMSprop*). ADAM is essentially RMSprop with momentum whereas NADAM is ADAM RMSprop with Nesterov momentum. Following the selection of the optimization algorithm, we need to tune the model parameters, e.g., learning rate or momentum. Choosing an appropriate objective function function depends on the classification or regression forecasting task, e.g., regression prediction (continuous outcomes) usually utilize Mean Squared Error (*MSE*), whereas multi-class classification problems use *categorical_crossentropy* loss function and binary classification problems commonly use *binary_crossentropy* loss function.	
+
+```{r}
+# "Compile"" the model	
+model.1 %>% compile(	
+     loss = 'binary_crossentropy',	
+     optimizer = 'adam',	
+     metrics = 'accuracy'	
+ )
+```
+
+## NN Model Fitting	
+	
+The next step fits the NN model (`model.1`) to the training data using 200 epochs, or iterations over all the samples in `train_dat2.X` (predictors) and `train_dat2.Y` (outcomes), in batches of 10 samples. This process trains the model a specified number of epochs (iterations or exposures) on the training data. One epoch is a single pass through the whole training set followed by comparing the model prediction results against the verification labels. The batch size defines the number of samples being propagated through the network at ones (as a batch). 	
+
+```{r}
+# convert the labels to categorical values	
+train_dat2.Y <- to_categorical(train_dat2.Y)	
+test_dat2.Y <- to_categorical(test_dat2.Y)	
+	
+# Fit the model & Store the fitting history	
+track.model.1 <- model.1 %>% fit(	
+     train_dat2.X, 	
+     train_dat2.Y, 	
+     epochs = 200, 	
+     batch_size = 10, 	
+     validation_split = 0.2	
+ )
+```
+
+## Model EDA	
+	
+We can visualize the model fitting process using `keras::plot()` jointly depicting the loss of the objective function and the accuracy of the model, across epochs. Alternatively, we can split the pair of plots - one for the *model loss* and the other one for the *model accuracy*. The $\$$ operator is used to access the tensor data and plot it step-by-step. A sign of overfitting may be an accuracy (on training data) that keeps improving while the accuracy (on the validation data) worsens. This may be in indication that the NN model starts to *learn* noise in the data instead of learning real patterns or affinities in the data. While the accuracy trends of both datasets are rising towards the final epochs, this may indicate that the model is still in the process of learning on the training dataset (and we can increase the number of epochs).	
+
+```{r}
+# Plot the history	
+plot(track.model.1)
+	
+# NN model loss on the training data	
+plot(track.model.1$metrics$loss, main="Model 1 Loss", 	
+     xlab = "Epoch", ylab="Loss", col="green", type="l", ylim=c(0.54, 0.6))	
+	
+# NN model loss of the 20% validation data	
+lines(track.model.1$metrics$val_loss, col="blue", type="l")	
+	
+# Add legend	
+legend("right", c("train", "test"), col=c("green", "blue"), lty=c(1,1))	
+	
+# Plot the accuracy of the training data 	
+plot(track.model.1$metrics$acc, main="Model 1 Accuracy", 	
+     xlab = "Epoch", ylab="Accuracy", col="blue", type="l", ylim=c(0.65, 0.75))	
+	
+# Plot the accuracy of the validation data	
+lines(track.model.1$metrics$val_acc, col="green")	
+	
+# Add Legend	
+legend("bottom", c("Training", "Testing"), col=c("blue", "green"), lty=c(1,1))
+```
+
+## Passenger Survival Forecasting using New Data	
+	
+Once the model is fit, we can use it to predict the survival of passengers using the testing data, `test_dat2.X`. As we have seen before `predict()` provides this functionality. Finally, we can evaluate the performance of the NN model by comparing the predicted class labels and `test_dat2.Y` using `table()` or `confusionMatrix()`.	
+
+```{r}
+# Predict the classes for the test data	
+predict.survival <- model.1 %>% predict_classes(test_dat2.X, batch_size = 30)	
+	
+# Confusion matrix	
+test_dat2.Y <- dat1[-train_set_ind , 8]	
+table(test_dat2.Y, predict.survival)	
+caret::confusionMatrix(test_dat2.Y, as.factor(predict.survival))
+```
+
+We can also utilize the `evaluate()` function to assess the model quality using testing data.	
+
+```{r}
+# Evaluate on test data and labels	
+test_dat2.Y <- to_categorical(test_dat2.Y)	
+model1.qual <- model.1 %>% evaluate(test_dat2.X, test_dat2.Y, batch_size = 30)	
+print(model1.qual)
+```
+
+## Fine-tuning the NN Model	
+	
+The main NN model parameters we can adjust to improve the model quality include:	
+	
+- the *number of layers* 	
+- the *number of nodes* within layers (*hidden units*).	
+- the *number of epochs* 	
+- the *batch size*.	
+ 	
+Models can be improved by adding additional layers, increasing the number of hidden units, and by tuning the optimization parameters in `compile()`. Let's first try to add another layer to the N model.	
+
+```{r}
+# Initialize the sequential model	
+model.2 <- keras_model_sequential() 	
+	
+# Add layers to model	
+model.2 %>% 	
+    layer_dense(units = 8, activation = 'relu', input_shape = c(4)) %>% 	
+    layer_dense(units = 6, activation = 'relu') %>% 	
+    layer_dense(units = 2, activation = 'softmax')	
+	
+# Compile the model	
+model.2 %>% compile(	
+     loss = 'binary_crossentropy',	
+     optimizer = 'adam',	
+     metrics = 'accuracy'	
+ )	
+	
+# Fit NN model to training data & Save the training history	
+track.model.2 <- model.2 %>% fit(	
+     train_dat2.X, 	
+     train_dat2.Y, 	
+     epochs = 200, 	
+     batch_size = 10, 	
+     validation_split = 0.2	
+ )	
+	
+# Evaluate the model	
+model2.qual <- model.2 %>% evaluate(test_dat2.X, test_dat2.Y, batch_size = 30)	
+print(model2.qual)	
+	
+# EDA on the loss and accuracy metrics of this model.2	
+# Plot the history	
+plot(track.model.2)	
+	
+# NN model loss on the training data	
+plot(track.model.2$metrics$loss, main="Model Loss", 	
+     xlab = "Epoch", ylab="Loss", col="green", type="l", ylim=c(0.54, 0.6))	
+	
+# NN model loss of the 20% validation data	
+lines(track.model.2$metrics$val_loss, col="blue", type="l")	
+	
+# Add legend	
+legend("right", c("Training", "Testing"), col=c("green", "blue"), lty=c(1,1))	
+	
+# Plot the accuracy of the training data 	
+plot(track.model.2$metrics$acc, main="Model 2 (Extra Layer) Accuracy", 	
+     xlab = "Epoch", ylab="Accuracy", col="blue", type="l", ylim=c(0.65, 0.76))	
+	
+# Plot the accuracy of the validation data	
+lines(track.model.2$metrics$val_acc, col="green")	
+	
+# Add Legend	
+legend("top", c("Training", "Testing"), col=c("blue", "green"), lty=c(1,1))
+```
+
+Next we can examine the effects of adding more *hidden units* to the NN model.
+
+```{r}
+# Initialize a sequential model	
+model.3 <- keras_model_sequential() 	
+	
+# Add layers and Node-Units to model	
+model.3 %>% 	
+    layer_dense(units = 30, activation = 'relu', input_shape = c(4)) %>% 	
+    layer_dense(units = 15, activation = 'relu') %>% 	
+    layer_dense(units = 2, activation = 'softmax')	
+	
+# Compile the model	
+model.3 %>% compile(	
+     loss = 'binary_crossentropy',	
+     optimizer = 'adam',	
+     metrics = 'accuracy'	
+ )	
+	
+# Fit NN model to training data & Save the training history	
+track.model.3 <- model.3 %>% fit(	
+     train_dat2.X, 	
+     train_dat2.Y, 	
+     epochs = 200, 	
+     batch_size = 10, 	
+     validation_split = 0.2	
+ )	
+	
+# Evaluate the model	
+model3.qual <- model.3 %>% evaluate(test_dat2.X, test_dat2.Y, batch_size = 30)	
+print(model3.qual)	
+	
+# EDA on the loss and accuracy metrics of this model.2	
+# Plot the history	
+plot(track.model.3)	
+	
+# NN model loss on the training data	
+plot(track.model.3$metrics$loss, main="Model Loss", 	
+     xlab = "Epoch", ylab="Loss", col="green", type="l", ylim=c(0.54, 0.7))	
+	
+# NN model loss of the 20% validation data	
+lines(track.model.3$metrics$val_loss, col="blue", type="l")	
+	
+# Add legend	
+legend("top", c("Training", "testing"), col=c("green", "blue"), lty=c(1,1))	
+	
+# Plot the accuracy of the training data 	
+plot(track.model.3$metrics$acc, main="Model 3 (Extra Layer/More Hidden Units)", 	
+     xlab = "Epoch", ylab="Accuracy", col="blue", type="l", ylim=c(0.65, 0.76))	
+	
+# Plot the accuracy of the validation data	
+lines(track.model.3$metrics$val_acc, col="green")	
+	
+# Add Legend	
+legend("top", c("Training", "Testing"), col=c("blue", "green"), lty=c(1,1))
+```
+
+Finally, we can attempt to fine-tune the optimization parameters provided to the `compile()` function. For instance, we can experiment with alternative optimization algorithms, like the Stochastic Gradient Descent (SGD), `optimizer_sgd()`, and adjust the *learning rate*, `lr`. Specifying alternative learning rate to train the NN, typically 10-fold increase or decrease, to trade accuracy, speed of convergence, and avoiding local minima.	
+
+```{r}
+model.4 <- keras_model_sequential() 	
+	
+# Add layers and Node-Units to model	
+model.4 %>% 	
+    layer_dense(units = 30, activation = 'relu', input_shape = c(4)) %>% 	
+    layer_dense(units = 15, activation = 'relu') %>% 	
+    layer_dense(units = 2, activation = 'softmax')	
+	
+# Define an optimizer	
+SGD <- optimizer_sgd(lr = 0.001)	
+	
+# Compile the model	
+model.4 %>% compile(	
+    optimizer=SGD, 	
+    loss = 'binary_crossentropy',	
+    metrics = 'accuracy'	
+ )	
+	
+# Fit NN model to training data & Save the training history	
+set.seed(1234)	
+track.model.4 <- model.4 %>% fit(	
+     train_dat2.X, 	
+     train_dat2.Y, 	
+     epochs = 200, 	
+     batch_size = 10, 	
+     validation_split = 0.1	
+ )	
+	
+# Evaluate the model	
+model4.qual <- model.4 %>% evaluate(test_dat2.X, test_dat2.Y, batch_size = 30)	
+print(model4.qual)	
+	
+# EDA on the loss and accuracy metrics of this model.2	
+# Plot the history	
+plot(track.model.4)	
+	
+# NN model loss on the training data	
+plot(track.model.4$metrics$loss, main="Model 4 Loss", 	
+     xlab = "Epoch", ylab="Loss", col="green", type="l", ylim=c(0.54, 0.7))	
+	
+# NN model loss of the 20% validation data	
+lines(track.model.4$metrics$val_loss, col="blue", type="l")	
+	
+# Add legend	
+legend("top", c("Training", "Testing"), col=c("green", "blue"), lty=c(1,1))	
+	
+# Plot the accuracy of the training data 	
+plot(track.model.4$metrics$acc, main="Model 4 (Extra Layer/More Hidden Units/SGD)", 	
+     xlab = "Epoch", ylab="Accuracy", col="blue", type="l", ylim=c(0.65, 0.76))	
+	
+# Plot the accuracy of the validation data	
+lines(track.model.4$metrics$val_acc, col="green")	
+	
+# Add Legend	
+legend("top", c("Training", "Testing"), col=c("blue", "green"), lty=c(1,1))
+```
+
+## Model Export and Import	
+	
+Intermediate and final NN models may be saved, (re)loaded, and exported using of `save_model_hdf5()` and `load_model_hdf5()` based on the [HDF5 file format (h5)](https://support.hdfgroup.org/HDF5/whatishdf5.html). We can operate on *complete models* on just on the *model weights*. the models can also be exported in [JSON](https://www.json.org) or [YAML](http://yaml.org) formats using `model_to_json()` and `model_to_yaml()`, and their load counterparts `model_from_json()` and `model_from yaml()`.	
+
+```{r}
+save_model_hdf5(model.4, "model.4.h5")	
+model.new <- load_model_hdf5("model.4.h5")	
+	
+save_model_weights_hdf5("model_weights.h5")	
+model.old %>% load_model_weights_hdf5("model_weights.h5")	
+	
+json_string <- model_to_json(model.old)	
+model.new <- model_from_json(json_string)	
+	
+yaml_string <- model_to_yaml(model.old)	
+model.new <- model_from_yaml(yaml_string)
+```
+
+# Classification using `MXNet`	
+	
+In [MXNet](mxnet.io/api/r/), a [Multilayer perceptron (`MLP`)](https://github.com/dmlc/mxnet/blob/986b736b816018b96e9d1e2c358bb7665b80944d/example/image-classification/train_mnist.R) may be defined by:	
+	
+* Creating a place holder variable for the input data, `data = mx.sym.Variable('data')`	
+* Flattening the data from 4D shape space (width, height, batch_size, num_channel) into 2D (num_channel\*width\*height, batch_size), 'data = mx.sym.Flatten(data=data)`	
+* And iterating over the fully-connected layers:	
+   + First layer, `fc1  = mx.sym.FullyConnected(data=data, name='fc1', num_hidden=128)`	
+   + Apply `relu` function to the output of the first fully-connected layer, `act1 = mx.sym.Activation(data=fc1, name='relu1', act_type="relu")`	
+   + Generate the second fully-connected layer and apply the activation function, `fc2  = mx.sym.FullyConnected(data=act1, name='fc2', num_hidden = 64); act2 = mx.sym.Activation(data=fc2, name='relu2', act_type="relu")`	
+   + Generate the third/final fully-connected layer, with a hidden size $k=10$, which in digit recognition tasks corresponds to the number of unique digits $0:9]$, `fc3  = mx.sym.FullyConnected(data=act2, name='fc3', num_hidden=10)`	
+* Finally, mapping the input into a probability score using the softmax and loss layer, `mlp  = mx.sym.SoftmaxOutput(data=fc3, name='softmax')`. See the [mlp R source code here](https://raw.githubusercontent.com/dmlc/mxnet/e7514fe1b3265aaf15870b124bb6ed0edd82fa76/R-package/R/mlp.R).	
+	
+## Sonar data example	
+	
+Let's load the `mlbench` and `mlbench` packages and demonstrate the basic invocation of `mxnet`. The [Sonar data](https://www.rdocumentation.org/packages/mlbench/versions/2.1-1/topics/Sonar) `mlbench::Sonar` includes sonar signals bouncing off a metal cylinder or a roughly cylindrical rock. Each of 208 patterns includes a set of 60 numbers (features) in the range 0.0 to 1.0, and a label M (metal) or R (rock). Each feature represents the energy within a particular frequency band, integrated over a certain period of time. The M and R labels associated with each observation classify the record as rock or mine (metal) cylinder. The numbers in the labels are in increasing order of aspect angle, but they do not encode the angle directly. 	
+
+```{r}
+# Load the required packages: mlbench and mxnet	
+# install.packages("mlbench"); install.packages("mxnet")	
+# Note mxnet requires "visNetwork"	
+# If it doesn't work, you may need the following lines:	
+# install.packages("drat", repos="https://cran.rstudio.com")	
+# drat:::addRepo("dmlc")	
+# install.packages("mxnet")	
+# install.packages("C:/Users/Dinov/Desktop/apache-mxnet-src-1.6.0-incubating.tar.gz", repos = NULL, type="source")	
+	
+# ON WINDOWS, mxnet requires R << 4.0 ...	
+	
+require(mlbench)	
+require(mxnet)	
+	
+data(Sonar, package="mlbench")	
+	
+table(Sonar[,61])	
+	
+Sonar[,61] = as.numeric(Sonar[,61])-1 # R = "1", "M" = "0"	
+set.seed(123)	
+train.ind = sample(1:nrow(Sonar),0.7*nrow(Sonar))	
+	
+train.x = data.matrix(Sonar[train.ind, 1:60])	
+train.y = Sonar[train.ind, 61]	
+test.x = data.matrix(Sonar[-train.ind, 1:60])	
+test.y = Sonar[-train.ind, 61]
+```
+
+Let's start by using a **multi-layer perceptron** as a classifier. The `mxnet` function `mx.mlp` builds a general multi-layer neural network that can be utilized to do classification or regression graph modeling. It relies on the following parameters:	
+	
+* Training data and labels	
+* Number of hidden nodes in each hidden layers	
+* Number of nodes in the output layer	
+* Type of activation	
+* Type of output loss	
+* The device to train (GPU or CPU)	
+* Additional optional parameters, see `mx.model.FeedForward.create`	
+	
+Here is one example using the *training* and *testing* data we defined above:	
+
+```{r}
+set.seed(1234)	
+model.mx <- mlp(train.x, train.y, hidden_node=8, out_node=2, out_activation="softmax",	
+            num.round=200, array.batch.size=15, learning.rate=0.1, momentum=0.9, 	
+            eval.metric=mx.metric.accuracy,verbose=T)	
+	
+#calculate Prediction sensitivity & specificity	
+preds = predict(model.mx, test.x)  # these are probabilities	
+	
+# You can inspect the test labels vs. assigned probabilities by	
+# View(data.frame(test.y, preds[2,]))	
+preds1 <- ifelse(preds[2,] <= 0.5, 0, 1) # dichotomize to labels	
+table(preds1)	
+	
+pred.label = t(preds1)	
+table(pred.label, test.y)	
+library("caret")	
+sensitivity(factor(preds1), factor(as.numeric(test.y)),positive = 1)	
+specificity(factor(preds1), factor(as.numeric(test.y)),negative = 0)
+```
+
+We can also use `crossval::diagnosticErrors()` and `crossval::confusionMatrix()` to get more detailed evaluations. Similar to `sensitivity()` and `specificity()`, we should specify the *negative* and *positive* labels. 	
+	
+*Note* that you have to specify `crossval::confusionMatrix()` if you also have the `caret` package loaded, as `caret` also has a function called `confusionMatrix()`.	
+
+```{r}
+library("crossval")	
+diagnosticErrors(crossval::confusionMatrix(preds1,test.y, negative = 0))
+```
+
+Now, we compare the results of different number of rounds, or epochs, representing the number of full (training-phase) passes through the data (cf. `num.round=n`).	
+
+```{r}
+mx.set.seed(1234)	
+get_pred = function(n){	
+  model.mx <- mx.mlp(train.x, train.y, hidden_node=8, out_node=2, out_activation="softmax",	
+          num.round=n, array.batch.size=15, learning.rate=0.1, momentum=0.9, 	
+          eval.metric=mx.metric.accuracy,verbose=F)	
+  preds = predict(model.mx, test.x) 	
+}	
+preds100 = get_pred(100)	
+preds50 = get_pred(50)	
+preds10 = get_pred(10)
+```
+
+We can plot the ROC curve and calculate the AUC (Area under the curve):
+
+```{r}
+# install.packages("pROC"); install.packages("plotROC"); install.packages("reshape2")	
+library(pROC); library(plotROC); library(reshape2); 	
+# compute AUC	
+get_roc = function(preds){	
+  roc_obj <- roc(test.y, preds[2,])	
+  auc(roc_obj)	
+}	
+get_roc(preds)	
+get_roc(preds100)	
+get_roc(preds50)	
+get_roc(preds10)	
+	
+#plot roc	
+dt <- data.frame(test.y, preds[2,], preds100[2,], preds50[2,], preds10[2,])	
+colnames(dt) <- c("D","rounds=200","rounds=100","rounds=50","rounds=10")	
+dt <- melt(dt,id.vars = "D")	
+	
+basicplot <- ggplot(dt, aes(d = D, m = value, colour=variable)) + geom_roc(labels = FALSE, size = 0.5, alpha.line = 0.6, linejoin = "mitre") +  	
+  theme_bw() + coord_fixed(ratio = 1) + style_roc() + ggtitle("ROC CURVE")+	
+  ggplot2::annotate("rect", xmin = 0.4, xmax = 0.9, ymin = 0.1, ymax = 0.5,	
+           alpha = 0.2)+	
+  ggplot2::annotate("text", x = 0.65, y = 0.32, size = 3,	
+           label = "AUC: \n rounds=200: 0.9209\n rounds=100: 0.9128\n rounds=50: 0.8824\n rounds=10: 0.8022\n " )	
+basicplot
+```
+
+The plot suggests that the results stabilize after 100 training (epoch) iterations.
+
+Let's look at some visualizations of the real labels of the test data (`test.y`) and their corresponding ML-derived classification labels (`preds[2,]`) using 200 iterations.	
+
+```{r}
+graph.viz(model.mx$symbol)	
+hist(preds10[2,],main = "rounds=10")	
+hist(preds50[2,],main = "rounds=50")	
+hist(preds100[2,],main = "rounds=100")	
+hist(preds[2,],main = "rounds=200")	
+```
+
+We see a significant bimodal trend when the number of rounds increases. Another plot may be generated by:	
+
+```{r}
+library(ggplot2)	
+get_gghist = function(preds){	
+  ggplot(data.frame(test.y, preds),	
+         aes(x=preds, group=test.y, fill=as.factor(test.y)))+	
+    geom_histogram(position="dodge",binwidth=0.25)+theme_bw()	
+}	
+	
+df = data.frame(preds[2,],preds100[2,],preds50[2,],preds10[2,])	
+p <- lapply(df,get_gghist)	
+require(gridExtra) # used for arrange ggplots	
+grid.arrange(p$preds10.2...,p$preds50.2...,p$preds100.2...,p$preds.2...)
+```
+
+## MXNet Notes	
+	
+* The `mx.mlp()` function is a proxy to the more complex and laborious process of defining a neural network by using **MXNet**'s `Symbol`. For instance, this call `model.mx <- mx.mlp(train.x, train.y, hidden_node=8, out_node=2, out_activation="softmax", num.round=20, array.batch.size=15, learning.rate=0.1, momentum=0.9, eval.metric=mx.metric.accuracy)` would be equivalent to a symbolic network definition like:  `data <- mx.symbol.Variable("data"); fc1 <- mx.symbol.FullyConnected(data, num_hidden=128) act1 <- mx.symbol.Activation(fc1, name="relu1", act_type="relu"); fc2 <- mx.symbol.FullyConnected(act1, name="fc2", num_hidden=64); act2 <- mx.symbol.Activation(fc2, name="relu2", act_type="relu"); fc3 <- mx.symbol.FullyConnected(act2, name="fc3", num_hidden=2); lro <- mx.symbol.SoftmaxOutput(fc3, name="sm"); model2 <- mx.model.FeedForward.create(lro, X=train.x, y=train.y, ctx=mx.cpu(), num.round=100, array.batch.size=15, learning.rate=0.07, momentum=0.9)` (see example with linear regression below).	
+	
+* Layer-by-layer definitions translate inputs into outputs. At each level, the network allows for a different number of neurons and alternative activation functions. Other options can be specified by using `mx.symbol`: 	
+* `mx.symbol.Convolution` applies convolution to the input and then adds a bias. It can create convolutional neural networks. 	
+* `mx.symbol.Deconvolution` does the opposite and can be used in segmentation networks along with `mx.symbol.UpSampling`, e.g., to reconstruct the pixel-wise classification of an image. 	
+* `mx.symbol.Pooling` reduces the data by selecting signals with the highest response. 	
+* `mx.symbol.Flatten` links convolutional and pooling layers to form a fully connected network. 	
+* `mx.symbol.Dropout` attempts to cope with the overfitting problem.	
+	
+The function `mx.mlp()` is a wrapper for quick design of standard multi-layer perceptrons. For more extensive experiments, customized symbolic representation can be explicitly specified using combinations of the above methods.	
+
+```{r}
+# Example of **LeNet** network for recognizing handwritten digits:	
+	
+data <- mx.symbol.Variable('data') 	
+conv1 <- mx.symbol.Convolution(data=data, kernel=c(5,5), num_filter=20) 	
+tanh1 <- mx.symbol.Activation(data=conv1, act_type="tanh") 	
+pool1 <- mx.symbol.Pooling(data=tanh1, pool_type="max", kernel=c(2,2), stride=c(2,2))	
+conv2 <- mx.symbol.Convolution(data=pool1, kernel=c(5,5), num_filter=50) 	
+tanh2 <- mx.symbol.Activation(data=conv2, act_type="tanh") 	
+pool2 <- mx.symbol.Pooling(data=tanh2, pool_type="max", kernel=c(2,2), stride=c(2,2))	
+flatten <- mx.symbol.Flatten(data=pool2) 	
+fc1 <- mx.symbol.FullyConnected(data=flatten, num_hidden=500) 	
+tanh3 <- mx.symbol.Activation(data=fc1, act_type="tanh") 	
+fc2 <- mx.symbol.FullyConnected(data=tanh3, num_hidden=10) 	
+lenet <- mx.symbol.SoftmaxOutput(data=fc2) 	
+model <- mx.model.FeedForward.create(lenet, X=train.x, y=train.y, ctx=device.cpu, num.round=5, array.batch.size=100, learning.rate=0.05, momentum=0.9)	
+```
+
+To allow smooth, fast, and consistent operation on CPU and GPU, in `in mxnet`, the generic R function controlling the reproducibility of stochastic results is overwritten by `mx.set.seed`. So can use `mx.set.seed()` to control random numbers in **MXNet**.	
+	
+To examine the accuracy of the `model.mx` learner (trained on the training data), we can make prediction (on testing data) and evaluate the results using the provided testing labels (report the confusion matrix).	
+
+```{r}
+preds = predict(model.mx, test.x)	
+pred.label = max.col(t(preds))-1	
+table(pred.label, test.y)
+```
+
+For multi-class predictions, `mxnet` outputs $n\ (class) \times m\ (examples)$ confusion matrices where each row corresponds to probability of the corresponding (column-defined) class.	
+	
+# Case-Studies	
+
+Let's demonstrate regression and prediction deep learning examples using several complementary datasets.	
+	
+<!---	
+## Schizophrenia Neuroimaging Study	
+[Here is the SOCR Schizo Data](http://wiki.stat.ucla.edu/socr/index.php/SOCR_Data_Oct2009_ID_NI).	
+
+```{r}
+# Boston Housing Data	
+data(BostonHousing, package="mlbench")	
+	
+train.ind = seq(1, 506, 3)	
+train.x = data.matrix(BostonHousing[train.ind, -14])	
+train.y = BostonHousing[train.ind, 14]	
+test.x = data.matrix(BostonHousing[-train.ind, -14])	
+test.y = BostonHousing[-train.ind, 14]	
+model <- mx.mlp(train.x, train.y, hidden_node=10, out_node=3, 	
+            out_activation="softmax", num.round=20, array.batch.size=3,	
+            learning.rate=0.07, momentum=0.9, eval.metric=mx.metric.accuracy)
+```
+```{r}
+# install.packages("XML"); install.packages("xml2"); install.packages("rvest")	
+# Install MXNet	
+# cran <- getOption("repos")	
+# cran["dmlc"] <- "https://s3-us-west-2.amazonaws.com/apache-mxnet/R/CRAN/"	
+# options(repos = cran)	
+# install.packages("mxnet",dependencies = T)	
+	
+library("XML"); library("xml2")	
+library("rvest"); library("mxnet")	
+	
+# Schizophrenia Data	
+# UCLA Data is available here: 	
+# wiki_url <- read_html("http://wiki.stat.ucla.edu/socr/index.php/SOCR_Data_Oct2009_ID_NI")	
+# html_nodes(wiki_url, "#content")	
+# SchizoData<- html_table(html_nodes(wiki_url, "table")[[2]])	
+# UMich Data is available here	
+wiki_url <- read_html("https://wiki.socr.umich.edu/index.php/SOCR_Data_Oct2009_ID_NI")	
+html_nodes(wiki_url, "#content")	
+SchizoData<- html_table(html_nodes(wiki_url, "table")[[1]])	
+	
+# View (SchizoData): Select an outcome response "DX"(3), "FS_IQ" (5)	
+set.seed(1234)	
+test.ind = sample(1:63, 10, replace = F)  # select 10/63 of cases for testing, train on remaining (63-10)/63 cases	
+train.x = data.matrix(SchizoData[-test.ind, c(2, 4:9)]) #, 11:66)]) # exclude outcome	
+train.y = ifelse(SchizoData[-test.ind, 3] < 2, 1, 2) # Binarize the outcome, Controls=1	
+test.x = data.matrix(SchizoData[test.ind, c(2, 4:9)]) #, 11:66)])	
+test.y = ifelse(SchizoData[test.ind, 3] < 2, 1, 2)	
+	
+# View(data.frame(test.x, test.y))	
+# View(data.frame(train.x, train.y))	
+	
+#mx.set.seed(1234); model <- mx.mlp(train.x, train.y, hidden_node=10, out_node=2, out_activation="softmax", num.round=4, array.batch.size=3,learning.rate=0.07, momentum=0.9, eval.metric=mx.metric.accuracy, array.layout = "rowmajor")	
+	
+mx.set.seed(1234); model <- mx.mlp(train.x, train.y, hidden_node=10, out_node=2, out_activation="softmax", num.round=1, array.batch.size=3,   learning.rate=0.07, momentum=0.9, eval.metric=mx.metric.rmse, array.layout = "rowmajor")	
+	
+preds = predict(model, test.x)  # these are probabilities	
+preds1 <- ifelse(preds[1,] <= 0.02, 1, 2) # dichotomize to labels	
+	
+pred.label = t(preds1)	
+table(pred.label, test.y)	
+	
+# Plot the distribution of the Predicted (preds[2,]) vs. real (test.y) diagnoses	
+# library(ggplot2)	
+# ggplot(data.frame(test.y, preds[1,]), aes(x=preds[1,], group=test.y, fill=test.y))+	
+# geom_histogram(position="dodge",binwidth=0.25)+theme_bw()	
+	
+#calculate sensitivity & specificity	
+library("caret")	
+sensitivity(factor(preds1), factor(as.numeric(test.y)))	
+specificity(factor(preds1), factor(as.numeric(test.y)))	
+```
+
+
