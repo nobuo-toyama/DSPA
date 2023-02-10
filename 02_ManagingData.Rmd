@@ -66,10 +66,16 @@ We can see that this `World Drinking Water` dataset has 3331 observations and 6 
 
 Summary statistics for numeric variables in the dataset could be accessed by using the command `summary()`. 	
 ```{r}
+library(plotly)
 summary(water$year)	
 summary(water[c("improved_water", "sanitation_facilities")])	
 plot(density(water$improved_water,na.rm = T))  
-# no need to be continuous, we can still get intuition about the variable distribution	
+
+fit <- density(as.numeric(water$improved_water),na.rm = T)	
+plot_ly(x = fit$x, y = fit$y, type = "scatter", mode = "lines", 	
+              fill = "tozeroy", name = "Density") %>% 	
+    layout(title='Density of (%) Improved Water Quality', 	
+           xaxis = list (title = 'Percent'), yaxis = list (title = 'Density'))	
 ```
 The six summary statistics and `NA`'s (missing data) are reported in the output.	
 
@@ -82,9 +88,6 @@ mean(vec1)
 mean(c(40, 56, 99))	
 median(vec1)	
 median(c(40, 56, 99))	
-
-library("psych")	
-geometric.mean(vec1, na.rm=TRUE)
 ```
 The **mode** is the value that occurs most often in the dataset. It is often used in categorical data, where mean and median are inappropriate measurements.	
 
@@ -139,8 +142,11 @@ Let's re-examine the five-number summary for the `improved_water` variable. When
 
 We can visualize the five-number summary by a boxplot (box-and-whiskers plot). With the `boxplot()` function we can manage the title (`main=""`) and labels for x (`xlab=""`) and y (`ylab=""`) axis.	
 ```{r}
-boxplot(water$improved_water, 
-        main="Boxplot for Percent improved_water", ylab="Percentage")	
+#boxplot(water$improved_water, main="Boxplot for Percent improved_water", ylab="Percentage")	
+plot_ly(y = ~water$improved_water, type = "box", name="improved water qual") %>% 	
+  add_trace(y = ~water$sanitation_facilities, name ="sanitation") %>% 	
+    layout(title='Boxplots of Improved Water Quality and Sanitation Facilities', 	
+           yaxis = list (title = 'Percent'))
 ```
  In the boxplot we have five horizontal lines each represents the corresponding value in the five-number summary. The box in the middle represents the middle 50 percent of values. The bold line in the box is the median. Mean value is not illustrated on the graph.	
 
@@ -151,34 +157,49 @@ boxplot(water$improved_water,
 Histogram is another way to show the spread of a numeric variable, see [Chapter 3](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/03_DataVisualization.html) for additional information). It uses predetermined number of bins as containers for values to divide the original data. The height of the bins indicates frequency. 	
 
 ```{r}
-hist(water$improved_water, 
-     main = "Histogram of  Percent improved_water", xlab="Percentage")	
-hist(water$sanitation_facilities, 
-     main = "Histogram of  Percent sanitation_facilities", xlab = "Percentage")	
+# hist(water$improved_water, main = "Histogram of  Percent improved_water", xlab="Percentage")	
+# hist(water$sanitation_facilities, main = "Histogram of  Percent sanitation_facilities", xlab = "Percentage")	
+	
+plot_ly(x = ~water$improved_water, type = "histogram", name="improved_water") %>% 	
+  add_trace(x = ~water$sanitation_facilities, type = "histogram", name="sanitation_facilities") %>% 	
+  layout(bargap=0.1, title='Histograms', legend = list(orientation = 'h'),	
+         xaxis = list(title = 'Percent'), yaxis = list (title = 'Frequency'))	
 ```
 We could see that the shape of two graphs are somewhat similar. They are both left skewed patterns ($mean \lt median$). Other common skew patterns are shown in the following picture.	
 ```{r}
 N <- 10000	
-x <- rnbinom(N, 10, .5)	
-hist(x, 	
- xlim=c(min(x), max(x)), probability=T, nclass=max(x)-min(x)+1, 	
-   col='lightblue', xlab=' ', ylab=' ', axes=F, 	
-   main='Right Skewed')	
-lines(density(x, bw=1), col='red', lwd=3)	
+x <- rnbinom(N, 5, 0.1)	
+#  hist(x, 	
+#  xlim=c(min(x), max(x)), probability=T, nclass=max(x)-min(x)+1, 	
+#    col='lightblue', xlab=' ', ylab=' ', axes=F, 	
+#    main='Right Skewed')	
+# lines(density(x, bw=1), col='red', lwd=3)	
+fit <- density(x)	
+	
+plot_ly(x = x, type = "histogram", name = "Data Histogram") %>% 	
+    add_trace(x = fit$x, y = fit$y, type = "scatter", mode = "lines", opacity=0.3,	
+              fill = "tozeroy", yaxis = "y2", name = "Density (rnbinom(N, 5, 0.1))") %>% 	
+    layout(title='Right Skewed Process', yaxis2 = list(overlaying = "y", side = "right"),	
+           legend = list(orientation = 'h'))	
 	
 N <- 10000	
-x <- rnorm(N, 0, 1)	
-hist(x, probability=T, 	
-   col='lightblue', xlab=' ', ylab=' ', axes=F, 	
-   main='Symmetric')	
-lines(density(x, bw=0.4), col='red', lwd=3)	
+x <- rnorm(N, 15, 3.7)	
+#  hist(x, 	
+#  xlim=c(min(x), max(x)), probability=T, nclass=max(x)-min(x)+1, 	
+#    col='lightblue', xlab=' ', ylab=' ', axes=F, 	
+#    main='Right Skewed')	
+# lines(density(x, bw=1), col='red', lwd=3)	
+fit <- density(x)	
+	
+plot_ly(x = x, type = "histogram", name = "Data Histogram") %>% 	
+    add_trace(x = fit$x, y = fit$y, type = "scatter", mode = "lines", opacity=0.3,	
+              fill = "tozeroy", yaxis = "y2", name = "Density (rnorm(N, 15, 3.7))") %>% 	
+    layout(title='Symmetric Process', yaxis2 = list(overlaying = "y", side = "right"),	
+           legend = list(orientation = 'h'))	
 ```
-These plots are generated by `R` and the code is provided in the appendix.	
-
 You can learn more about [Probability Distributions in the SOCR EBook](https://wiki.socr.umich.edu/index.php/EBook#Chapter_IV:_Probability_Distributions) and see the density plots of over 80 different probability distributions using the [SOCR Java Distribution Calculators](https://socr.umich.edu/html/dist/) or the [Distributome HTML5 Distribution Calculators](http://www.distributome.org/V3/calc/index.html).	
 
 For each probability distribution defined in R, there are four functions that provide the density (e.g., `dnorm`), the cumulative probability (e.g., `pnorm`), the inverse cumulative distribution (quantile) function (e.g., `qnorm`), and the random sampling (simulation) function (e.g., `rnorm`). The plots below show the *standard normal* density, cumulative probability and the quantile functions. As the density is very small outside of the interval $(-4,4)$, the plots are restricted to this domain.
-
 ```{r}
 z<-seq(-4, 4, 0.1)  # points from -4 to 4 in 0.1 steps	
 q<-seq(0.001, 0.999, 0.001)  # probaility quantile values from 0.1% to 99.9% in 0.1% steps	
@@ -190,19 +211,36 @@ dStandardNormal <- data.frame(Z=z,
 qStandardNormal <- data.frame(Q=q,
                               Quantile=qnorm(q, mean=0, sd=1))  	
 head(dStandardNormal)	
+```
+
+```{r}
+# plot(z, dStandardNormal$Density, main="Normal Density Curve", type = "l", xlab = "critical values", ylab="density", lwd=4, col="blue")	
+# polygon(z, dStandardNormal$Density, col="red", border="blue")	
+# plot(z, dStandardNormal$Distribution, main="Normal Distribution", type = "l", xlab = "critical values", ylab="Cumulative Distribution", lwd=4, col="blue")	
+# plot(q, qStandardNormal$Quantile, main="Normal Quantile Function (Inverse CDF)", type = "l", xlab = "p-values", ylab="Critical Values", lwd=4, col="blue")	
 	
-plot(z, dStandardNormal$Density,
-     main="Normal Density Curve", type = "l", 
-     xlab = "critical values", ylab="density", lwd=4, col="blue")	
-polygon(z, dStandardNormal$Density, col="red", border="blue")	
-	
-plot(z, dStandardNormal$Distribution, 
-     main="Normal Distribution", type = "l",
-     xlab = "critical values", ylab="Cumulative Distribution", lwd=4, col="blue")	
-	
-plot(q, qStandardNormal$Quantile,
-     main="Normal Quantile Function (Inverse CDF)", type = "l",
-     xlab = "p-values", ylab="Critical Values", lwd=4, col="blue")
+plot_ly(x = z, y= dStandardNormal$Density, name = "Normal Density Curve",	
+        mode = 'lines') %>% 	
+    layout(title='Normal Density Curve', 	
+           xaxis = list(title = 'critical values'),	
+           yaxis = list(title ="Density"),	
+           legend = list(orientation = 'h'))	
+```
+```{r}
+plot_ly(x = z, y= dStandardNormal$Distribution,	
+        name = "Normal Density Curve", mode = 'lines') %>% 	
+    layout(title='Normal Distribution', 	
+           xaxis = list(title = 'critical values'),	
+           yaxis = list(title ="Cumulative Distribution"),	
+           legend = list(orientation = 'h'))	
+```
+```{r}
+plot_ly(x = q, y= qStandardNormal$Quantile,	
+        name = "Normal Quantile Function (Inverse CDF)", mode = 'lines') %>%	
+    layout(title='Normal Distribution', 	
+           xaxis = list(title = 'probability values'),	
+           yaxis = list(title ="Critical Values"),	
+           legend = list(orientation = 'h'))
 ```
 
 # Understanding Numeric Data - uniform and normal distributions
