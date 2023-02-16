@@ -615,9 +615,14 @@ summary(sim_data_30pct_missing)
 	
 # install.packages("DT")	
 library("DT")	
-datatable(sim_data)	
-datatable(sim_data_30pct_missing)
+datatable(sim_data)
+```
 
+```{r}
+datatable(sim_data_30pct_missing)
+```
+
+```{r}
 # install.packages("mi")	
 # install.packages("betareg")	
 library("betareg"); library("mi")	
@@ -626,7 +631,9 @@ library("betareg"); library("mi")
 mdf <- missing_data.frame(sim_data_30pct_missing) 	
 # show(mdf)	
 datatable(mdf)	
-	
+```
+
+```{r}
 # mdf@patterns   # to get the textual missing pattern	
 image(mdf)   # remember the visual pattern of this MCAR
 ```
@@ -639,36 +646,41 @@ The histogram plots display the distributions of:
 * The imputed data (in red color), and	
 * The completed values (observed plus imputed, in gray color).	
 
-Next try to impute the missing values.
-
-Get the Graph Parameters (plotting canvas/margins)	
-set to plot the histograms for the 3 imputation chains	
-mfcol=c(nr, nc). Subsequent histograms are drawn as nr-by-nc arrays on the graphics device by columns (mfcol), or rows (mfrow)	
-oma	
-oma=c(bottom, left, top, right) giving the size of the outer margins in lines of text	
-mar=c(bottom, left, top, right) gives the number of lines of margin to be specified on the four sides of the plot.	
-tcl=length of tick marks as a fraction of the height of a line of text (default=0.5)
-
 ```{r}
+# Next try to impute the missing values.	
+	
+# Get the Graph Parameters (plotting canvas/margins)	
+# set to plot the histograms for the 3 imputation chains	
+# mfcol=c(nr, nc). Subsequent histograms are drawn as nr-by-nc arrays on the graphics device by columns (mfcol), or rows (mfrow)	
+# oma	
+# oma=c(bottom, left, top, right) giving the size of the outer margins in lines of text	
+# mar=c(bottom, left, top, right) gives the number of lines of margin to be specified on the four sides of the plot.	
+# tcl=length of tick marks as a fraction of the height of a line of text (default=0.5)	
 par(mfcol=c(5, 5), oma=c(1, 1, 0, 0), mar=c(1, 1, 1, 0), tcl=-0.1, mgp=c(0, 0, 0))	
 	
 # Note to get verbose output-report, parallel must be OFF: parallel=FALSE, verbose=TRUE	
 imputations <- mi(sim_data_30pct_missing, n.iter=5, n.chains=3, verbose=TRUE)	
 hist(imputations)	
-	
+```
+```{r}
 # Extracts several multiply imputed data.frames from "imputations" object	
 data.frames <- complete(imputations, 3)	
 	
 # compare the 3 objects, sim_data, sim_data_30pct_missing, and imputed chain1	
 datatable(sim_data, caption = htmltools::tags$caption(	
-     style = 'caption-side: bottom; text-align: center;','Table: Initial sim_data'))	
+     style = 'caption-side: bottom; text-align: center;','Table: Initial sim_data'))
+```
+```{r}
 datatable(sim_data_30pct_missing, caption = htmltools::tags$caption(	
      style = 'caption-side: bottom; text-align: center;', 	
-     'Table: sim_data_30pct_missing'))	
+     'Table: sim_data_30pct_missing'))
+```
+```{r}
 datatable(data.frames[[1]], caption = htmltools::tags$caption(	
      style = 'caption-side: bottom; text-align: center;', 	
-     'Table: Imputed data (chain 1)'))	
-	
+     'Table: Imputed data (chain 1)'))
+```
+```{r}
 # Compare the summary stats for the original data (prior to introducing missing	
 # values) with missing data and the re-completed data following imputation	
 # summary(sim_data)	
@@ -677,7 +689,8 @@ datatable(data.frame(t(as.matrix(unclass(summary(sim_data)))),
           caption = htmltools::tags$caption(
             style = 'caption-side: bottom; text-align: center;',
             'Table: summary(sim_data)'))	
-	
+```
+```{r}
 mySummary <- lapply(data.frames, summary)	
 datatable(data.frame(t(as.matrix(unclass(mySummary$`chain:1`))),
                      check.names = FALSE,
@@ -688,11 +701,14 @@ datatable(data.frame(t(as.matrix(unclass(mySummary$`chain:1`))),
 ```
 
 Let's check imputation convergence (details provided below).
-
 ```{r}
 round(mipply(imputations, mean, to.matrix = TRUE), 3)	
+```
+```{r}
 Rhats(imputations, statistic = "moments") # assess the convergence of MI algorithm	
+```
 
+```{r}
 plot(imputations)
 hist(imputations)
 image(imputations)
@@ -706,8 +722,11 @@ Pool from across the 3 chains - in order to estimate a linear regression model
 ```{r}
 model_results <- pool(y ~ x1+x2+x3+x4+x5+x6+x7+x8+x9+x10, data=imputations,  m=3)	
 display(model_results)
-summary(model_results)  	
-
+```
+```{r}
+summary(model_results) 
+```
+```{r}
 # Report the summaries of the imputations	
 data.frames <- complete(imputations, 3)  	# extract the first 3 chains	
 mySummary <-lapply(data.frames, summary)	
@@ -717,27 +736,34 @@ datatable(data.frame(t(as.matrix(unclass(mySummary$`chain:1`))),
           caption = htmltools::tags$caption(	
      style = 'caption-side: bottom; text-align: center;', 	
      'Table: Imputed data: summary(chain:1)'))	
+```
+```{r}
 datatable(data.frame(t(as.matrix(unclass(mySummary$`chain:2`))),
                      check.names = FALSE, stringsAsFactors = FALSE),
           caption = htmltools::tags$caption(	
      style = 'caption-side: bottom; text-align: center;', 	
      'Table: Imputed data: summary(chain:2)'))	
+```
+```{r}
 datatable(data.frame(t(as.matrix(unclass(mySummary$`chain:3`))),
                      check.names = FALSE, stringsAsFactors = FALSE),
           caption = htmltools::tags$caption(	
      style = 'caption-side: bottom; text-align: center;', 	
-     'Table: Imputed data: summary(chain:3)'))	
-	
-coef(summary(model_results))[, 1:2]  # get the model coef's and their SE's  	
-	
-library("lattice")
-densityplot(y ~ x1 + x2, data=imputations)
+     'Table: Imputed data: summary(chain:3)'))
+```
+```{r}
+coef(summary(model_results))[, 1:2]  # get the model coef's and their SE's
 ```
 
-To compare the density of observed data and imputed data --	
-these should be similar (though not identical) under MAR assumption
+```{r}
+library("lattice")
+densityplot(y ~ x1 + x2, data=imputations)
 
-	
+#plot_ly(imputations@data$`chain:1`, x=~(x1+x2), y=~density(y))	
+# To compare the density of observed data and imputed data --	
+# these should be similar (though not identical) under MAR assumption
+```
+
 **Notes**: 	
  	
 * In general, it is recommended to generate multiple imputation chains and then analyze the data (e.g., estimate the model coefficients, obtain inference, compute likelihoods, etc.). *Pooling* the analytics across all chains accounts for between-chain as well as within-chain variability, [Rubin's rule](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2727536/).	
@@ -747,22 +773,25 @@ these should be similar (though not identical) under MAR assumption
 ## TBI Data Example
 
 Next, we will see an example using [the traumatic brain injury (TBI) dataset](https://wiki.socr.umich.edu/index.php/SMHS_MissingData#Raw_TBI_data). More information about the [clinical assesment scores (e.g., EGOS, GCS) is available in this publication (DOI: 10.1080/02699050701727460)](https://doi.org/10.1080/02699050701727460).	
+
 ```{r}
 # Load the (raw) data from the table into a plain text file "08_EpiBioSData_Incomplete.csv"	
-TBI_Data <- read.csv("https://umich.instructure.com/files/720782/download?download_frd=1",
-                     na.strings=c("", ".", "NA"))    ## 1. read in data
-write.csv(TBI_Data, "TBI_Data.csv")
+TBI_Data <- read.csv("https://umich.instructure.com/files/720782/download?download_frd=1", na.strings=c("", ".", "NA"))    ## 1. read in data	
 summary(TBI_Data)
-
+```
+```{r}
 # Get information matrix of the data	
 # 2. create an object of class "missing_data.frame" from the data.frame TBI_data	
 # Convert to a missing_data.frame	
 # library("betareg"); library("mi")				
 mdf <- missing_data.frame(TBI_Data) # warnings about missingness patterns	
+```
+```{r}
 datatable(mdf)
 mdf@patterns
 image(mdf)	
-	
+```
+```{r}
 # 3. get description of the "family", "imputation_method", "size", "transformation", "type", "link", or "model" of each incomplete variable	
 # show(mdf)	
 	
@@ -771,20 +800,23 @@ image(mdf)
 # before calling mi to affect how the conditional expectation of each 	
 # missing variable is modeled.	
 	
-mdf <- change(mdf, y = "spikes.hr", what = "transformation", to = "identity")
+mdf <- change(mdf, y = "spikes.hr", what = "transformation", to = "identity")	
 # The "to" choices include "identity" = no transformation, "standardize" = standardization, "log" = natural logarithm transformation, "logshift" = log(y + a) transformation, where a is a small constant, or "sqrt" = square-root variable transformation. Changing the transformation will correspondingly change the inverse transformation.	
 ```
 
 ```{r}
-# 5. examine missingness patterns	
+	# 5. examine missingness patterns	
 summary(mdf)
 hist(mdf) 	
 image(mdf)	
-	
+```
+```{r}
 # 6. Perform initial imputation	
 imputations1 <- mi(mdf, n.iter=10, n.chains=5, verbose=TRUE)	
 hist(imputations1)	
-	
+
+```
+```{r}
 # 7. Extracts several multiply imputed data.frames from "imputations" object	
 data.frames1 <- complete(imputations1, 5)	
 	
@@ -799,7 +831,8 @@ datatable(data.frame(t(as.matrix(unclass(mySummary1$`chain:1`))),
      'Table: Imputed data: summary(chain:1)'),	
     extensions = 'Buttons', options = list(dom = 'Bfrtip',	
     buttons = c('copy', 'csv', 'excel', 'pdf', 'print')))	
-	
+```
+```{r}
 datatable(data.frame(t(as.matrix(unclass(mySummary1$`chain:5`))),
                      check.names = FALSE,
                      stringsAsFactors = FALSE),
@@ -807,8 +840,9 @@ datatable(data.frame(t(as.matrix(unclass(mySummary1$`chain:5`))),
      style = 'caption-side: bottom; text-align: center;', 	
      'Table: Imputed data: summary(chain:5)'),	
     extensions = 'Buttons', options = list(dom = 'Bfrtip',	
-    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')))	
-	
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')))
+```
+```{r}
 # 8.a. To cast the imputed numbers as integers (not necessary, but may be useful)	
 indx <- sapply(data.frames1[[5]], is.numeric)  # get the indices of numeric columns	
 data.frames1[[5]][indx] <- lapply(data.frames1[[5]][indx], function(x) as.numeric(as.integer(x))) 		    # cast each value as integer	
@@ -823,19 +857,19 @@ data.frames1[[5]][indx] <- lapply(data.frames1[[5]][indx], function(x) as.numeri
 	
 # 10.1 Define Linear Regression for multiply imputed dataset - Also see Step (12)	
 ##linear regression for each imputed data set - 5 regression models are fit	
-fit_lm1 <- glm(ever.sz ~ surgery + worst.gcs + factor(sex) + age,
-               data.frames1$`chain:1`,
-               family = "binomial")
+fit_lm1 <- glm(ever.sz ~ surgery + worst.gcs + factor(sex) + age, data.frames1$`chain:1`, family = "binomial")
 summary(fit_lm1)
-display(fit_lm1)	
-	
+display(fit_lm1)
+```
+```{r}
 # Fit the appropriate model and pool the results (estimates over MI chains)	
 model_results <- pool(ever.sz ~ surgery + worst.gcs + factor(sex) + age,
                       family = "binomial",
                       data=imputations1,  m=5)	
 display (model_results)
-summary (model_results)  	
-	
+summary (model_results) 
+```
+```{r}
 # Report the summaries of the imputations	
 data.frames <- complete(imputations1, 3)  	# extract the first 3 chains	
 mySummary2 <-lapply(data.frames1, summary)	
@@ -846,20 +880,23 @@ datatable(data.frame(t(as.matrix(unclass(mySummary2$`chain:1`))),
           caption = htmltools::tags$caption(	
      style = 'caption-side: bottom; text-align: center;', 	
      'Table: Imputed data: summary(chain:1)'))	
-	
+```
+```{r}
 # 11. Validation: we now verify whether enough iterations were conducted. 	
 # Validation criteria demands that the mean of each completed variable should	
 # be similar for each of the k chains (in this case k=5).	
 # mipply is wrapper for sapply invoked on mi-class objects to compute the col means	
 round(mipply(imputations1, mean, to.matrix = TRUE), 3)	
-	
+```
+```{r}
 # Rhat convergence statistics compares the variance between chains to the variance	
 # within chains (similar to the ANOVA F-test). 	
 # Rhat Values ~ 1.0 indicate likely convergence, 	
 # Rhat Values > 1.1 indicate that the chains should be run longer 	
 # (use large number of iterations)	
 Rhats(imputations1, statistic = "moments") # assess the convergence of MI algorithm	
-	
+```
+```{r}
 # When convergence is unstable, we can continue the iterations for all chains, e.g.	
 imputations1 <- mi(imputations1, n.iter=20) # add additional 20 iterations	
 	
@@ -872,6 +909,8 @@ imputations1 <- mi(imputations1, n.iter=20) # add additional 20 iterations
 plot(imputations1)
 hist(imputations1)
 image(imputations1)	
+```
+```{r}
 mySummary3 <-lapply(data.frames1, summary)	
 	
 datatable(data.frame(t(as.matrix(unclass(mySummary3$`chain:1`))),
@@ -880,8 +919,9 @@ datatable(data.frame(t(as.matrix(unclass(mySummary3$`chain:1`))),
           caption = htmltools::tags$caption(	
      style = 'caption-side: bottom; text-align: center;', 	
      'Table: Imputed data: summary(chain:1)'))	
-	
-	
+```
+
+```{r}
 # 12. Finally, pool over the m = 5 imputed datasets when we fit the "model"	
 # Pool from across the 4 chains - in order to estimate a linear regression model	
 # and impact of various predictors	
@@ -982,18 +1022,18 @@ $$\mu^{(t+1)} = \frac{1}{n}\sum_{i=1}^nE(Z|X).$$
 $$\Sigma^{(t+1)} = \frac{1}{n}\sum_{i=1}^nE(ZZ^T|X) - \mu^{(t+1)}{\mu^{(t+1)}}^T.$$	
 
 ### A simple manual implementation of EM-based imputation
-
 ```{r}
 # install.packages(c("gridExtra", "MASS"))	
 require(ggplot2)	
 require(gridExtra)	
 require(MASS)	
-require(knitr)
-
+require(knitr)	
+```
+```{r}
 # simulate 20 (feature) vectors  of 200 (cases) Normal Distributed random values (\mu, \Sigma)	
 # You can choose multiple distribution for testing	
 # sim_data <- replicate(20, rpois(50, 10))	
-set.seed(202227)	
+set.seed(123)	# 202227
 mu <- as.matrix(rep(2,20) )	
 sig <- diag(c(1:20) )	
 # Add a noise item. The noise is $ \epsilon ~ MVN(as.matrix(rep(0,20)), diag(rep(1,20)))$	
@@ -1008,11 +1048,11 @@ sim_data.orig <- sim_data
 # introduce 500 random missing indices (in the total of 4000=200*20)	
 # discrete distribution where the probability of the elements of values is proportional to probs,	
 # which are normalized to add up to 1.	
-rand.miss <- e1071::rdiscrete(500, probs = rep(1,length(sim_data)),
-                              values = seq(1, length(sim_data)))	
+rand.miss <- e1071::rdiscrete(500, probs = rep(1,length(sim_data)), values = seq(1, length(sim_data)))	
 sim_data[rand.miss] <- NA	
-sum(is.na(sim_data))  # check now many missing (NA) are there < 500	
-	
+sum(is.na(sim_data))  # check now many missing (NA) are there < 500
+```
+```{r}
 # cast the data into a data.frame object and report 15*10 elements	
 sim_data.df <- data.frame(sim_data)	
 # kable( sim_data.df[1:15, 1:10], caption = "The first 15 rows and first 10 columns of the simulation data")	
@@ -1020,13 +1060,15 @@ datatable(sim_data.df, caption = htmltools::tags$caption(
      style = 'caption-side: bottom; text-align: center;', 	
      'Table: Simulated Data (sim_data.df)'),	
     extensions = 'Buttons', options = list(dom = 'Bfrtip',	
-    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')))	
-	
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')))
+```
+
+```{r}
 # Define the EM imputation method	
 EM_algorithm <- function(x, tol = 0.001) {	
   # identify the missing data entries (Boolean indices)	
   missvals <- is.na(x)	
-  # instantialize the EM-iteration	
+  # instantiate the EM-iteration	
   new.impute <- x	
   old.impute <- x	
   count.iter <- 1	
@@ -1042,7 +1084,7 @@ EM_algorithm <- function(x, tol = 0.001) {
       pick.miss <- (c(missvals[i, ]))	
       if (sum(pick.miss) != 0) {	
         	
-        # compute invese-Sigma_completeData, variance-covariance matrix	
+        # compute inverse-Sigma_completeData, variance-covariance matrix	
         inv.S <- solve(sigma[!pick.miss, !pick.miss], tol = 1e-40) 	
         	
         # Expectation Step	
@@ -1081,8 +1123,7 @@ EM_algorithm <- function(x, tol = 0.001) {
   return(new.impute)	
 } 	
 	
-sim_data.imputed <- EM_algorithm(sim_data.df, tol=0.0001)	
-
+sim_data.imputed <- EM_algorithm(sim_data.df, tol=0.0001)
 ```
 
 ### Plotting complete and imputed data
@@ -1122,9 +1163,18 @@ Let's use the `amelia` function to impute the original data *sim_data_df* and co
 ```{r}
 # install.packages("Amelia")	
 library(Amelia)	
-dim(sim_data.df)	
-amelia.out <- amelia(sim_data.df, m = 5)	
-amelia.out	
+```
+```{r}
+dim(sim_data.df)
+```
+```{r}
+amelia.out <- amelia(sim_data.df, m = 5)
+```
+```{r}
+amelia.out
+```
+
+```{r}
 amelia.imputed.5 <- amelia.out$imputations[[5]]	
 ```
 
@@ -1137,22 +1187,18 @@ plot.ii2 <- function(index, index2){
     subset(sim_data.df, is.na(sim_data.df[, index]) | is.na(sim_data.df[, index2]))), ]	
   plot.imputed2 <- amelia.imputed.5[row.names(	
   subset(sim_data.df, is.na(sim_data.df[, index]) | is.na(sim_data.df[, index2]))), ]	
-  p = ggplot(sim_data.imputed, 
-             aes_string( paste0("X",index),
-                         paste0("X",index2 ))) + 	
-  geom_point(alpha = 0.8, size = 0.7) + theme_bw() +	
+  p = ggplot(sim_data.imputed, aes_string( paste0("X",index)  , paste0("X",index2 ))) + 	
+  geom_point(alpha = 0.8, size = 0.7)+theme_bw() +	
   stat_ellipse(type = "norm", color = "#000099", alpha=0.5) +	
-  geom_point(data = plot.imputed,
-             aes_string( paste0("X",index) ,
-                         paste0("X",(index2))),
-             size = 2.5, color = "Magenta", alpha = 0.9, shape = 16) +  	
-    geom_point(data = plot.imputed2,
-               aes( X1 , X2),size = 2.5, 
-               color = "#FF9933", alpha = 0.8, shape = 18)	
+  geom_point(data = plot.imputed, aes_string( paste0("X",index) , paste0("X",(index2))),size = 2.5, color = "Magenta", alpha = 0.9, shape = 16) +  	
+    geom_point(data = plot.imputed2, aes( X1 , X2),size = 2.5, color = "#FF9933", alpha = 0.8, shape = 18)	
   return(p)	
 } 	
 	
 plot.ii2(2, 4)	
+```
+
+```{r}
 plot.ii2(17, 18)
 ```
 
@@ -1161,48 +1207,99 @@ plot.ii2(17, 18)
 Finally, we can compare the densities of the original, manually-imputed and Amelia-imputed datasets. Remember that in this simulation, we had about $500$ observations missing out of the $4,000$ that we synthetically generated.	
 
 ```{r}
-plot.ii3 <- function(index){	
+# plot.ii3 <- function(index){	
+#   imputed <- sim_data.imputed[is.na(sim_data.df[, index]) , index]	
+#   imputed.amelia <- amelia.imputed.5[is.na(sim_data.df[, index]) , index]	
+#   observed <- sim_data.df[!is.na(sim_data.df[, index]) , index]	
+#   imputed.df <- data.frame(x = c(observed,imputed,imputed.amelia), category = c( rep("obs",length(observed)),rep("simpleImplement",length(imputed)) ,rep("amelia",length(imputed.amelia))   ) )	
+#   p = ggplot(imputed.df, aes(x=x, y =..density..)) + 	
+#     geom_density(aes(fill = category),alpha=0.3)+	
+#     theme_bw()	
+#   return(p)	
+#   }	
+# grid.arrange( plot.ii3(1),plot.ii3(2),plot.ii3(3),plot.ii3(4),plot.ii3(5),	
+#               plot.ii3(6),plot.ii3(7),plot.ii3(8),plot.ii3(9),plot.ii3(10),	
+#               nrow = 5)	
+	
+library(tidyr)	
+	
+myPlotly <- function(index){	
   imputed <- sim_data.imputed[is.na(sim_data.df[, index]) , index]	
   imputed.amelia <- amelia.imputed.5[is.na(sim_data.df[, index]) , index]	
   observed <- sim_data.df[!is.na(sim_data.df[, index]) , index]	
-  imputed.df <- data.frame(x = c(observed,imputed,
-                                 imputed.amelia),
-                           category = c(rep("obs",length(observed)),rep("simpleImplement",length(imputed)) ,rep("amelia",length(imputed.amelia))   ) )	
-  p = ggplot(imputed.df, aes(x=x, y =..density..)) + 	
-    geom_density(aes(fill = category),alpha=0.3)+	
-    theme_bw()	
+  imputed.df <- data.frame(x = c(observed,imputed,imputed.amelia), 	
+              category = c( rep("obs",length(observed)),rep("simpleImplement",length(imputed)),	
+                            rep("amelia",length(imputed.amelia))   ) )	
+  df_long <- as.data.frame(cbind(index=c(1:length(imputed.df$x)), 	
+                                 category=imputed.df$category, x=imputed.df$x))	
+  df_wide <- spread(df_long, category, x)	
+  	
+  p = plot_ly() %>%	
+    add_lines(x = ~density(as.numeric(df_wide$simpleImplement), na.rm = T)$x, 	
+        y= ~density(as.numeric(df_wide$simpleImplement), na.rm = T)$y, name = "EM", mode = 'lines') %>%	
+    add_lines(x = density(as.numeric(df_wide$amelia), na.rm = T)$x, 	
+        y= density(as.numeric(df_wide$amelia), na.rm = T)$y, name = "Amelia", mode = 'lines') %>%	
+    add_lines(x = ~density(as.numeric(df_wide$obs), na.rm = T)$x, 	
+        y= ~density(as.numeric(df_wide$obs), na.rm = T)$y, name = "Observed", mode = 'lines') %>%	
+    layout(title=sprintf("Distributions: Feature X.%d", index),	
+           xaxis = list(title = 'Measurements'),	
+           yaxis = list(title ="Densities"),	
+           legend = list(title="Distributions", orientation = 'h'))	
   return(p)	
-}
-
-grid.arrange( plot.ii3(1),plot.ii3(2),plot.ii3(3),plot.ii3(4),plot.ii3(5),	
-              plot.ii3(6),plot.ii3(7),plot.ii3(8),plot.ii3(9),plot.ii3(10),	
-              nrow = 5)
+}	
+	
+# Plot a few features	
+myPlotly(5)
+```
+```{r}
+myPlotly(9)
+```
+```{r}
+myPlotly(10)	
+# grid.arrange( myPlotly(1),myPlotly(2),myPlotly(3),myPlotly(4),myPlotly(5),	
+#               myPlotly(6),myPlotly(7),myPlotly(8),myPlotly(9),myPlotly(10),	
+#               nrow = 5)
 ```
 
 # Parsing webpages and visualizing tabular HTML data
 
 In this section, we will utilize the Earthquakes dataset on [SOCR website](https://wiki.socr.umich.edu/index.php/SOCR_Data_Dinov_021708_Earthquakes). It records information about earthquakes happened between 1969 and 2007 with magnitudes larger than 5 on the Richter scale. Here is how we parse the data on the source webpage and ingest the information into R:	
-
 ```{r}
 # install.packages("xml2")	
-library("XML")
-library("xml2")	
+library("XML"); library("xml2")	
 library("rvest")	
-wiki_url <- read_html("https://wiki.socr.umich.edu/index.php/SOCR_Data_Dinov_021708_Earthquakes")	
+wiki_url <- read_html("https://wiki.socr.umich.edu/index.php/SOCR_Data_021708_Earthquakes")	
 html_nodes(wiki_url, "#content")	
-earthquake <- html_table(html_nodes(wiki_url, "table")[[2]])
-write.csv(earthquake, "earthquake.csv")
+earthquake<- html_table(html_nodes(wiki_url, "table")[[2]])
 ```
 
 In this dataset, `Magt`(magnitude type) may be used as grouping variable. We will draw a "Longitude vs Latitude" line plot from this dataset. The function we are using is called `ggplot()` under `ggplot2`. The input type for this function is mostly data frame. `aes()` specifies axes.	
 
 ```{r}
-library(ggplot2)	
-plot4 <- ggplot(earthquake, 
-              aes(Longitude, Latitude, group=Magt, color=Magt)) +
-  geom_point(data=earthquake,
-             size=4, mapping=aes(x=Longitude, y=Latitude, shape=Magt))	
-plot4  # or plint(plot4)
+# library(ggplot2)	
+# plot4<-ggplot(earthquake, aes(Longitude, Latitude, group=Magt, color=Magt))+ 	
+#   geom_point(data=earthquake, size=4, mapping=aes(x=Longitude, y=Latitude, shape=Magt))	
+# plot4  # or plint(plot4)	
+# https://plotly-r.com/working-with-symbols.html 	
+	
+glyphication <- function (name) {	
+  glyph= vector()	
+  for (i in 1:length(name)){	
+    glyph[i]="triangle-up"	
+    if (name[i]=="Md") { glyph[i]="diamond-open" }	
+    else if (name[i]=="ML") { glyph[i]="circle-open" }	
+    else if (name[i]=="Mw") { glyph[i]="square-open" }	
+    else if (name[i]=="Mx") { glyph[i]="x-open" }	
+  }	
+  return(glyph)	
+}	
+earthquake$glyph <- glyphication(earthquake$Magt)	
+  	
+plot_ly(earthquake) %>%	
+  add_markers(x = ~Longitude, y = ~Latitude, type = "scatter",  color = ~Magt,	
+        mode = "markers", marker = list(size = ~Depth, color = ~Magt, symbol = ~glyph,	
+                                        line = list(color = "black",width = 2))) %>% 	
+    layout(title="California Earthquakes (1969 - 2007)")
 ```
 
 We can see the most important line of code was made up with 2 parts. The first part `ggplot(earthquake, aes(Longiture, Latitude, group=Magt, color=Magt))` specifies the setting of the plot: dataset, group and color. The second part specifies we are going to draw lines between data points. In later chapters we will frequently use package `ggplot2` and the structure under this great package is always `function1+function2`.	
@@ -1237,14 +1334,17 @@ with(kernal_density, plot_ly(x=x, y=y, z=z, type="surface"))
 Note that we used the option `"surface"`, however you can experiment with the `type` option.	
 
 Alternatively, one can plot 1D, 2D or 3D plots:
-
 ```{r}
 plot_ly(x = ~ earthquake$Longitude)	
+```
+```{r}
 plot_ly(x = ~ earthquake$Longitude, y = ~earthquake$Latitude)	
+```
+```{r}
 plot_ly(x = ~ earthquake$Longitude, y = ~earthquake$Latitude, z=~earthquake$Mag)	
-	
+```
+```{r}
 df3D <- data.frame(x=earthquake$Longitude, y=earthquake$Latitude, z=earthquake$Mag)	
-	
 # Convert he Long (X, Y, Z) Earthquake format data into a Matrix Format	
 	
 #  install.packages("Matrix")	
@@ -1256,30 +1356,32 @@ matrix_EarthQuakes <- with(df3D,
                                         dimnames=list(levels(x),
                                                       levels(y))))	
 dim(matrix_EarthQuakes)	
-View(as.matrix(matrix_EarthQuakes))	
+```
+```{r}
+# View(as.matrix(matrix_EarthQuakes))	
 	
-# view matrix ias 2D heatmap: 	
+# view matrix is 2D heatmap: 	
 library("ggplot2"); library("gplots")	
 	
-heatmap.2( as.matrix(matrix_EarthQuakes[280:307, 30:44]),
-           Rowv=FALSE,
-           Colv=FALSE,
-           dendrogram='none',
-           cellnote=as.matrix(matrix_EarthQuakes[280:307, 30:44]),
-           notecol="black",
-           trace='none', key=FALSE, lwid = c(.01, .99),
-           lhei = c(.01, .99), margins = c(5, 15 ))	
+# heatmap.2( as.matrix(matrix_EarthQuakes[280:307, 30:44]), Rowv=FALSE, Colv=FALSE, dendrogram='none', cellnote=as.matrix(matrix_EarthQuakes[280:307, 30:44]), notecol="black", trace='none', key=FALSE, lwid = c(.01, .99), lhei = c(.01, .99), margins = c(5, 15 ))	
+	
+plot_ly(z = ~as.matrix(matrix_EarthQuakes[280:307, 30:44]), type = "heatmap") %>% hide_colorbar()
+```
+```{r}
+# plot_ly(x=~colnames(matrix_EarthQuakes[280:307, 30:44]), 	
+#         y=~rownames(matrix_EarthQuakes[280:307, 30:44]),	
+#         z = ~as.matrix(matrix_EarthQuakes[280:307, 30:44]), type = "heatmap") %>%	
+#   layout(title="California Earthquakes Heatmap", 	
+#          xaxis=list(title="Longitude"), yaxis=list(title="Latitude")) %>% 	
+#   hide_colorbar()	
 	
 # Long -180<x<-170, Lat: 30<y<45, Z: 5<Mag<8	
-matrix_EarthQuakes <- with(df3D,
-                           sparseMatrix(i = as.numeric(180+x),
-                                        j=as.numeric(y), x=z,
-                                        use.last.ij=TRUE,
-                                        dimnames=list(levels(x),
-                                                      levels(y))))	
+matrix_EarthQuakes <- with(df3D, sparseMatrix(i = as.numeric(180+x), j=as.numeric(y), x=z, use.last.ij=TRUE, dimnames=list(levels(x), levels(y))))	
 mat1 <- as.matrix(matrix_EarthQuakes)	
-plot_ly(z = ~mat1, type = "surface")	
-	
+plot_ly(z = ~mat1, type = "surface")
+```
+
+```{r}
 # To plot the Aggregate (SUmmed) Magnitudes at all Long/Lat:	
 matrix_EarthQuakes <- with(df3D,
                            sparseMatrix(i = as.numeric(180+x),
@@ -1299,9 +1401,11 @@ Comparing cohorts with imbalanced sample sizes (unbalanced designs) may present 
 **Example 1: Parkinson's Diseases Study**	involving neuroimaging, genetics, clinical, and phenotypic data for over 600 volunteers produced multivariate data for 3 cohorts -- *HC=Healthy Controls(166)* , *PD=Parkinson's (434)*, *SWEDD= subjects without evidence for dopaminergic deficit (61)*.	
 
 ```{r}
-	# load the data: 06_PPMI_ClassificationValidationData_Short.csv	
+# update packages	
+# update.packages()	
+	
+# load the data: 06_PPMI_ClassificationValidationData_Short.csv	
 ppmi_data <-read.csv("https://umich.instructure.com/files/330400/download?download_frd=1", header=TRUE)	
-write.csv(ppmi_data, "ppmi_data.csv")
 	
 table(ppmi_data$ResearchGroup)	
 	
@@ -1331,8 +1435,7 @@ my.ada <- function (train.x, train.y, test.x, test.y, negative, formula){
 }	
 	
 # balance cases	
-# SMOTE: Synthetic Minority Oversampling Technique
-# to handle class misbalance in binary classification.	
+# SMOTE: Synthetic Minority Oversampling Technique to handle class imbalance in binary classification.	
 set.seed(1000)	
 # install.packages("unbalanced") to deal with unbalanced group data	
 require(unbalanced)	
@@ -1354,8 +1457,7 @@ output <- as.factor(ppmi_data$PD)
 c(dim(input), length(output))	
 	
 #balance the dataset	
-data.1<-ubBalance(X= input, Y=output, type="ubSMOTE", 
-                  percOver=300, percUnder=150, verbose=TRUE)	
+data.1<-ubBalance(X= input, Y=output, type="ubSMOTE", percOver=300, percUnder=150, verbose=TRUE)	
 # percOver = A number that drives the decision of how many extra cases from the minority class are generated (known as over-sampling).	
 # k = A number indicating the number of nearest neighbors that are used to generate the new examples of the minority class.	
 # percUnder = A number that drives the decision of how many extra cases from the majority classes are selected for each case generated from the minority class (known as under-sampling)  	
@@ -1370,7 +1472,12 @@ nrow(input); ncol(input)
 colnames(balancedData) <- c(colnames(input), "PD")	
 	
 # check visually for differences between the distributions of the raw (input) and rebalanced data (for only one variable, in this case)	
-qqplot(input[, 5], balancedData [, 5])	
+QQ <- qqplot(input[, 5], balancedData [, 5], plot.it=F)	
+	
+plot_ly(x=~QQ$x, y = ~QQ$y, type="scatter", mode="markers", showlegend=F) %>%	
+  add_lines(x=c(0,0.8), y=c(0,0.8), showlegend=F) %>%	
+  layout(title="QQ-Plot Original vs. Rebalanced Data", xaxis=list(title="original data"),	
+         yaxis=list(title="Rebalanced data"))	
 	
 ###Check balance	
 ## Wilcoxon test	
@@ -1388,8 +1495,13 @@ print(c("Wilcoxon test results: ", test.results.bin))
 	
 test.results.corr <- stats::p.adjust(test.results.raw, method = "fdr", n = length(test.results.raw)) 	
 # where methods are "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none")	
-plot(test.results.raw, test.results.corr)	
+# plot(test.results.raw, test.results.corr)	
 # zeros (0) are significant independent between-group T-test differences, ones (1) are insignificant	
+	
+plot_ly(x=~test.results.raw, y = ~test.results.corr, type="scatter", mode="markers", showlegend=F) %>%	
+  add_lines(x=c(0,1), y=c(0,1), showlegend=F) %>%	
+  layout(title="Wilcoxon test results - Original vs. Rebalanced Data", xaxis=list(title="Original"),	
+         yaxis=list(title="Rebalanced"))	
 	
 # Check the Differences between the rate of significance between the raw and FDR-corrected p-values	
 test.results.bin <- ifelse(test.results.raw > alpha.0.05, 1, 0)	
@@ -1397,7 +1509,6 @@ table(test.results.bin)
 test.results.corr.bin <- ifelse(test.results.corr > alpha.0.05, 1, 0)	
 table(test.results.corr.bin)
 ```
-
 **Notes**
 
 * SMOTE over-sampling of the minority cohort is via generation of synthetic minority samples within the neighborhoods of observed observations. Thus, new minority instances	
@@ -1414,7 +1525,7 @@ blend observations in the same class and create clusters around each observed mi
 
 ```{r}
 # install.packages("RODBC", repos = "http://cran.us.r-project.org")	
-library(RODBC)	
+# library(RODBC)	
 ```
 
 Then, we could open a connection to the SQL server database with Data Source Name (DSN), via Microsoft Access. More details are provided [here](https://technet.microsoft.com/en-us/library/cc879308%28v=sql.105%29.aspx) and [here](https://cran.r-project.org/web/packages/RODBC/vignettes/RODBC.pdf).	
