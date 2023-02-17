@@ -42,35 +42,54 @@ In this section, we will see composition plots for different types of variables 
 
 ## Histograms and density plots
 
-One of the first few graphs we learned in high school would be Histogram. In R, the command `hist()` is applied to a vector of values and used for plotting histograms. The famous 19-th century statistician [Karl Pearson](https://en.wikipedia.org/wiki/Karl_Pearson) introduced histograms as graphical representations of the distribution of a sample of numeric data. The histogram plot uses the data to infer and display the probability distribution of the underlying population that the data is sampled from. Histograms are constructed by selecting a certain number of bins covering the range of values of the observed process. Typically, the number of bins for a data array of size $N$ should be equal to $\sqrt{N}$. These bins form a partition (disjoint and covering sets) of the range. Finally, we compute the relative frequency representing the number of observations that fall within each bin interval. The histogram just plots a piece-wise step-function defined over the union of the bin interfaces whose height equals the observed relative frequencies.	
+One of the first few graphs we learned in high school would be Histogram. In R, the functions `hist()` or `plot_ly()` represent two methods that can be applied to a vector of values for plotting histograms. The famous 19-th century statistician [Karl Pearson](https://en.wikipedia.org/wiki/Karl_Pearson) introduced histograms as graphical representations of the distribution of a sample of numeric data. The histogram plot uses the data to infer and display the probability distribution of the underlying population that the data is sampled from. Histograms are constructed by selecting a certain number of bins covering the range of values of the observed process. Typically, the number of bins for a data array of size $N$ should be equal to $\sqrt{N}$. These bins form a partition (disjoint and covering sets) of the range. Finally, we compute the relative frequency representing the number of observations that fall within each bin interval. The histogram just plots a piece-wise step-function defined over the union of the bin interfaces whose height equals the observed relative frequencies.
 
 ```{r}
-set.seed(1)	
-x <- rnorm(1000)	
-hist(x, freq=F, breaks = 10)	
-lines(density(x), lwd=2, col="blue") 	
-t <- seq(-3, 3, by=0.01)	
-lines(t, dnorm(t,0,1), col="magenta") # add the theoretical density line	
+# Here `freq=T` shows the frequency for each *x* value and `breaks` controls for number of bars in our histogram.	
+# mu <- 15; sd <- 3.7	
+# set.seed(1234)	
+# x<-rnorm(100, mean = mu, sd=sd)	
+# hist(x, freq=F, breaks = 10)	
+# lines(density(x), lwd=2, col="blue") 	
+# t <- seq(mu-3*sd, mu+3*sd, by=0.01)	
+# lines(t, dnorm(t,mu,sd), col="magenta") # add the theoretical density line	
+	
+library(plotly)	
+	
+N <- 10000	
+mu <- 15; sd <- 3.7	
+set.seed(1234)	
+x <- rnorm(N, mean = mu, sd=sd)	
+fit <- density(x)	
+z<-seq(mu-4*sd, mu+4*sd, 0.1)  # points from -4 to 4 in 0.1 steps	
+q<-seq(0.001, 0.999, 0.001)  # probability quantile values from 0.1% to 99.9% in 0.1% steps	
+	
+normDensity <- dnorm(z, mean=15, sd= 3.7)	
+	
+plot_ly(x = x, type = "histogram", name = "Data Histogram", histnorm = "probability") %>% 	
+    add_trace(x = fit$x, y = fit$y, type = "scatter", mode = "lines", opacity=0.1,	
+              fill = "tozeroy", yaxis = "y2", name = "Density (rnorm(100, 15, 3.7))") %>% 	
+    add_trace(x = z, y = normDensity, type = "scatter", mode = "lines", opacity=0.1,	
+              fill = "tozeroy", yaxis = "y2", name = "Normal(15, 3.7)") %>% 	
+    layout(title='Data Histogram, Density Estimate & Theoretical Model Distribution', 	
+           yaxis2 = list(overlaying = "y", side = "right"),	
+           legend = list(orientation = 'h'))
 ```
 
-Here `freq=T` shows the frequency for each *x* value and `breaks` controls for number of bars in our histogram.	
-
-The shape of last histogram we draw is very close to a Normal distribution (because we sampled from this distribution by `rnorm`). We can add a density line to the histogram.	
+The shape of last histogram we draw is very close to a Normal distribution (because we sampled from this distribution by `rnorm`). Note the superposition of the corresponding Normal density curve.
 
 ```{r}
-hist(x, freq=F, breaks = 10)	
-lines(density(x), lwd=2, col="blue")
+# hist(x, freq=F, breaks = 10)	
+# lines(density(x), lwd=2, col="blue")	
+# Here we used the option `freq=F` to make the *y* axis represent the "relative frequency", or "density". We can also use `plot(density(x))` to draw the density plot by itself.	
+# plot(density(x))
 ```
 
 Here we used the option `freq=F` to make the *y* axis represent the "relative frequency", or "density". We can also use `plot(density(x))` to draw the density plot by itself.	
 
-```{r}
-plot(density(x))
-```
-
 ## Pie Chart
 
-We are all very familiar with pie charts that show us the components of a big "cake". Although pie charts provide effective simple visualization in certain situations, it may also be difficult to compare segments within a pie chart or across different pie charts. Other plots like bar chart, box or dot plots may be attractive alternatives.	
+We are all very familiar with pie charts that show us the components of a big "cake". Although pie charts provide effective simple visualization in certain situations, it may also be difficult to compare segments within a pie chart or across different pie charts. Other plots like bar chart, box or dot plots may be attractive alternatives.
 
 We will use the Letter Frequency Data on [SOCR website](https://wiki.socr.umich.edu/index.php/SOCR_LetterFrequencyData) to illustrate the use of pie charts.
 
@@ -82,41 +101,70 @@ letter<- html_table(html_nodes(wiki_url, "table")[[1]])
 summary(letter)	
 ```
 
-We can try to plot the frequency for first 10 letters in English. The left hand side plot is the one without reference table and the right one has the table made by function `legend`.	
+We can try to plot the frequency proportion of the 26 English letters using pie and donut charts.
 
 ```{r}
-par(mfrow=c(1, 2))	
-pie(letter$English[1:10], labels=letter$Letter[1:10],
-    col=rainbow(10, start=0.1, end=0.8),
-    clockwise=TRUE,
-    main="First 10 Letters Pie Chart")	
-pie(letter$English[1:10], labels=letter$Letter[1:10],
-    col=rainbow(10, start=0.1, end=0.8),
-    clockwise=TRUE,
-    main="First 10 Letters Pie Chart")	
-legend("topleft",
-       legend=letter$Letter[1:10],
-       cex=1.3, bty="n", pch=15, pt.cex=1.8, 
-       col=rainbow(10, start=0.1, end=0.8), ncol=1)	
+# The left hand side plot is the one without reference table and the right one has the table made by function `legend`.	
+# par(mfrow=c(1, 2))	
+# pie(letter$English[1:10], labels=letter$Letter[1:10], col=rainbow(10, start=0.1, end=0.8), clockwise=TRUE, main="First 10 Letters Pie Chart")	
+# pie(letter$English[1:10], labels=letter$Letter[1:10], col=rainbow(10, start=0.1, end=0.8), clockwise=TRUE, main="First 10 Letters Pie Chart")	
+# legend("topleft", legend=letter$Letter[1:10], cex=1.3, bty="n", pch=15, pt.cex=1.8, col=rainbow(10, start=0.1, end=0.8), ncol=1)	
+	
+plot_ly(letter, labels = ~Letter, values = ~English, type = 'pie', name="English",	
+        domain = list(row = 0, column = 0)) %>% 	
+  add_pie(labels = ~Letter, values = ~Spanish,  name = "Spanish", 	
+          domain = list(row = 0, column = 1)) %>% 	
+  add_pie(labels = ~Letter, values = ~Swedish,  name = "Swedish", 	
+          domain = list(row = 1, column = 0)) %>% 	
+  add_pie(labels = ~Letter, values = ~Polish,  name = "Polish", 	
+          domain = list(row = 1, column = 1)) %>% 	
+  add_annotations(x=0.01,  y=0.99,text = "English",showarrow = F, ax = 20, ay = -40) %>% 	
+  add_annotations(x=0.58,  y=0.99,text = "Spanish",showarrow = F, ax = 20, ay = -40) %>% 	
+  add_annotations(x=0.01,  y=0.01,text = "Swedish",showarrow = F, ax = 20, ay = -40) %>% 	
+  add_annotations(x=0.58,  y=0.01,text = "Polish",showarrow = F, ax = 20, ay = -40) %>%	
+  layout(title = 'Pie Charts of English, Spanish, Swedish & Polish Letters',	
+         grid=list(rows=2, columns=2),	
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),	
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+```
+```{r}
+plot_ly(letter, labels = ~Letter, values = ~German, type = 'pie', name="German",	
+        domain = list(row = 0, column = 0), hole = 0.5) %>% 	
+  add_pie(labels = ~Letter, values = ~Italian,  name = "Italian", 	
+          domain = list(row = 0, column = 1)) %>% 	
+  add_pie(labels = ~Letter, values = ~Dutch,  name = "Dutch", 	
+          domain = list(row = 1, column = 0)) %>% 	
+  add_pie(labels = ~Letter, values = ~Esperanto,  name = "Esperanto", 	
+          domain = list(row = 1, column = 1)) %>% 	
+  add_annotations(x=0.2,  y=0.78,text = "German",showarrow = F, ax = 20, ay = -40) %>% 	
+  add_annotations(x=0.8,  y=0.78,text = "Italian",showarrow = F, ax = 20, ay = -40) %>% 	
+  add_annotations(x=0.2,  y=0.21,text = "Dutch",showarrow = F, ax = 20, ay = -40) %>% 	
+  add_annotations(x=0.82,  y=0.21,text = "Esperanto",showarrow = F, ax = 20, ay = -40) %>%	
+  layout(title = 'Pie Charts of German, Italian, Dutch & Esperanto Letters',	
+         grid=list(rows=2, columns=2),	
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),	
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
 ```
 
-The input type for `pie()` is a vector of non-negative numerical quantities. In the `pie` function we list the data that we are going to use (positive and numeric), the labels for each of them, and the colors we want to use for each sector. In the `legend` function, we put the location in the first slot and `legend` are the labels for colors. `cex`, `bty`, `pch`, and `pt.cex` are all graphic parameters that we have talked about in [Chapter 1](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/01_Foundation.html).	
+The input type for `pie()` is a vector of non-negative numerical quantities. In the `pie` function we list the data that we are going to use (positive and numeric), the labels for each of them, and the colors we want to use for each sector. In the `legend` function, we put the location in the first slot and `legend` are the labels for colors. `cex`, `bty`, `pch`, and `pt.cex` are all graphic parameters that we have talked about in [Chapter 1](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/01_Foundation.html).
 
-More elaborate pie charts, using the Latin letter data, will be demonstrated using `ggplot` later, ([Section 7.2](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/03_DataVisualization.html#72_some_additional_ggplot_examples).	
+ More elaborate pie charts, using the Latin letter data, will be demonstrated using `ggplot` later, ([Section 7.2](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/03_DataVisualization.html#72_some_additional_ggplot_examples).
 
 ## Heat map
 
 Another common data visualization method is the `heat map`. Heat maps can help us visualize the individual values in a matrix intuitively. It is widely used in genetics research and financial applications.	
 
-We will illustrate the use of heat maps, based on a [neuroimaging genetics case-study data](http://dx.doi.org/10.4306/pi.2015.12.1.125) about the association (p-values) of different brain regions of interest (ROIs) and genetic traits (SNPs) for Alzheimer's disease (AD) patients, subjects with mild cognitive impairment (MCI), and normal controls (NC). First, let's import the data into R. The data are 2D arrays where the rows represent different genetic SNPs, columns represent brain ROIs, and the cell values represent the strength of the SNP-ROI association, a probability values (smaller p-values indicate stronger neuroimaging-genetic associations).	
+We will illustrate the use of heat maps, based on a [neuroimaging genetics case-study data](https://dx.doi.org/10.4306/pi.2015.12.1.125) about the association (p-values) of different brain regions of interest (ROIs) and genetic traits (SNPs) for Alzheimer's disease (AD) patients, subjects with mild cognitive impairment (MCI), and normal controls (NC). First, let's import the data into R. The data are 2D arrays where the rows represent different genetic SNPs, columns represent brain ROIs, and the cell values represent the strength of the SNP-ROI association, a probability values (smaller p-values indicate stronger neuroimaging-genetic associations).
+
+
 
 ```{r}
 AD_Data <- read.table("https://umich.instructure.com/files/330387/download?download_frd=1", header=TRUE, row.names=1,  sep=",", dec=".")	 	
 MCI_Data <- read.table("https://umich.instructure.com/files/330390/download?download_frd=1", header=TRUE, row.names=1,  sep=",", dec=".")	 	 	
-NC_Data <- read.table("https://umich.instructure.com/files/330391/download?download_frd=1", header=TRUE, row.names=1,  sep=",", dec=".")	 	 	
+NC_Data <- read.table("https://umich.instructure.com/files/330391/download?download_frd=1", header=TRUE, row.names=1,  sep=",", dec=".") 	 	
 ```
 
-Then we load the R packages we need for heat maps (use `install.packages("package name")` first if you did not install them into your computer). 	
+Then we load the R packages we need for heat maps (use `install.packages("package name")` first if you did not install them into your computer).
 
 ```{r}
 library(graphics)	
@@ -152,29 +200,54 @@ ccNC <- rainbow(ncol(NC_mat),
 Finally, we got to the point where we can plot heat maps. As we can see, the input type of `heatmap()` is a numeric matrix.	
 
 ```{r}
-hvAD <- heatmap(AD_mat,
-                col = cm.colors(256),
-                scale = "column",
-                RowSideColors = rcAD,
-                ColSideColors = ccAD,
-                margins = c(2, 2), main="AD Cohort")	
-hvMCI <- heatmap(MCI_mat,
-                 col = cm.colors(256),
-                 scale = "column",
-                 RowSideColors = rcMCI,
-                 ColSideColors = ccMCI,
-                 margins = c(2, 2), main="MCI Cohort")	
-hvNC <- heatmap(NC_mat,
-                col = cm.colors(256),
-                scale = "column",
-                RowSideColors = rcNC,
-                ColSideColors = ccNC,
-                margins = c(2, 2), main="NC Cohort")	
+# hvAD <- heatmap(AD_mat, col = cm.colors(256), scale = "column", RowSideColors = rcAD, ColSideColors = ccAD, margins = c(2, 2), main="AD Cohort")	
+# hvMCI <- heatmap(MCI_mat, col = cm.colors(256), scale = "column", RowSideColors = rcMCI, ColSideColors = ccMCI, margins = c(2, 2), main="MCI Cohort")	
+# hvNC <- heatmap(NC_mat, col = cm.colors(256), scale = "column", RowSideColors = rcNC, ColSideColors = ccNC, margins = c(2, 2), main="NC Cohort")	
+	
+# if (!require("devtools")) install.packages("devtools")	
+# devtools::install_github("talgalili/d3heatmap")	
+	
+# library(d3heatmap)	
+# d3heatmap(AD_mat, dendrogram = 'both', key = TRUE, col = 'Blues', scale = 'column', key.title = "Legend",	
+#           print.values = T, notecol = 'white') %>% 	
+#     hmAxis("x", title = "Imaging Phenotype", location = 'bottom') %>% 	
+#     hmAxis("y", title = "Genotype", location = 'left') %>% 	
+#     hmCells(font.size = 9, color = 'blue') %>% 	
+#     hmLegend(show = T, title = "AD Cohort", location = "tl")	
+	
+plot_ly(x =~colnames(AD_mat), y = ~rownames(AD_mat), z = ~AD_mat, type = "heatmap") %>%	
+  layout(title="AD Neuroimaging-Genotics Associations (p-values)", 	
+         xaxis=list(title="ROI Imaging Biomarkers"), yaxis=list(title="SNPs"))
+```
+```{r}
+# d3heatmap(MCI_mat, dendrogram = 'both', key = TRUE, col = 'Blues', scale = 'column', key.title = "Legend",	
+#           print.values = T, notecol = 'white') %>% 	
+#     hmAxis("x", title = "Imaging Phenotype", location = 'bottom') %>% 	
+#     hmAxis("y", title = "Genotype", location = 'left') %>% 	
+#     hmCells(font.size = 9, color = 'blue') %>% 	
+#     hmLegend(show = T, title = "MCI Cohort", location = "tl")	
+	
+plot_ly(x =~colnames(MCI_mat), y = ~rownames(MCI_mat), z = ~MCI_mat, type = "heatmap") %>%	
+  layout(title="MCI Neuroimaging-Genotics Associations (p-values)", 	
+         xaxis=list(title="ROI Imaging Biomarkers"), yaxis=list(title="SNPs"))	
 ```
 
-In the `heatmap()` function the first argument is for matrices we want to use. `col` is the color scheme; `scale` is a character indicating if the values should be centered and scaled in either the row direction or the column direction, or none ("row", "column", and "none"); `RowSideColors` and `ColSideColors` creates the color names for horizontal side bars.	
+```{r}
+# d3heatmap(NC_mat, dendrogram = 'both', key = TRUE, col = 'Blues', scale = 'column', key.title = "Legend",	
+#           print.values = T, notecol = 'white') %>% 	
+#     hmAxis("x", title = "Imaging Phenotype", location = 'bottom') %>% 	
+#     hmAxis("y", title = "Genotype", location = 'left') %>% 	
+#     hmCells(font.size = 9, color = 'blue') %>% 	
+#     hmLegend(show = T, title = "Normal Cohort", location = "tl")	
+	
+plot_ly(x =~colnames(NC_mat), y = ~rownames(NC_mat), z = ~NC_mat, type = "heatmap") %>%	
+  layout(title="(Normal) HC Neuroimaging-Genotics Associations (p-values)", 	
+         xaxis=list(title="ROI Imaging Biomarkers"), yaxis=list(title="SNPs"))
+```
 
-The differences between the AD, MCI and NC heat maps are suggestive of variations of genetic traits or alternative brain regions that may be affected in the three clinically different cohorts.	
+In the `heatmap()` function the first argument is for matrices we want to use. `col` is the color scheme; `scale` is a character indicating if the values should be centered and scaled in either the row direction or the column direction, or none ("row", "column", and "none"); `RowSideColors` and `ColSideColors` creates the color names for horizontal side bars.
+
+The differences between the AD, MCI and NC heat maps are suggestive of variations of genetic traits or alternative brain regions that may be affected in the three clinically different cohorts.
 
 # Comparison
 
