@@ -385,92 +385,100 @@ You can also use the [human height and weight dataset](http://wiki.stat.ucla.edu
 
 ## Jitter plot
 
-Jitter plot can help us deal with the overplot issue when we have many points in the data. The function we will be using is still in package `ggplot2` called `position_jitter()`.	
+Jitter plot can help us deal with the overplot issue when we have many points in the data. The function we will be using is still in package `ggplot2` called `position_jitter()`.
 
-Still we use the earthquake data for example. We will compare the differences with and without `position_jitter()` function.	
+Still we use the earthquake data for example. We will compare the differences with and without `position_jitter()` function.
 
 ```{r}
-library("xml2")
-library("rvest") 	
+# library("xml2"); library("rvest") 	
 wiki_url <- read_html("https://wiki.socr.umich.edu/index.php/SOCR_Data_Dinov_021708_Earthquakes")	
 html_nodes(wiki_url, "#content")	
 earthquake <- html_table(html_nodes(wiki_url, "table")[[2]])	
+# plot6.1<-ggplot(earthquake, aes(Depth, Latitude, group=Magt, color=Magt))+geom_point()	
+# plot6.2<-ggplot(earthquake, aes(Depth, Latitude, group=Magt, color=Magt))+geom_point(position = position_jitter(w = 0.3, h = 0.3), alpha=0.5)	
+# print(plot6.1)	
+# print(plot6.2)	
+# Note that with option `alpha=0.5` the "crowded" places are darker than the places with only one data point. 	
+# Sometimes, we need to add text to these points, i.e., add label in `aes` or add `geom_text`. It looks messy. 	
+# ggplot(earthquake, aes(Depth, Latitude, group=Magt, color=Magt,label=rownames(earthquake)))+	
+#  geom_point(position = position_jitter(w = 0.3, h = 0.3), alpha=0.5)+geom_text()	
+# Let's try to fix the overlap of points and labels. We need to add `check_overlap` in `geom_text` and adjust the positions of the text labels with respect to the points.	
+# 	
+#' 	
+# ggplot(earthquake, aes(Depth, Latitude, group=Magt, color=Magt,label=rownames(earthquake)))+	
+#   geom_point(position = position_jitter(w = 0.3, h = 0.3), alpha=0.5)+	
+#   geom_text(check_overlap = T,vjust = 0, nudge_y = 0.5, size = 2,angle = 45)	
+# 	
+# # Or you can simply use the text to denote the positions of points.	
+# ggplot(earthquake, aes(Depth, Latitude, group=Magt, color=Magt,label=rownames(earthquake)))+	
+#   geom_text(check_overlap = T,vjust = 0, nudge_y = 0, size = 3,angle = 45)	
+# # Warning: check_overlap will not show those overlapped points. Thus, if you need an analysis at the level of every instance, do not use it.	
 	
-plot6.1 <- ggplot(earthquake,
-                aes(Depth, Latitude, group=Magt, color=Magt)) +
-  geom_point()	
-plot6.2 <- ggplot(earthquake,
-                  aes(Depth, Latitude, group=Magt, color=Magt)) +
-  geom_point(position = position_jitter(w = 0.3, h = 0.3), alpha=0.5)	
-print(plot6.1)	
-print(plot6.2)	
-```
-
-Note that with option `alpha=0.5` the "crowded" places are darker than the places with only one data point. 	
-
-Sometimes, we need to add text to these points, i.e., add label in `aes` or add `geom_text`. It looks messy.	
-
-```{r}
-ggplot(earthquake,
-       aes(Depth, Latitude, group=Magt, color=Magt,label=rownames(earthquake)))+	
-  geom_point(position = position_jitter(w = 0.3, h = 0.3), alpha=0.5)+geom_text()	
-```
-
-Let's try to fix the overlap of points and labels. We need to add `check_overlap` in `geom_text` and adjust the positions of the text labels with respect to the points.	
-
-```{r}
-ggplot(earthquake,
-       aes(Depth, Latitude, group=Magt, color=Magt,label=rownames(earthquake))) +
-  geom_point(position = position_jitter(w = 0.3, h = 0.3), alpha=0.5) +	
-  geom_text(check_overlap = T,vjust = 0, nudge_y = 0.5, size = 2,angle = 45)
-
-# Or you can simply use the text to deote the positions of points.	
-ggplot(earthquake,
-       aes(Depth, Latitude, group=Magt, color=Magt,label=rownames(earthquake))) +	
-  geom_text(check_overlap = T,vjust = 0, nudge_y = 0, size = 3,angle = 45)	
-# Warning: check_overlap will not show those overlaped points. Thus, if you need an analysis at the level of every instance, do not use it.	
+glyphication <- function (name) {	
+  glyph= vector()	
+  for (i in 1:length(name)){	
+    glyph[i]="triangle-up"	
+    if (name[i]=="Md") { glyph[i]="diamond-open" }	
+    else if (name[i]=="ML") { glyph[i]="circle-open" }	
+    else if (name[i]=="Mw") { glyph[i]="square-open" }	
+    else if (name[i]=="Mx") { glyph[i]="x-open" }	
+  }	
+  return(glyph)	
+}	
+earthquake$glyph <- glyphication(earthquake$Magt)	
+  	
+plot_ly(earthquake) %>%	
+  add_markers(x = ~Longitude, y = ~Latitude, type = "scatter",  color = ~Magt,	
+        mode = "markers", marker = list(size = ~Depth, color = ~Magt, symbol = ~glyph,	
+                                        line = list(color = ~Magt, width = 3))) %>% 	
+    layout(title="California Earthquakes (1969 - 2007)")
 ```
 
 ## Bar Plots
 
-Bar plots, or bar charts, represent group data with rectangular bars. There are many variants of bar charts for comparison among categories. Typically, either horizontal or vertical bars are used where one of the axes shows the compared categories and the other axis representing a discrete value. It's possible, and sometimes desirable, to plot bar graphs including bars clustered by groups.	
-
-In R we have `barplot()` function explicitly designed for these plots. The input for `barplot()` is either a vector or matrix.	
-
-```{r}
-x <- matrix(runif(50), ncol=5, dimnames=list(letters[1:10], LETTERS[1:5]))	
-x	
-barplot(x[1:4, ], ylim=c(0, max(x[1:4, ])+0.3),
-        beside=TRUE, legend.text = letters[1:4],
-        args.legend = list(x = "topleft"))	
-text(labels=round(as.vector(as.matrix(x[1:4, ])), 2),
-     x=seq(1.5, 21, by=1) + rep(c(0, 1, 2, 3, 4), each=4),
-     y=as.vector(as.matrix(x[1:4, ]))+0.1)	
-```
-
-We can see the methods that adds value labels on each bar is very hard. First, let's figure out how to get the location on x axis `x=seq(1.5, 21, by=1)+ rep(c(0, 1, 2, 3, 4), each=4)`. We know there are 20 bars. The x location for middle of the first bar is 1.5 (there is one empty space before the first bar). Middle of the last bar is 24.5. `seq(1.5, 21, by=1)` start from 1.5 and creates 20 bars that ends with `x=21`. Then we use `rep(c(0, 1, 2, 3, 4), each=4)` to add 0 to the first group, 1 to the second group and so forth. Then, we have the desired position on x-axis. Y-axis is just adding 0.1 to each bar height.	
-
-We can add standard deviation for the 10 times the means on the bars. To do this we need to use `arrows()` function. When we have the option `angle = 90`, it turns out to be like one side of a box plot.	
+Bar plots, or bar charts, represent group data with rectangular bars. There are many variants of bar charts for comparison among categories. Typically, either horizontal or vertical bars are used where one of the axes shows the compared categories and the other axis representing a discrete value. It’s possible, and sometimes desirable, to plot bar graphs including bars clustered by groups.
+	
+In R we can use `plotly` or `barplot()` for barplots with inputs either vectors or matrices.	
+The `ggplot2::diamonds` dataset is comprised of $53,940$ diamond records (rows) with 10 observed characteristics: price (\$326–\$18,823); carat (diamond weight); cut (quality of the cut); color (D (best) to J (worst)); clarity
+(I1 (worst), ..., IF (best)); x, and z length in mm; depth (total depth percentage = z / mean(x, y) = 2 * z / (x + y); and table (diamond width of top).
 
 ```{r}
-bar <- barplot(m <- rowMeans(x) * 10, ylim=c(0, 10))	
-stdev <- sd(t(x[1:4, ]))	
-arrows(bar, m, bar, m + stdev, length=0.15, angle = 90)	
+plot_ly(ggplot2::diamonds, x = ~cut, y = ~price, type = 'bar', color = ~clarity, text= ~clarity)
 ```
 
-Let's look at a more complex example. We utilize the dataset [Case_04_ChildTrauma](https://umich.instructure.com/courses/38100/files/folder/Case_Studies) for illustration. This case study examines associations between post-traumatic psychopathology and service utilization by trauma-exposed children.  	
+We can add error-bars to each bar to indicate a statistical variability.
+
+```{r}
+# bar <- barplot(m <- rowMeans(x) * 10, ylim=c(0, 10))	
+# stdev <- sd(t(x[1:4, ]))	
+# arrows(bar, m, bar, m + stdev, length=0.15, angle = 90)	
+	
+plot_ly(ggplot2::diamonds, y = ~log(price), color=~cut, type = "box") %>%	
+  layout(title = "Boxplot of Diamond (log) Price by Cut",	
+         xaxis=list(title="Diamond Cut"))	
+```
+```{r}
+plot_ly(ggplot2::diamonds, x= ~clarity, y = ~log(price), color=~color, type = "box") %>%	
+  layout(boxmode = "group", title = "Grouped Boxplot of Diamond (log) Price by Clarity and Color",	
+         legend=list(title=list(text='<b> Diamond Color </b>')),	
+         xaxis=list(title="Diamond Clarity"))	
+	
+# for jitter plots, use    boxpoints = "all", jitter = 0.3, pointpos = -1.8, color=~cut)
+```
+
+Let's look at a more complex example. We utilize the dataset [Case_04_ChildTrauma](https://umich.instructure.com/courses/38100/files/folder/Case_Studies) for illustration. This case study examines associations between post-traumatic psychopathology and service utilization by trauma-exposed children.
 
 ```{r}
 data2 <- read.table('https://umich.instructure.com/files/399129/download?download_frd=1', header=T)		
 attach(data2)	
-head(data2)	
+head(data2)
 ```
 
 We have two character variables. Our goal is to draw a bar plot comparing the means of `age` and `service` among different races in this study and we want add standard deviation for each bar. The first thing to do is deleting the two character columns. Remember the input for `barplot()` is numerical vector or matrix. However, we will need race information for classification. Thus, we store it in a different dataset.
 
 ```{r}
-data2.sub <- data2[, c(-5, -6)] 	
-data2 <- data2[, -6]	
+# data2.sub <- data2[, c(-5, -6)] 	
+# data2 <- data2[, -6]	
 ```
 
 Then, we are ready to separate groups and get group means.
@@ -494,42 +502,67 @@ x
 Until now, we had a numerical matrix for the means available for plotting. Now, we can compute a second order statistics - standard deviation, and plot it along with the means, to illustrate the amount of dispersion for each variable.	
 
 ```{r}
-bar <- barplot(x, ylim=c(0, max(x)+2.0), beside=TRUE, 	
-legend.text = c("age", "service") ,  args.legend = list(x = "right"))	
-text(labels=round(as.vector(as.matrix(x)), 2), x=seq(1.4, 21, by=1.5), #y=as.vector(as.matrix(x[1:2, ]))+0.3)	
-	y=11.5)	
+# bar <- barplot(x, ylim=c(0, max(x)+2.0), beside=TRUE, 	
+# legend.text = c("age", "service") ,  args.legend = list(x = "right"))	
+# text(labels=round(as.vector(as.matrix(x)), 2), x=seq(1.4, 21, by=1.5), #y=as.vector(as.matrix(x[1:2, ]))+0.3)	
+# 	y=11.5)	
+# 	
+# m <- x; stdev <- sd(t(x))	
+# arrows(bar, m, bar, m + stdev, length=0.15, angle = 90)	
+# Here, we want the y margin to be little higher than the greatest value (`ylim=c(0, max(x)+2.0)`) because we need to leave space for value labels. Now we can easily notice that Hispanic trauma-exposed children are the youngest in terms of average age and they are less likely to utilize services like primary care, emergency room, outpatient therapy, outpatient psychiatrist, etc.	
 	
-m <- x; stdev <- sd(t(x))	
-arrows(bar, m, bar, m + stdev, length=0.15, angle = 90)	
+# Diamonds Dataset example	
+# data_mean <- ddply(diamonds, c("clarity", "cut"), summarize, price = mean(price))	
+# data_sd <- ddply(diamonds, c("clarity", "cut"), summarize, price = sd(price))	
+# data2 <- data.frame(data_mean, sd=data_sd$price)	
+# 	
+# plot_ly(data = data2[which(data2$cut == 'Ideal'), ], x = ~clarity, y = ~price, type = 'bar',	
+#                name = 'Cut=Ideal', error_y = ~list(array = sd, color = '#000000')) %>% 	
+#   add_trace(data = data2[which(data2$cut == 'Premium'), ], name = 'Cut=Premium')  %>% 	
+#   add_trace(data = data2[which(data2$cut == 'Very Good'), ], name = 'Cut=Very Good') %>% 	
+#   add_trace(data = data2[which(data2$cut == 'Good'), ], name = 'Cut=Good') %>% 	
+#   add_trace(data = data2[which(data2$cut == 'Fair'), ], name = 'Cut=Fair') %>%	
+#   layout(title="Statistical Barplots (Diamonds Dataset)",	
+#          legend=list(title=list(text='<b> Diamond Cuts </b>')))	
+ 	
+library(plyr)                        	
+data_mean <- ddply(data2, c("traumatype", "race"), summarise, service = mean(service))	
+data_sd <- ddply(data2, c("traumatype", "race"), summarise, service = sd(service))	
+data2 <- data.frame(data_mean, sd=data_sd$service)	
+	
+plot_ly(data = data2[which(data2$race == 'black'), ], x = ~traumatype, y = ~service, type = 'bar',	
+               name = 'Black', error_y = ~list(array = sd, color = '#000000')) %>% 	
+  add_trace(data = data2[which(data2$race == 'hispanic'), ], name = 'Hispanic')  %>% 	
+  add_trace(data = data2[which(data2$race == 'other'), ], name = 'Other') %>% 	
+  add_trace(data = data2[which(data2$race == 'white'), ], name = 'White') %>%	
+  layout(title="Statistical Barplots (Child Trauma Dataset)",	
+         legend=list(title=list(text='<b> Race </b>')))	
 ```
 
-Here, we want the y margin to be little higher than the greatest value (`ylim=c(0, max(x)+2.0)`) because we need to leave space for value labels. Now we can easily notice that Hispanic trauma-exposed children are the youngest in terms of average age and they are less likely to utilize services like primary care, emergency room, outpatient therapy, outpatient psychiatrist, etc.	
-
-Another way to plot bar plots is to use `ggplot()` in the ggplot package. This kind of bar plots are quite different from the one we introduced previously. It plot the counts of character variables rather than the means of numerical variables. It takes the values from a `data.frame`. Unlike `barplot()` drawing bar plots from `ggplot2` requires to remain the character variables in the original data frame.	
+Another way to plot bar plots is to use `ggplot()` in the ggplot package. This kind of bar plots are quite different from the one we introduced previously. It plot the counts of character variables rather than the means of numerical variables. It takes the values from a `data.frame`. Unlike `barplot()` drawing bar plots from `ggplot2` requires to remain the character variables in the original data frame.
 
 ```{r}
 library(ggplot2)	
-data2 <- read.table('https://umich.instructure.com/files/399129/download?download_frd=1', header=T)		
-bar1 <- ggplot(data2, aes(race, fill=race)) + geom_bar()+facet_grid(. ~ traumatype) 	
-print(bar1)
+#data2 <- read.table('https://umich.instructure.com/files/399129/download?download_frd=1', header=T)		
+ggplot(data2, aes(race, fill=race)) + geom_bar()+facet_grid(. ~ traumatype)
 ```
 
 This plot help us to compare the occurrence of different types of child-trauma among different races.	
 
 ## Trees and Graphs
 
-In general, a [graph](https://en.wikipedia.org/wiki/Graph_(discrete_mathematics)) is an ordered pair $G = (V, E)$ of vertices ($V$). i.e., nodes or points, and a set edges ($E$), arcs or lines connecting pairs of nodes in $V$. A [tree](https://en.wikipedia.org/wiki/Tree_(graph_theory)) is a special type of acyclic graph that does not include looping paths. Visualization of graphs is critical in many biosocial and health studies and we will see examples throughout this textbook.	
+In general, a [graph](https://en.wikipedia.org/wiki/Graph_(discrete_mathematics)) is an ordered pair $G = (V, E)$ of vertices ($V$). i.e., nodes or points, and a set edges ($E$), arcs or lines connecting pairs of nodes in $V$. A [tree](https://en.wikipedia.org/wiki/Tree_(graph_theory)) is a special type of acyclic graph that does not include looping paths. Visualization of graphs is critical in many biosocial and health studies and we will see examples throughout this textbook.
+	
+In [Chapter 9](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/09_RegressionForecasting.html) and [Chapter 12](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/12_kMeans_Clustering.html) we will learn more about how to build tree models and other clustering methods, and in [Chapter 22](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/22_DeepLearning.html), we will discuss deep learning and neural networks, which have direct graphical representation.
 
-In [Chapter 9](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/09_RegressionForecasting.html) and [Chapter 12](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/12_kMeans_Clustering.html) we will learn more about how to build tree models and other clustering methods, and in [Chapter 22](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/22_DeepLearning.html), we will discuss deep learning and neural networks, which have direct graphical representation.	
-
-This section will be focused on displaying tree graphs. We will use [02_Nof1_Data.csv](https://umich.instructure.com/courses/38100/files/folder/data) for this demonstration.	
+This section will be focused on displaying tree graphs. We will use [02_Nof1_Data.csv](https://umich.instructure.com/courses/38100/files/folder/data) for this demonstration.
 
 ```{r}
 data3<- read.table("https://umich.instructure.com/files/330385/download?download_frd=1", sep=",", header = TRUE)	
-head(data3)	
+head(data3)
 ```
 
-We use `hclust` to build the hierarchical cluster model. `hclust` takes only inputs that have dissimilarity structure as produced by `dist()`. Also, we use `ave` method for agglomeration. Then we can plot our first tree graph.	
+We use `hclust` to build the hierarchical cluster model. `hclust` takes only inputs that have dissimilarity structure as produced by `dist()`. Also, we use `ave` method for agglomeration. Then we can plot our first tree graph.
 
 ```{r}
 hc<-hclust(dist(data3), method='ave') 	
@@ -537,7 +570,7 @@ par (mfrow=c(1, 1))
 plot(hc)
 ```
 
-When we have no limit for maximum cluster groups, we will get the above graph, which is miserable to look at. Luckily, `cutree` will help us to set limitations to number of clusters. `cutree()` takes a `hclust` object and returns a vector of group indicators for all observations.  	
+ When we have no limit for maximum cluster groups, we will get the above graph, which is miserable to look at. Luckily, `cutree` will help us to set limitations to number of clusters. `cutree()` takes a `hclust` object and returns a vector of group indicators for all observations.  
 
 ```{r}
 require(graphics)	
@@ -567,11 +600,11 @@ plot(hc1, hang = -1, main = "Re-start from 10 clusters")
 
 ## Correlation Plots
 
-The `corrplot` package enables the graphical display of a correlation matrix, and confidence intervals, along with some tools for matrix reordering. There are seven visualization methods (parameter method) in `corrplot` package, named "circle", "square", "ellipse", "number", "shade", "color", "pie".	
+The `corrplot` package enables the graphical display of a correlation matrix, and confidence intervals, along with some tools for matrix reordering. There are seven visualization methods (parameter method) in `corrplot` package, named "circle", "square", "ellipse", "number", "shade", "color", "pie".
+	
+Let's use [03_NC_SNP_ROI_Assoc_P_values.csv](https://umich.instructure.com/courses/38100/files/folder/data?) again to investigate the associations among SNPs using correlation plot.
 
-Let's use [03_NC_SNP_ROI_Assoc_P_values.csv](https://umich.instructure.com/courses/38100/files/folder/data?) again to investigate the associations among SNPs using correlation plot.	
-
-The `corrplot()` function we will be using takes correlation matrix only. So we need to get the correlation matrix of our data first via `cor()` function.	
+The `corrplot()` function we will be using takes correlation matrix only. So we need to get the correlation matrix of our data first via `cor()` function.
 
 ```{r}
 # install.packages("corrplot")	
@@ -584,19 +617,15 @@ M[1:10, 1:10]
 We will discover the difference among different methods under `corrplot`.
 
 ```{r}
-#corrplot(M, method = "circle", title = "circle",
-#         tl.cex = 0.5, tl.col = 'black', mar=c(1, 1, 1, 1))	
-## par specs c(bottom, left, top, right) which gives the margin size specified in inches	
-#corrplot(M, method = "square", title = "square",
-#         tl.cex = 0.5, tl.col = 'black', mar=c(1, 1, 1, 1))	
-#corrplot(M, method = "ellipse", title = "ellipse",
-#         tl.cex = 0.5, tl.col = 'black', mar=c(1, 1, 1, 1))	
-#corrplot(M, method = "pie", title = "pie",
-#         tl.cex = 0.5, tl.col = 'black', mar=c(1, 1, 1, 1))	
-#corrplot(M, type = "upper", tl.pos = "td",	
-#         method = "circle", tl.cex = 0.5, tl.col = 'black',	
-#         order = "hclust", diag = FALSE, mar=c(1, 1, 0, 1))	
-#corrplot.mixed(M, number.cex = 0.6, tl.cex = 0.6)	
+corrplot(M, method = "circle", title = "circle", tl.cex = 0.5, tl.col = 'black', mar=c(1, 1, 1, 1))	
+# par specs c(bottom, left, top, right) which gives the margin size specified in inches	
+corrplot(M, method = "square", title = "square", tl.cex = 0.5, tl.col = 'black', mar=c(1, 1, 1, 1))	
+corrplot(M, method = "ellipse", title = "ellipse", tl.cex = 0.5, tl.col = 'black', mar=c(1, 1, 1, 1))	
+corrplot(M, method = "pie", title = "pie", tl.cex = 0.5, tl.col = 'black', mar=c(1, 1, 1, 1))	
+corrplot(M, type = "upper", tl.pos = "td",	
+         method = "circle", tl.cex = 0.5, tl.col = 'black',	
+         order = "hclust", diag = FALSE, mar=c(1, 1, 0, 1))	
+corrplot.mixed(M, number.cex = 0.6, tl.cex = 0.6)
 ```
 
 The shades are different and darker dots represent high correlation of the two variables corresponding to the x and y axes.	
@@ -605,18 +634,18 @@ The shades are different and darker dots represent high correlation of the two v
 
 ## Line plots using `ggplot
 
-[Line charts](https://en.wikipedia.org/wiki/Line_chart) display a series of data points, e.g., observed intensities ($Y$) over time ($X$), by connecting them with straight-line segments. These can be used to either track temporal changes of a process or compare the trajectories of multiple cases, time series or subjects over time, space, or state.	
+[Line charts](https://en.wikipedia.org/wiki/Line_chart) display a series of data points, e.g., observed intensities ($Y$) over time ($X$), by connecting them with straight-line segments. These can be used to either track temporal changes of a process or compare the trajectories of multiple cases, time series or subjects over time, space, or state.
 
-In this section, we will utilize the Earthquakes dataset on [SOCR website](https://wiki.socr.umich.edu/index.php/SOCR_Data_Dinov_021708_Earthquakes). It records information about earthquakes that occurred between 1969 and 2007 with magnitudes larger than 5 on the [Richter scale](https://simple.wikipedia.org/wiki/Richter_scale).	
+In this section, we will utilize the Earthquakes dataset on [SOCR website](https://wiki.socr.umich.edu/index.php/SOCR_Data_Dinov_021708_Earthquakes). It records information about earthquakes that occurred between 1969 and 2007 with magnitudes larger than 5 on the [Richter scale](https://simple.wikipedia.org/wiki/Richter_scale).
 
 ```{r}
 # library("xml2"); library("rvest") 	
 wiki_url <- read_html("https://wiki.socr.umich.edu/index.php/SOCR_Data_Dinov_021708_Earthquakes")	
 html_nodes(wiki_url, "#content")	
-earthquake <- html_table(html_nodes(wiki_url, "table")[[2]])	
+earthquake<- html_table(html_nodes(wiki_url, "table")[[2]])
 ```
 
-In this dataset, we set `Magt`(magnitude type) as groups. We will draw a "Depth vs Latitude" line plot from this dataset. The function we are using is called `ggplot()` under `ggplot2`. The input type for this function is mostly data frame and `aes()` specifies aesthetic mappings of how variables in the data are mapped to visual properties (aesthetics) of the `geom` objects, e.g., lines.	
+In this dataset, we set `Magt`(magnitude type) as groups. We will draw a "Depth vs Latitude" line plot from this dataset. The function we are using is called `ggplot()` under `ggplot2`. The input type for this function is mostly data frame and `aes()` specifies aesthetic mappings of how variables in the data are mapped to visual properties (aesthetics) of the `geom` objects, e.g., lines.
 
 ```{r}
 library(ggplot2)	
@@ -638,13 +667,12 @@ The following segment of R code plots the distribution for latitude among differ
 
 ```{r}
 # library("ggplot2")	
-plot5 <- ggplot(earthquake, aes(Latitude, group=Magt, newsize=2))+geom_density(aes(color=Magt), size = 2) +	
-theme(legend.position = 'right', 	
+ggplot(earthquake, aes(Latitude, group=Magt, newsize=2))+geom_density(aes(color=Magt), size = 2) +	
+  theme(legend.position = 'right', 	
       legend.text = element_text(color= 'black', size = 12, face = 'bold'),	
       legend.key = element_rect(size = 0.5, linetype='solid'),	
       legend.key.size = unit(1.5, 'lines'))	
-print(plot5)
-# table(earthquake$Magt) # to see the distribution of magnitude types
+# table(earthquake$Magt) # to see the distribution of magnitude types	
 ```
 
 Note how the green `magt` type (Local (ML) earthquakes) has a peak at latitude $37.5$, which represents [37-38 degrees North](https://en.wikipedia.org/wiki/37th_parallel_north).	
@@ -658,13 +686,26 @@ set.seed(1234)
 poisson_sample <- rpois(1000, 1)	
 # slightly offset the histogram bins to align with mass function	
 hist_breakes <- c(-0.5, 0.5, 1.5, 2.5, 3.5, 6.5)	
-hist(poisson_sample, freq=F, breaks = hist_breakes, col="light blue", lwd=2, ylim = c(0, 0.45))	
-lines(density(poisson_sample, kernel = "gaussian"), lwd=2, col="blue") 	
+# hist(poisson_sample, freq=F, breaks = hist_breakes, col="light blue", lwd=2, ylim = c(0, 0.45))	
+# lines(density(poisson_sample, kernel = "gaussian"), lwd=2, col="blue") 	
+# t <- seq(0, 6, by=0.01)	
+# lines(t, dpois(t,1), type="h", col="magenta", lwd=6) # add the theoretical density line	
+# legend(3,0.3, legend=c("Sample histogram (n=1,000)", "Theoretical mass function", 	
+#                             "Gaussian kernel density estimate"), 	
+#        bty = "n", box.lty=0, col=c("light blue", "magenta", "blue"), lty=1, lwd=3)	
+	
+h <-hist(poisson_sample, breaks = hist_breakes, plot = F)	
 t <- seq(0, 6, by=0.01)	
-lines(t, dpois(t,1), type="h", col="magenta", lwd=6) # add the theoretical density line	
-legend(3,0.3, legend=c("Sample histogram (n=1,000)", "Theoretical mass function", 	
-                            "Gaussian kernel density estimate"), 	
-       bty = "n", box.lty=0, col=c("light blue", "magenta", "blue"), lty=1, lwd=3)	
+Pois <- density(poisson_sample, kernel = "gaussian")	
+	
+plot_ly(x = h$mids, y = h$density, type = "bar", name="Sample Histogram") %>%	
+  add_lines(x=t, y=dpois(t,1), type="scatter", mode="lines", 	
+            name="(Theoretical) Poisson Mass Function") %>%	
+  add_lines(x=Pois$x, y=Pois$y, 	
+        type="scatter", mode="lines", 	
+        name="Gaussian kernel density estimate (sample)") %>%	
+  layout(bargap=0.1, title="Histogram (Simulated Poisson Data)",	
+         legend = list(orientation = 'h'))	
 ```
 
 ## Data Modeler
@@ -704,16 +745,44 @@ Let's plot the histograms of for each of the 9 features.
 ```{r}
 # plot all histograms	
 library(tidyr)	
-library(ggplot2)	
-# or `library(tidyverse)`	
+# library(ggplot2)	
+# # or `library(tidyverse)`	
+# 	
+# crystallography_data %>% gather() %>% head()	
+# #     key   value	
+# #1 AC1338  70.547	
+# #2 AC1338  40.448	
+# #3 AC1338  47.212	
+# #4 AC1338  91.468	
+# #5 AC1338  79.088	
+# #6 AC1338 132.319	
+# #...	
+# crystallography_data %>% gather() %>% tail()	
+# #      key  value	
+# #5872 Rec 68.479	
+# #5873 Rec 41.047	
+# #5874 Rec 47.546	
+# #5875 Rec 98.558	
+# #5876 Rec 52.956	
+# #5877 Rec 82.470	
+# 	
+# ggplot(gather(crystallography_data), aes(value)) + 	
+#     geom_histogram(bins = 20) + 	
+#     facet_wrap(~key, scales = 'free_x')	
 	
-crystallography_data %>% gather() %>% head()	
-
-crystallography_data %>% gather() %>% tail()	
-
-ggplot(gather(crystallography_data), aes(value)) + 	
-    geom_histogram(bins = 20) + 	
-    facet_wrap(~key, scales = 'free_x')	
+	
+crystalCompleteData <- crystallography_data[complete.cases(crystallography_data), ]	
+	
+df_crystal <- apply(crystalCompleteData,  2,  density, kernel="gaussian", bw=15)	
+	
+df <- data.frame(x = unlist(lapply(df_crystal, "[[", "x")),	
+                 y = unlist(lapply(df_crystal, "[[", "y")),	
+                 sample = rep(names(df_crystal), each = length(df_crystal[[1]]$x)))	
+	
+plot_ly(df, x = ~x, y = ~y, color = ~sample, type = "scatter", mode = "lines") %>% 	
+    layout(title='Crystallography Sample Densities', 	
+           legend=list(title=list(text='<b> Samples </b>')), 	
+           xaxis=list(title='X'), yaxis=list(title='Density'))
 ```
 
 ### Single-distribution data modeling
@@ -721,7 +790,10 @@ ggplot(gather(crystallography_data), aes(value)) +
 We will fit [Weibull](https://en.wikipedia.org/wiki/Weibull_distribution), [Gamma](https://en.wikipedia.org/wiki/Gamma_distribution), and [Log-Normal](https://en.wikipedia.org/wiki/Log-normal_distribution) distribution models to each feature in the data.	
 
 ```{r}
-library(fitdistrplus)	
+# install.packages("fitdistrplus")	
+library(fitdistrplus)
+```
+```{r}
 col_num <- dim(crystallography_data)[2]; col_num	
 	
 # Store the Weibull, Gamma, and Log-Normal Distribution models for the 9 features	
@@ -783,13 +855,15 @@ for(i in 1:col_num) {
 }	
 	
 # Check results, just for one model	
-str(fit_W[[1]])
+str(fit_W[[1]])	
 ```
+
 ### Visual inspection 	
-Let's examine graphically the quality of the fitted distribution models. We'll plot the histograms of the features, the fitted probability densities, and the corresponding cumulative distribution functions (CDF) and compare them to their sample counterparts.	
- 	
+
+Let's examine graphically the quality of the fitted distribution models. We'll plot the histograms of the features, the fitted probability densities, and the corresponding cumulative distribution functions (CDF) and compare them to their sample counterparts.
+
 ```{r}
-windows(width=20, height=8)	
+# windows(width=20, height=8)	
 par(mfrow=c(3,3))	
 	
 for(i in 1:col_num) {	
@@ -819,10 +893,11 @@ for(i in 1:col_num) {
   # cdfcomp (list(fit_w, fit_g, fit_ln), legendtext = plot.legend)	
   # qqcomp  (list(fit_w, fit_g, fit_ln), legendtext = plot.legend)	
   # ppcomp  (list(fit_w, fit_g, fit_ln), legendtext = plot.legend)	
-}	
-	
+}
+```
+```{r}
 # Plot histograms and CDF (cumulative distribution function) models	
-windows(width=20, height=12)	
+# windows(width=20, height=12)	
 par(mfrow=c(3,3))	
 for(i in 1:col_num) {	
   plot.legend <- c(sprintf("Weibull(%s=%s,%s=%s) (m=%s,sd=%s)", 	
@@ -843,9 +918,9 @@ for(i in 1:col_num) {
   cdfcomp(list(fit_W[[i]], fit_G[[i]], fit_LN[[i]]), legendtext = plot.legend, 	
            xlegend = "bottomright", ylegend ="right",	
            main=sprintf("Width: Feature: %s: Aggregate Hist & Model CDFs", colnames(crystallography_data)[i]))	
-}
+}	
 ```
- 	
+
 ### Quantitative summaries
 
 Often it's useful to export the numerical results of the models. This may include various distribution characteristics like measure of centrality (e.g., mean, median, mode), measures of dispersion, and metrics of the model performance (e.g., [Kolmogorov-Smirnov test](https://wiki.socr.umich.edu/index.php/SMHS_ModelFitting)).	
