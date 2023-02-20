@@ -956,12 +956,14 @@ df_summary <- as.data.frame(df_matrix, row.names=colNames)
 colnames(df_summary) <- c("Weibull_mode", "Weibull_sd","Weibull_KS.test.stat", "Weibull_KS.p.val",	
                   "Gamma_mode", "Gamma_sd","Gamma_KS.test.stat", "Gamma_KS.p.val",	
                   "Lognormal_mode", "Lognormal_sd","Lognormal_KS.test.stat", "Lognormal_KS.p.val")	
-df_summary	
-	
+df_summary
+```
+
+```{r}
 library("DT")	
 datatable(df_summary)	
 #write.csv(df_summary, file = "/Desktop/SummaryResults_Width_Models.csv", 	
-#          row.names=T, col.names=T)
+#          row.names=T, col.names=T)	
 ```
 
 ### Mixture distribution data modeling
@@ -988,15 +990,22 @@ crystallography_data <- read.csv(file = "https://umich.instructure.com/files/133
 library(mixtools)	
 	
 # Fit mixture models	
-for(i in 1:col_num) {	
-  data_no_NA <- crystallography_data[complete.cases(crystallography_data[, i]), i]	
-  length(data_no_NA)	
-  fit_W[[i]]  <- weibullRMM_SEM(data_no_NA, k=df_sampleMixtureParam[1,i]); summary(fit_W[i])	
-  fit_G[[i]]  <- gammamixEM(data_no_NA, k=df_sampleMixtureParam[1,i]); summary(fit_G[i])	
-  fit_LN[[i]] <- normalmixEM(data_no_NA, k=df_sampleMixtureParam[1,i]); summary(fit_LN[i])	
-}	
+capture.output(	
+  for(i in 1:col_num) {	
+    data_no_NA <- crystallography_data[complete.cases(crystallography_data[, i]), i]	
+    length(data_no_NA)	
+    fit_W[[i]]  <- weibullRMM_SEM(data_no_NA, k=df_sampleMixtureParam[1,i], verb=F)	
+    # summary(fit_W[i])	
+    fit_G[[i]]  <- gammamixEM(data_no_NA, k=df_sampleMixtureParam[1,i], verb=F)	
+    # summary(fit_G[i])	
+    fit_LN[[i]] <- normalmixEM(data_no_NA, k=df_sampleMixtureParam[1,i], verb=F)	
+    # summary(fit_LN[i])	
+  }, 	
+  file='NUL'	
+)	
+	
 # plot(fit_LN[[1]], which=2)	
-# lines(density(crystallography_data[complete.cases(crystallography_data[, 1]), 1]), lty=2, lwd=2)	
+# lines(density(crystallography_data[complete.cases(crystallography_data[, 1]), 1]), lty=2, lwd=2)
 ```
 
 ### Plotting the mixture distribution models
@@ -1091,7 +1100,6 @@ for(i in 1:2) {    # this only plots the first 2 samples to save space
                   " Normal Models of ", sampleColNames[i]))	
 }	
 ```
-
 
 ### Reporting model parameter estimates
 
@@ -1269,7 +1277,7 @@ We will now illustrate an example of 3D/4D visualization in `R` using the packag
 
 ```{r}
 # install.packages("brainR") ## if necessary	
-library(brainR)	
+#library(brainR)	
 # Test data: https://socr.umich.edu/HTML5/BrainViewer/data/TestBrain.nii.gz	
 	
 brainURL <- "https://socr.umich.edu/HTML5/BrainViewer/data/TestBrain.nii.gz"	
