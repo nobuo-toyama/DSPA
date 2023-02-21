@@ -8,6 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+Some students and readers may find it useful to first review some of the [fundamental mathematical representations, analytical modeling techniques, and basic concepts](https://socr.umich.edu/BPAD/BPAD_notes/Biophysics430_Chap01_MathFoundations.html). Some of these play critical roles in all subsequent chapters and sections. Examples of core mathematical principles include calculus of differentiation and integration; representation of scalars, vectors, matrices, and tensors; displacement, velocity, and acceleration; polynomials, exponents, and logarithmic functions; Taylor’s series; complex numbers; ordinary and partial differential equations; probability and statistics; statistical moments; and probability distributions.
 
 *Linear algebra* is a branch of mathematics that studies linear associations using vectors, vector-spaces, linear equations, linear  transformations and matrices. Although it is generally challenging to visualize complex data, e.g., large vectors, tensors, and tables in n-dimensional Euclidean spaces ($n\ge 3$), linear algebra allows us to represent, model, synthesize and summarize such compex data.	
 
@@ -672,6 +673,10 @@ Notice that the minimum of $f(x)$ and $f^2(x)$ are achieved at the same roots of
 ### Least Square Estimation
 
 ```{r}
+library(plotly)
+```
+
+```{r}
 #x = cbind(data$Height, data$Age)	
 x = data$Height	
 y = data$Weight	
@@ -684,11 +689,21 @@ beta_hat <- solve(crossprod(X)) %*% crossprod(X, y)
 Now we can see the results of this by computing the estimated $\hat{\beta}_0+\hat{\beta}_1 x$ for any value of $x$:	
 
 ```{r}
-newx <- seq(min(x), max(x), len=100)	
-X <- cbind(1, newx)	
+# newx <- seq(min(x), max(x), len=100)	
+X <- cbind(1, x)	
 fitted <- X%*%beta_hat	
-plot(x, y, xlab="MLB Player's Height", ylab="Playeer's Weight")	
-lines(newx, fitted, col=2)
+# or directly: fitted <- lm(y ~ x)$fitted	
+# plot(x, y, xlab="MLB Player's Height", ylab="Player's Weight")	
+# lines(x, fitted, col=2)	
+	
+plot_ly(x = ~x) %>% 	
+  add_markers(y = ~y, name="Data Scatter") %>% 	
+  add_lines(x = ~x, y = ~fitted[,1], name="(Manual) Linear Model (Weight ~ Height)") %>% 	
+  add_lines(x = ~x, y = ~lm(y ~ x)$fitted, name="(Direct) lm(Weight ~ Height)", 	
+            line = list(width = 4, dash = 'dash')) %>% 	
+    layout(title='Baseball Players: Linear Model of Weight vs. Height', 	
+           xaxis = list(title="Height (in)"), yaxis = list(title="Weight (lb)"),	
+           legend = list(orientation = 'h'))	
 ```
 
 $\hat{\boldsymbol{\beta}}=(\mathbf{X}^\top \mathbf{X})^{-1} \mathbf{X}^\top \mathbf{Y}$ is one of the most widely used results in data analysis. One of the advantages of this approach is that we can use it in many different situations. 	
@@ -842,8 +857,14 @@ $$
 to get the column averages. We are able to visualize the column means too.
 
 ```{r}
-colmeans <- as.matrix(colmeans)	
-hist(colmeans)
+colmeans<-as.matrix(colmeans)	
+h <- hist(colmeans, plot=F)	
+	
+plot_ly(x = h$mids, y = h$counts, type = "bar", name = "Column Averages") %>% 	
+    layout(title='Average Gene Expression Histogram', 	
+          xaxis = list(title = "Column Means"),	
+          yaxis = list(title = "Average Expression", side = "left"),	
+           legend = list(orientation = 'h'))
 ```
 
 The histogram shows that the distribution is roughly normal.	
@@ -959,20 +980,19 @@ $$
 As $Y=X\beta +\epsilon$ implies that $X^TY \sim X^T(X\beta)=(X^TX)\beta$, and thus the solution for $\beta$ is obtained by multiplying both hand sides by $(X^TX)^{-1}$:	
 $$\hat{\beta}=(X^TX)^{-1}X^TY$$
 
-Matrix calculation would be faster than fitting a regression. Let's apply this to the [Lahman baseball data](http://seanlahman.com/files/database/readme2014.txt) representing yearly stats and standings. Let's download it first via this link [baseball.data](https://umich.instructure.com/files/2018445/download?download_frd=1) and put it in the R working directory. We can use `load()` function to load local RData. For this example we subset the dataset by `G==162` and `yearID<2002`. Also, we create a new feature named `Singles` that is equal to `H(Hits by batters) - X2B(Doubles) - X3B(Tripples) - HR(Homeruns by batters)`. Finally, we only pick four features `R` (Runs scored), `Singles`, `HR` (Homeruns by batters) and `BB` (Walks by batters).	
+ Matrix calculation would be faster than fitting a regression. Let's apply this to the [Lahman baseball data](http://seanlahman.com/files/database/readme2014.txt) representing yearly stats and standings. Let's download it first via this link [baseball.data](https://umich.instructure.com/files/2018445/download?download_frd=1) and put it in the R working directory. We can use `load()` function to load local RData. For this example we subset the dataset by `G==162` and `yearID<2002`. Also, we create a new feature named `Singles` that is equal to `H(Hits by batters) - X2B(Doubles) - X3B(Tripples) - HR(Homeruns by batters)`. Finally, we only pick four features `R` (Runs scored), `Singles`, `HR` (Homeruns by batters) and `BB` (Walks by batters)
 
 ```{r}
-	
 #If you downloaded the .RData locally first, then you can easily load it into the R workspace by:	
 # load("Teams.RData")	
 	
 # Alternatively you can also download the data in CSV format from https://umich.instructure.com/courses/38100/files/folder/data (teamsData.csv)	
 Teams <- read.csv('https://umich.instructure.com/files/2798317/download?download_frd=1', header=T)	
 	
-dat <- Teams[Teams$G==162&Teams$yearID<2002, ]	
-dat$Singles <- dat$H - dat$X2B - dat$X3B - dat$HR	
+dat<-Teams[Teams$G==162&Teams$yearID<2002, ]	
+dat$Singles<-dat$H-dat$X2B-dat$X3B-dat$HR	
 dat<-dat[, c("R", "Singles", "HR", "BB")]	
-head(dat)
+head(dat)	
 ```
 
 Now let's do a simple example. We pick `R` as the response variable and `BB` as the independent variable. Here we need to add a column of *1*'s to the $X$ matrix. 	
@@ -1017,9 +1037,16 @@ fit$coefficients; t(beta2)
 We can visualize the relationship between `R` and `BB` by drawing a scatter plot.	
 
 ```{r}
-plot(dat$BB, dat$R, xlab = "BB", ylab = "R",
-     main = "Scatter plot/regression for baseball data")	
-abline(beta1[1, 1], beta1[2, 1], lwd=4, col="red")
+# plot(dat$BB, dat$R, xlab = "BB", ylab = "R", main = "Scatter plot/regression for baseball data")	
+# abline(beta1[1, 1], beta1[2, 1], lwd=4, col="red")	
+	
+plot_ly(x = ~dat$BB) %>% 	
+  add_markers(y = ~dat$R, name="Data Scatter") %>% 	
+  add_lines(x = ~dat$BB, y = ~lm(dat$R ~ dat$BB)$fitted, name="lm(Runs scored ~ Walks by batters)", 	
+            line = list(width = 4)) %>% 	
+    layout(title='Scatter plot/regression for baseball data', 	
+           xaxis = list(title="(BB) Walks by batters"), yaxis = list(title="(R) Runs scored"),	
+           legend = list(orientation = 'h'))	
 ```
 
 Here the red line is our regression line calculated by matrix calculation.	
@@ -1027,69 +1054,114 @@ Here the red line is our regression line calculated by matrix calculation.
 Matrix calculation can still work if we have multiple independent variables. Now we will add variable `HR` to the model.	
 
 ```{r}
-X <- cbind(rep(1, n=nrow(dat)), dat$BB, dat$HR)	
-beta <- solve(t(X) %*% X) %*% t(X) %*% Y	
+library(reshape2)	
+X<-cbind(rep(1, n=nrow(dat)), dat$BB, dat$HR)	
+beta<-solve(t(X)%*%X)%*%t(X)%*%Y	
 beta	
-#install.packages("scatterplot3d")	
-library(scatterplot3d)	
-myScatter3D <- scatterplot3d(dat$BB, dat$HR, dat$R)	
+# #install.packages("scatterplot3d")	
+# library(scatterplot3d)	
+# myScatter3D <- scatterplot3d(dat$BB, dat$HR, dat$R)	
+# 	
+# fit = lm(dat$R ~ dat$BB + dat$HR, data = dat)	
+# # Plot the linear model	
+# # get the BB & HR ranges summary(dat$BB); summary(dat$HR)	
+# cf = fit$coefficients	
+# pltx = seq(344, 775,length.out = 100)	
+# plty = seq(11,264,length.out = 100)	
+# pltz = cf[1] + cf[2]*pltx + cf[3]*plty	
+# #Add the line to the plot	
+# myScatter3D$points3d(pltx,plty,pltz, type = "l", col = "red", lwd=3)	
+	
+# # interactive *rgl* 3D plot	
+# library(rgl)	
+# fit <- lm(dat$R ~ dat$BB + dat$HR)	
+# coefs <- coef(fit)	
+# a <- coefs["dat$BB"]	
+# b <- coefs["dat$HR"]	
+# c <- -1	
+# d <- coefs["(Intercept)"]	
+# open3d()	
+# plot3d(dat$BB,  dat$HR, dat$R, type = "s", col = "red", size = 1)	
+# planes3d(a, b, c, d, alpha = 0.5)	
+# # planes3d(b, a, -1.5, d, alpha = 0.5)	
+# # planes3d draws planes using the parametrization a*x + b*y + c*z + d = 0.	
+# # Multiple planes may be specified by giving multiple values for the normal	
+# # vector (a, b, c) and the offset parameter d	
+# 	
+# pca1 <- prcomp(as.matrix(cbind(dat$BB,  dat$HR, dat$R)), center = T); summary(pca1)	
+# 	
+# # Given two vectors PCA1 and PCA2, the cross product V = PCA1 x PCA2 	
+# # is orthogonal to both A and to B, and a normal vector to the 	
+# # plane containing PCA1 and PCA2	
+# # If PCA1 = (a,b,c) and PCA2 = (d, e, f), then the cross product is	
+# # PCA1 x PCA2 =  (bf - ce, cd - af, ae - bd)	
+# # PCA1 = pca1$rotation[,1] and PCAS2=pca1$rotation[,2]	
+# # https://en.wikipedia.org/wiki/Cross_product#Names	
+# # prcomp$rotation contains the matrix of variable loadings, 	
+# # i.e., a matrix whose columns contain the eigenvectors	
+# #normVec = c(pca1$rotation[,1][2]*pca1$rotation[,2][3]-	
+# #              pca1$rotation[,1][3]*pca1$rotation[,2][2],	
+# #            pca1$rotation[,1][3]*pca1$rotation[,2][1]-	
+# #              pca1$rotation[,1][1]*pca1$rotation[,2][3],	
+# #            pca1$rotation[,1][1]*pca1$rotation[,2][2]-	
+# #              pca1$rotation[,1][2]*pca1$rotation[,2][1]	
+# #            )	
+# normVec = c(pca1$rotation[2,1]*pca1$rotation[3,2]-	
+#                  pca1$rotation[3,1]*pca1$rotation[2,2],	
+#              pca1$rotation[3,1]*pca1$rotation[1,2]-	
+#                  pca1$rotation[1,1]*pca1$rotation[3,2],	
+#              pca1$rotation[1,1]*pca1$rotation[2,2]-	
+#                  pca1$rotation[2,1]*pca1$rotation[1,2]	
+# )	
+# 	
+# # Plot the PCA Plane	
+# plot3d(dat$BB,  dat$HR, dat$R, type = "s", col = "red", size = 1)	
+# planes3d(normVec[1], normVec[2], normVec[3], 90, alpha = 0.5)	
+# myScatter3D <- scatterplot3d(dat$BB, dat$HR, dat$R)	
+	
+dat$name <- Teams[Teams$G==162&Teams$yearID<2002, "name"]	
 	
 fit = lm(dat$R ~ dat$BB + dat$HR, data = dat)	
 # Plot the linear model	
 # get the BB & HR ranges summary(dat$BB); summary(dat$HR)	
 cf = fit$coefficients	
-pltx = seq(344, 775,length.out = 100)	
-plty = seq(11,264,length.out = 100)	
+pltx = seq(344, 775,length.out = length(dat$BB))	
+plty = seq(11,264,length.out = length(dat$BB))	
 pltz = cf[1] + cf[2]*pltx + cf[3]*plty	
-#Add the line to the plot	
-myScatter3D$points3d(pltx,plty,pltz, type = "l", col = "red", lwd=3)	
 	
-# interactive *rgl* 3D plot	
-library(rgl)	
-fit <- lm(dat$R ~ dat$BB + dat$HR)	
-coefs <- coef(fit)	
-a <- coefs["dat$BB"]	
-b <- coefs["dat$HR"]	
-c <- -1	
-d <- coefs["(Intercept)"]	
-open3d()	
-plot3d(dat$BB,  dat$HR, dat$R, type = "s", col = "red", size = 1)	
-planes3d(a, b, c, d, alpha = 0.5)	
-# planes3d(b, a, -1.5, d, alpha = 0.5)	
-# planes3d draws planes using the parametrization a*x + b*y + c*z + d = 0.	
-# Multiple planes may be specified by giving multiple values for the normal	
-# vector (a, b, c) and the offset parameter d	
-	
-pca1 <- prcomp(as.matrix(cbind(dat$BB,  dat$HR, dat$R)), center = T); summary(pca1)	
-	
-# Given two vectors PCA1 and PCA2, the cross product V = PCA1 x PCA2 	
-# is orthogonal to both A and to B, and a normal vector to the 	
-# plane containing PCA1 and PCA2	
-# If PCA1 = (a,b,c) and PCA2 = (d, e, f), then the cross product is	
-# PCA1 x PCA2 =  (bf - ce, cd - af, ae - bd)	
-# PCA1 = pca1$rotation[,1] and PCAS2=pca1$rotation[,2]	
-# https://en.wikipedia.org/wiki/Cross_product#Names	
-# prcomp$rotation contains the matrix of variable loadings, 	
-# i.e., a matrix whose columns contain the eigenvectors	
-#normVec = c(pca1$rotation[,1][2]*pca1$rotation[,2][3]-	
-#              pca1$rotation[,1][3]*pca1$rotation[,2][2],	
-#            pca1$rotation[,1][3]*pca1$rotation[,2][1]-	
-#              pca1$rotation[,1][1]*pca1$rotation[,2][3],	
-#            pca1$rotation[,1][1]*pca1$rotation[,2][2]-	
-#              pca1$rotation[,1][2]*pca1$rotation[,2][1]	
-#            )	
-normVec = c(pca1$rotation[2,1]*pca1$rotation[3,2]-	
-                 pca1$rotation[3,1]*pca1$rotation[2,2],	
-             pca1$rotation[3,1]*pca1$rotation[1,2]-	
-                 pca1$rotation[1,1]*pca1$rotation[3,2],	
-             pca1$rotation[1,1]*pca1$rotation[2,2]-	
-                 pca1$rotation[2,1]*pca1$rotation[1,2]	
-)	
-	
-# Plot the PCA Plane	
-plot3d(dat$BB,  dat$HR, dat$R, type = "s", col = "red", size = 1)	
-planes3d(normVec[1], normVec[2], normVec[3], 90, alpha = 0.5)
+# Plot Scatter and add the LM line to the plot	
+plot_ly() %>%	
+  add_trace(x = ~pltx, y = ~plty, z = ~pltz, type="scatter3d", mode="lines",	
+        line = list(color = "red", width = 4), name="lm(R ~ BB + HR") %>% 	
+  add_markers(x = ~dat$BB, y = ~dat$HR, z = ~dat$R, color = ~dat$name, mode="markers") %>% 	
+  layout(scene = list(xaxis = list(title = '(BB) Walks by batters'),	
+                        yaxis = list(title = '(HR) Homeruns by batters'),	
+                        zaxis = list(title = '(R) Runs scored')))
 ```
+
+```{r}
+# Plot Scatter and add the LM PLANE to the plot	
+lm <- lm(R ~ 0 + HR + BB, data = dat)	
+	
+#Setup Axis	
+axis_x <- seq(min(dat$HR), max(dat$HR), length.out=100)	
+axis_y <- seq(min(dat$BB), max(dat$BB), length.out=100)	
+	
+#Sample points	
+lm_surface <- expand.grid(HR = axis_x, BB = axis_y, KEEP.OUT.ATTRS = F)	
+lm_surface$R <- predict.lm(lm, newdata = lm_surface)	
+lm_surface <- acast(lm_surface, HR ~ BB, value.var = "R") # R ~ 0 + HR + BB	
+	
+plot_ly(dat, x = ~HR, y = ~BB, z = ~R,	
+        text = ~name, type = "scatter3d", mode = "markers", color = ~dat$name) %>%	
+  add_trace(x = ~axis_x, y = ~axis_y, z = ~lm_surface, type="surface", color="gray", opacity=0.3) %>%	
+  layout(title="3D Plane Regression (R ~ BB + HR); Color=BB Team", showlegend = F,	
+         xaxis = list(title = '(BB) Walks by batters'),	
+         yaxis = list(title = '(HR) Homeruns by batters'),	
+         zaxis = list(title = '(R) Runs scored')) %>% 	
+  hide_colorbar()	
+```
+
 
 # Sample covariance matrix
 
