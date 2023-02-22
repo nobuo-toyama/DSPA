@@ -51,9 +51,20 @@ y^T_{2\times500} = \begin{bmatrix}
 $$
 
 ```{r}
-plot(y[1, ], y[2, ], xlab="Twin 1 (standardized height)", 	
-     ylab="Twin 2 (standardized height)", xlim=c(-3, 3), ylim=c(-3, 3))	
-points(y[1, 1:2], y[2, 1:2], col=2, pch=16)
+# plot(y[1, ], y[2, ], xlab="Twin 1 (standardized height)", 	
+#      ylab="Twin 2 (standardized height)", xlim=c(-3, 3), ylim=c(-3, 3))	
+# points(y[1, 1:2], y[2, 1:2], col=2, pch=16)	
+	
+library(plotly)	
+plot_ly() %>% 	
+  add_markers(x = ~y[1, ], y = ~y[2, ], name="Data Scatter") %>% 	
+  add_markers(x = y[1, 1], y = y[2, 1], marker=list(color = 'red', size = 20,	
+                   line = list(color = 'yellow', width = 2)), name="Twin-pair 1") %>% 	
+  add_markers(x = y[1, 2], y = y[2, 2], marker=list(color = 'green', size = 20,	
+                   line = list(color = 'orange', width = 2)), name="Twin-pair 2")%>% 	
+    layout(title='Scatter Plot Simulated Twin Data (Y)', 	
+           xaxis = list(title="Twin 1 (standardized height)"), yaxis = list(title="Twin 2 (standardized height)"),	
+           legend = list(orientation = 'h'))
 ```
 
 These data may represent a fraction of the information included in a high-throughput neuroimaging genetics study of twins. You can see [one example of such pediatric study here](https://wiki.socr.umich.edu/index.php/SOCR_Data_Oct2009_ID_NI). 	
@@ -78,14 +89,25 @@ z = rbind( z1, z2) # matrix z has the same dimension as y
 thelim <- c(-3, 3)	
 # par(mar=c(1, 2))	
 # par(mfrow=c(2,1))	
-plot(y[1, ], y[2, ], xlab="Twin 1 (standardized height)", 	
-     ylab="Twin 2 (standardized height)", 	
-     xlim=thelim, ylim=thelim)	
-points(y[1, 1:2], y[2, 1:2], col=2, pch=16)	
+# plot(y[1, ], y[2, ], xlab="Twin 1 (standardized height)", 	
+#      ylab="Twin 2 (standardized height)", 	
+#      xlim=thelim, ylim=thelim)	
+# points(y[1, 1:2], y[2, 1:2], col=2, pch=16)	
 	
-plot(z[1, ], z[2, ], xlim=thelim, ylim=thelim, xlab="Average height", ylab="Difference in height")	
-points(z[1, 1:2], z[2, 1:2], col=2, pch=16)	
-par(mfrow=c(1,1))
+# plot(z[1, ], z[2, ], xlim=thelim, ylim=thelim, xlab="Average height", ylab="Difference in height")	
+# points(z[1, 1:2], z[2, 1:2], col=2, pch=16)	
+# par(mfrow=c(1,1))	
+	
+plot_ly() %>% 	
+  add_markers(x = ~z[1, ], y = ~z[2, ], name="Data Scatter") %>% 	
+  add_markers(x = z[1, 1], y = z[2, 1], marker=list(color = 'red', size = 20,	
+                   line = list(color = 'yellow', width = 2)), name="Twin-pair 1") %>% 	
+  add_markers(x = y[1, 2], y = y[2, 2], marker=list(color = 'green', size = 20,	
+                   line = list(color = 'orange', width = 2)), name="Twin-pair 2") %>% 	
+  layout(title='Scatter Plot Transformed Twin Data (Z)', 	
+         xaxis = list(title="Twin 1 (standardized height)", scaleanchor = "y", scaleratio = 2), 	
+         yaxis = list(title="Twin 2 (standardized height)", scaleanchor = "x", scaleratio = 0.5),	
+         legend = list(orientation = 'h'))
 ```
 
 Of course, matrix linear algebra notation can be used to represent this affine transformation of the data. Here we can see that to get the result `z`, we multiplied `y` by the matrix $A$:	
@@ -133,12 +155,25 @@ $$A=\frac{Y_1+Y_2}{2} \\ M=Y_1 - Y_2.$$
 ```{r}
 MA <- matrix(c(1/2, 1, 1/2, -1), 2, 2)	
 	
-MA_z <- MA %*% y	
+MA_z <- MA%*%y	
 d <- dist(t(y))	
 d_MA <- dist(t(MA_z))	
 	
-plot(as.numeric(d), as.numeric(d_MA)) 	
-abline(0, 1, col=2)
+# plot(as.numeric(d), as.numeric(d_MA)) 	
+# abline(0, 1, col=2)	
+	
+plot_ly() %>% 	
+  add_markers(x = ~as.numeric(d)[1:5000], y = ~as.numeric(d_MA)[1:5000], name="Transformed Twin Distances") %>% 	
+  add_markers(x = ~as.numeric(d)[1], y = ~as.numeric(d_MA)[1], marker=list(color = 'red', size = 20,	
+                   line = list(color = 'yellow', width = 2)), name="Twin-pair 1") %>% 	
+  add_markers(x = ~as.numeric(d)[2], y = ~as.numeric(d_MA)[2], marker=list(color = 'green', size = 20,	
+                   line = list(color = 'orange', width = 2)), name="Twin-pair 2") %>% 	
+  add_trace(x = ~c(0,8), y = ~c(0,8), mode="lines",	
+        line = list(color = "red", width = 4), name="Preserved Distances") %>% 	
+    layout(title='Preservation of Distances Between Twins (Transform=MA_Z)', 	
+           xaxis = list(title="Original Twin Distances", range = c(0, 8)), 	
+           yaxis = list(title="Transformed Twin Distances", range = c(0, 8)),	
+           legend = list(orientation = 'h'))
 ```
 
 Observe that this MA transformation is not an isometry - the distances are not preserved. Here is one example with $v1=\begin{bmatrix} v1_x=0 \\ v1_y=1 \end{bmatrix}$, $v2=\begin{bmatrix} v2_x=1 \\ v2_y=0 \end{bmatrix}$, which are distance $\sqrt{2}$ apart in their native space, but separated further by the transformation $MA$, $d(MA(v1),MA(v2))=2$.	
@@ -192,13 +227,26 @@ Set $A = \frac{1}{\sqrt{2}} \begin{pmatrix}1&1\\1&-1\\ \end{pmatrix}$. It's easy
 The simplest way to test the isometry is to perform the linear transformation directly as follow.	
 
 ```{r}
-A <- 1/sqrt(2) * matrix(c(1, 1, 1, -1), 2, 2)	
-z <- A %*% y	
+A <- 1/sqrt(2)*matrix(c(1, 1, 1, -1), 2, 2)	
+z <- A%*%y	
 d <- dist(t(y))	
 d2 <- dist(t(z))	
 	
-plot(as.numeric(d), as.numeric(d2)) 	
-abline(0, 1, col=2)
+# plot(as.numeric(d), as.numeric(d2)) 	
+# abline(0, 1, col=2)	
+	
+plot_ly() %>% 	
+  add_markers(x = ~as.numeric(d)[1:5000], y = ~as.numeric(d2)[1:5000], name="Transformed Twin Distances") %>% 	
+  add_trace(x = ~c(0,8), y = ~c(0,8), mode="lines",	
+        line = list(color = "red", width = 4), name="Preserved Distances") %>% 	
+  add_markers(x = ~as.numeric(d)[1], y = ~as.numeric(d2)[1], marker=list(color = 'red', size = 20,	
+                   line = list(color = 'yellow', width = 2)), name="Twin-pair 1") %>% 	
+  add_markers(x = ~as.numeric(d)[2], y = ~as.numeric(d2)[2], marker=list(color = 'green', size = 20,	
+                   line = list(color = 'orange', width = 2)), name="Twin-pair 2")  %>% 	
+    layout(title='Preservation of Distances Between Twins (Transform=A)', 	
+           xaxis = list(title="Original Twin Distances", range = c(0, 8)), 	
+           yaxis = list(title="Transformed Twin Distances", range = c(0, 8)),	
+           legend = list(orientation = 'h'))	
 ```
 
 We can observe that the distances between points computed from original data and the transformed data are the same. Thus, the transformation $A$ is called a rotation (isometry) of $y$. 	
@@ -224,25 +272,73 @@ zz1 = rnorm(1000,0,sd = sqrt(1.95))
 zz2 = rnorm(1000,0,sd = sqrt(0.05))	
 zz = rbind(zz1,zz2)	
 d3 = dist(t(zz))	
-qqplot(d,d3)	
-abline(a = 0,b=1,col=2)
+# qqplot(d,d3)	
+# abline(a = 0,b=1,col=2)	
+	
+# compute the quantiles	
+QQ <- qqplot(d,d3, plot.it=FALSE)	
+# take a smaller sample size to expedite the viz	
+ind <-  sample(1:length(QQ$x), 10000, replace = FALSE)	
+x1 <- QQ$x[ind]	
+y1 <- QQ$y[ind]	
+plot_ly() %>%	
+  # add_markers(x = ~as.numeric(d)[1:1000], y = ~as.numeric(d3)[1:1000], name="Transformed Twin Distances") %>%	
+  add_markers(x = ~x1, y = ~y1, name="Transformed Distances") %>%	
+  add_trace(x = ~c(0,8), y = ~c(0,8), mode="lines",	
+        line = list(color = "red", width = 4), name="Preserved Distances") %>%	
+  add_markers(x = ~x1[1], y = ~y1[1], marker=list(color = 'red', size = 20,	
+                   line = list(color = 'yellow', width = 2)), name="Pair 1") %>%	
+  add_markers(x = ~x1[2], y = ~y1[2], marker=list(color = 'green', size = 20,	
+                   line = list(color = 'orange', width = 2)), name="Pair 2")  %>%	
+    layout(title='Preservation of Distances (Random Bivariate))',	
+           xaxis = list(title="Original Distances", range = c(0, 8)),	
+           yaxis = list(title="Transformed Distances", range = c(0, 8)),	
+           legend = list(orientation = 'h'))
 ```
 
-Again, we see that the distances between pairs of points computed from original data and the simulated data coincide.	
+ Let's demonstrate that the rotation transform $A = \frac{1}{\sqrt{2}} \begin{pmatrix}1&1\\1&-1\\ \end{pmatrix}: y\to z\equiv Ay$ preserves twin-pair distances by plotting the raw and transformed distances and computing the pre- and post-transform distances between two pair of twins.
 
 ```{r}
-thelim <- c(-3, 3)	
-#par(mfrow=c(2,1))	
-plot(y[1, ], y[2, ], xlab="Twin 1 (standardized height)", 	
-     ylab="Twin 2 (standardized height)", 	
-     xlim=thelim, ylim=thelim)	
-points(y[1, 1:2], y[2, 1:2], col=2, pch=16)	
+# thelim <- c(-3, 3)	
+# #par(mfrow=c(2,1))	
+# plot(y[1, ], y[2, ], xlab="Twin 1 (standardized height)", 	
+#      ylab="Twin 2 (standardized height)", 	
+#      xlim=thelim, ylim=thelim)	
+# points(y[1, 1:2], y[2, 1:2], col=2, pch=16)	
 	
-plot(z[1, ], z[2, ], xlim=thelim, ylim=thelim, xlab="Average height", ylab="Difference in height")	
-points(z[1, 1:2], z[2, 1:2], col=2, pch=16)	
-par(mfrow=c(1,1))
+# plot(z[1, ], z[2, ], xlim=thelim, ylim=thelim, xlab="Average height", ylab="Difference in height")	
+# points(z[1, 1:2], z[2, 1:2], col=2, pch=16)	
+# par(mfrow=c(1,1))	
+	
+# Original (pre-transform)	
+euc.dist <- function(x1, x2) sqrt(sum((x1 - x2) ^ 2))	
+plot_ly() %>% 	
+  add_markers(x = ~y[1,], y = ~y[2,], name="Twin Distances") %>% 	
+  add_markers(x = ~y[1, 1], y = ~y[2, 1], marker=list(color = 'red', size = 20,	
+                   line = list(color = 'yellow', width = 2)), name="Twin-pair 1") %>% 	
+  add_markers(x = ~y[1, 2], y = ~y[2, 2], marker=list(color = 'green', size = 20,	
+                   line = list(color = 'orange', width = 2)), name="Twin-pair 2")  %>% 	
+    layout(title=paste0('(Pre-Transform) Original Twin Heights (standardized): Twin-Pair Distance = ', 	
+              round(euc.dist(y[, 1], y[, 2]),3)),	
+           xaxis = list(title="Twin 1"), 	
+           yaxis = list(title="Twin 2"),	
+           legend = list(orientation = 'h'))	
 ```
-
+```{r}
+# Transform	
+plot_ly() %>% 	
+  add_markers(x = ~z[1,], y = ~z[2,], name="Transformed Twin Distances") %>% 	
+  add_markers(x = ~z[1, 1], y = ~z[2, 1], marker=list(color = 'red', size = 20,	
+                   line = list(color = 'yellow', width = 2)), name="Twin-pair 1") %>% 	
+  add_markers(x = ~z[1, 2], y = ~z[2, 2], marker=list(color = 'green', size = 20,	
+                   line = list(color = 'orange', width = 2)), name="Twin-pair 2")  %>% 	
+    layout(title=paste0('(Transform) Twin Heights: Twin-Pair Distance = ', 	
+              round(euc.dist(z[, 1], z[, 2]),3)),	
+           xaxis = list(title="Twin 1", scaleanchor = "y", scaleratio = 2), 	
+           yaxis = list(title="Twin 2", scaleanchor = "x", scaleratio = 0.5),	
+           legend = list(orientation = 'h'))	
+```
+	
 We applied this transformation and observed that the distances between points were unchanged after the rotation. This rotation achieves the goals of:	
 
 * preserving the distances between points, and 	
@@ -252,9 +348,32 @@ Removing the second dimension and recomputing the distances, we get:
 
 ```{r}
 d4 = dist(z[1, ]) ##distance computed using just first dimension	
-plot(as.numeric(d), as.numeric(d4)) 	
-abline(0, 1)
+# plot(as.numeric(d), as.numeric(d4)) 	
+# abline(0, 1)	
+	
+# take a smaller sample size to expedite the viz	
+ind <-  sample(1:length(d4), 10000, replace = FALSE)	
+x1 <- d[ind]	
+y1 <- d4[ind]	
+plot_ly() %>%	
+  add_markers(x = ~x1, y = ~y1, name="Transformed Distances") %>%	
+  add_trace(x = ~c(0,8), y = ~c(0,8), mode="lines",	
+        line = list(color = "red", width = 4), name="Preserved Distances") %>%	
+  layout(title='Approximate Distance Preservation in 1D',	
+           xaxis = list(title="(1D) Original Distances", range = c(0, 8)),	
+           yaxis = list(title="(1D) A-Transformed Distances", range = c(0, 8)),	
+           legend = list(orientation = 'h'))	
+  # add_markers(x = ~x1[1], y = ~y1[1], marker=list(color = 'red', size = 20,	
+  #                  line = list(color = 'yellow', width = 2)), name="Pair 1") %>%	
+  # add_markers(x = ~x1[2], y = ~y1[2], marker=list(color = 'green', size = 20,	
+  #                  line = list(color = 'orange', width = 2)), name="Pair 2")  %>%	
+  # layout(title=paste0('Approximate Distance Estimated in 1D(Transform): Twin-Pair Distance = ', 	
+  #             round(euc.dist(x1[1], y1[1]),3)),	
+  #          xaxis = list(title="Original Distances", range = c(0, 8)),	
+  #          yaxis = list(title="Transformed Distances", range = c(0, 8)),	
+  #          legend = list(orientation = 'h'))
 ```
+
 
 The 1D distance provides a very good approximation to the actual 2D distance. This first dimension of the transformed data is called the first `principal component`. In general, this idea motivates the use of principal component analysis (PCA) and the singular value decomposition (SVD) to achieve dimension reduction. 	
 
