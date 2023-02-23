@@ -403,13 +403,40 @@ PCA (principal component analysis) is a mathematical procedure that transforms a
 Let's consider the simplest situation where we have *n* observations $\{p_1, p_2, ..., p_n\}$ with 2 features $p_i=(x_i, y_i)$. When we draw them on a plot, we use x-axis and y-axis for positioning. However, we can make our own coordinate system by principal components.	
 
 ```{r}
-ex <- data.frame(x=c(1, 3, 5, 6, 10, 16, 50), y=c(4, 6, 5, 7, 10, 13, 12))	
-reg1 <- lm(y~x, data=ex)	
-plot(ex)	
-abline(reg1, col='red', lwd=4)	
-text(40, 10.5, "pc1")	
-segments(10.5, 11, 15, 7, lwd=4)	
-text(11, 7, "pc2")
+ex<-data.frame(x=c(1, 3, 5, 6, 10, 16, 50), y=c(4, 6, 5, 7, 10, 13, 12))	
+# reg1<-lm(y~x, data=ex)	
+# plot(ex)	
+# abline(reg1, col='red', lwd=4)	
+# text(40, 10.5, "pc1")	
+# segments(10.5, 11, 15, 7, lwd=4)	
+# text(11, 7, "pc2")	
+	
+yLM <- lm(y ~ x, data=ex)	
+perpSlope = - 1/(yLM$coefficients[2]) # slope of perpendicular line	
+newX <- data.frame(x = mean(ex$x))	
+newY <- predict.lm(yLM,newX)	
+	
+point0 <- c(x=newX, y=newY)  # (x,y) coordinates of point0 on LM line	
+point1 <- c(x=newX[1]-1, y=newY-perpSlope)  # (x,y) coordinates of point1 on perpendicular line	
+point2 <- c(x=newX[1]+1, y=newY+perpSlope)  # (x,y) coordinates of point2 on perpendicular line	
+	
+modelLabels <- c('PC 1 (LM)', 'PC 2 (Perp_LM)')	
+modelLabels.x <- c(40, 20)	
+modelLabels.y <- c(10, 6)	
+modelLabels.color <- c("blue", "green")	
+	
+plot_ly(ex) %>%	
+  add_lines(x = ~x, y = ~yLM$fitted, name="First PC, Linear Model lm(Y ~ X)", 	
+            line = list(width = 4)) %>%	
+  add_markers(x = ~x, y = ~y, name="Sample Simulated Data") %>%	
+  add_lines(x = ~c(point1$x,point2$x), y = ~c(point1$y,point2$y), name="Second PC, Orthogonal to lm(Y ~ X)", 	
+            line = list(width = 4))  %>% 	
+  add_markers(x = ~newX[1]$x, y = ~newY, name="Center (avg(x),avg(y))", marker = list(size = 20,	
+                                    color = 'green', line = list(color = 'yellow', width = 2))) %>%	
+  layout(xaxis = list(title="X", scaleanchor  = "y"),  # control the y:x axes aspect ratio	
+         yaxis = list(title="Y", scaleanchor  = "x"), legend = list(orientation = 'h'),	
+         annotations = list(text=modelLabels,  x=modelLabels.x, y=modelLabels.y, 	
+                            color = modelLabels.color, showarrow=FALSE ))
 ```
 
 Illustrated on the graph, the first PC, $pc_1$ is a minimum distance fit in the feature space. The second PC is a minimum distance fit to a line perpendicular to the first PC. Similarly, the third PC would be a minimum distance fit to all previous PCs. In our case of a 2D space, two PC is the most we can have. In higher dimensional spaces, we need to consider how many PCs do we need to make the best performance.	
@@ -443,7 +470,7 @@ wiki_url <- read_html("https://wiki.socr.umich.edu/index.php/SMHS_PCA_ICA_FA")
 html_nodes(wiki_url, "#content")	
 pd.sub <- html_table(html_nodes(wiki_url, "table")[[1]])	
 summary(pd.sub)	
-pd.sub <- pd.sub[, -1]
+pd.sub<-pd.sub[, -1]
 ```
 
 Then, we need to center the `pdsub` by subtracting the average of all column means from each element in the column. Next, we cast `pd.sub` as a matrix and compute its variance covariance matrix, $S$. Finally, we can calculate the corresponding eigenvalues and eigenvectors of $S$.	
@@ -475,80 +502,159 @@ eigen
 
 The eigenvalues correspond to the amount of the variation explained by each principal component (PC), which is the same as the eigenvalues of the $S$ matrix.	
 
-To see a detailed information about the variances that each PC explain we utilize the `plot()` function to visualize the PC loadings.	
+To see a detailed information about the *variances* explained by each PC, relative to the corresponding PC loadings.
+
+In the 3D loadings interactive plot below, you need to zoom-in to see the smaller projections (original features that have lower impact after the linear PC rotation).
 
 ```{r}
-plot(pca1)	
-library(graphics)	
-biplot(pca1, choices = 1:2, scale = 1, pc.biplot = F)	
+# plot(pca1)	
+# library(graphics)	
+# biplot(pca1, choices = 1:2, scale = 1, pc.biplot = F)	
 	
-library("factoextra")	
-# Data for the supplementary qualitative variables	
-qualit_vars <- as.factor(pd.sub$Part_IA)	
-head(qualit_vars)	
-# for plots of individuals	
-# fviz_pca_ind(pca1, habillage = qualit_vars, addEllipses = TRUE, ellipse.level = 0.68) +	
-#  theme_minimal()	
-# for Biplot of individuals and variables 	
-fviz_pca_biplot(pca1, axes = c(1, 2), geom = c("point", "text"),	
-  col.ind = "black", col.var = "steelblue", label = "all",	
-  invisible = "none", repel = T, habillage = qualit_vars, 	
+plot_ly(x = c(1:length(pca1$sdev)), y = pca1$sdev*pca1$sdev, name = "Scree", type = "bar") %>%	
+  layout(title="Scree Plot", xaxis = list(title="PC's"),  yaxis = list(title="Variances (SD^2)"))
+```
+```{r}
+# Scores	
+scores <- pca1$x	
+	
+# Loadings	
+loadings <- pca1$rotation	
+	
+# Visualization scale factor for loadings	
+scaleLoad <- 10	
+	
+p <- plot_ly() %>%	
+  add_trace(x=scores[,1], y=scores[,2], z=scores[,3], type="scatter3d", mode="markers", name="",	
+            marker = list(color=scores[,2], colorscale = c("#FFE1A1", "#683531"), opacity = 0.7)) 	
+for (k in 1:nrow(loadings)) {	
+   x <- c(0, loadings[k,1])*scaleLoad	
+   y <- c(0, loadings[k,2])*scaleLoad	
+   z <- c(0, loadings[k,3])*scaleLoad	
+   p <- p %>% add_trace(x=x, y=y, z=z, type="scatter3d", mode="lines", 	
+  name=paste0("Loading PC ", k, " ", colnames(pd.sub)[k]), line=list(width=8), opacity=1) 	
+  # %>%	
+  # add_annotations( x = 0, y = 0, z = 0,	
+  #           xref = "x", yref = "y",  zref = "z",	
+  #           # axref = "x", ayref = "y", azref = "z",	
+  #           text = "", showarrow = T,	
+  #           ax = c(0, loadings[k,1])*scaleLoad, ay = c(0, loadings[k,2])*scaleLoad, az = c(0,	
+  #                  loadings[k,3])*scaleLoad)	
+}	
+	
+p <- p %>%	
+  layout(legend = list(orientation = 'h'), title="3D Projection of 6D Data along First 3 PCs") 	
+p
+```
+```{r}
+#          scene = list(	
+#             dragmode = "turntable",	
+#             annotations = list(	
+#               list(showarrow = T, x = c(0, loadings[1,1])*scaleLoad, y = c(0, loadings[1,2])*scaleLoad, 	
+#                    z = c(0, loadings[1,3])*scaleLoad, text = "Point 1", xanchor = "left", xshift = 2, opacity=0.7),	
+#               list(showarrow = T, x = c(0, loadings[2,1])*scaleLoad, y = c(0, loadings[2,2])*scaleLoad, 	
+#                    z = c(0, loadings[2,3])*scaleLoad, text="Point 2", textangle=0, ax = 0, ay = -1, font = list(	
+#                 color = "black", size = 12), arrowcolor = "black", arrowsize = 3, arrowwidth = 1, arrowhead = 1),	
+#               list(showarrow = T, x = c(0, loadings[3,1])*scaleLoad, y = c(0, loadings[3,2])*scaleLoad, 	
+#                    z = c(0, loadings[3,3])*scaleLoad, text = "Point 3", arrowhead = 1,	
+#                    xanchor = "left", yanchor = "bottom")	
+#     )))	
+	
+library("factoextra")
+# Data for the supplementary qualitative variables
+qualit_vars <- as.factor(pd.sub$Part_IA)
+head(qualit_vars)
+# for plots of individuals
+fviz_pca_ind(pca1, habillage = qualit_vars, addEllipses = TRUE, ellipse.level = 0.68) +
+theme_minimal()
+# for Biplot of individuals and variables
+fviz_pca_biplot(pca1, axes = c(1, 2), geom = c("point", "text"),
+  col.ind = "black", col.var = "steelblue", label = "all",
+  invisible = "none", repel = T, habillage = qualit_vars,
   palette = NULL, addEllipses = TRUE, title = "PCA - Biplot")
 ```
 
-The histogram plot has a clear "elbow" point at the second PC, suggesting that the first two PCs explain about 95% of the variation in the original dataset. Thus, we say we can use the first 2 PCs to represent the data. In this case, the dimension of the data is substantially reduced. 	
+The scree-plot has a clear "elbow" point at the second PC, suggesting that the first two PCs explain about 95% of the variation in the original dataset. Thus, we say we can use the first 2 PCs to represent the data. In this case, the dimension of the data is substantially reduced.
+ 	
+The dynamic 3D `plot_ly` graph uses PC1, PC2, and PC3 as the the coordinate axes to represent the new variables and the lines radiating from the origin show the loadings on the original features. This *triplot* help us to visualize how the loadings are used to rearrange the structure of the data.
 
-Here, `biplot` uses PC1 and PC2 as the axes and red vectors to represent the direction of variables after adding loadings as weights. It help us to visualize how the loadings are used to rearrange the structure of the data. 	
-
-Next, let's try to obtain a bootstrap test for the confidence interval of the explained variance.	
-
+Next, let's try to obtain a bootstrap test for the confidence interval of the explained variance.
+	
 ```{r}
 set.seed(12)	
 num_boot = 1000	
 bootstrap_it = function(i) {	
   data_resample = pd.sub[sample(1:nrow(pd.sub), nrow(pd.sub), replace=TRUE),] 	
-  p_resample = princomp(data_resample, cor = T) 	
+  p_resample = princomp(data_resample,cor = T) 	
   return(sum(p_resample$sdev[1:3]^2)/sum(p_resample$sdev^2))	
   }	
 	
 pco = data.frame(per=sapply(1:num_boot, bootstrap_it)) 	
-quantile(pco$per, probs = c(0.025,0.975))  # specify 95-th % Confidence Interval	
+quantile(pco$per, probs = c(0.025,0.975))  # specify 95-th % Confidence Interval
+```
+```{r}
 corpp = sum(pca1$sdev[1:3]^2)/sum(pca1$sdev^2)	
-require(ggplot2)	
-plot = ggplot(pco, aes(x=pco$per)) +	
-  geom_histogram() + geom_vline(xintercept=corpp, color='yellow')+ 	
-  labs(title = "Percent Var Explained by the first 3 PCs") +	
-  theme(plot.title = element_text(hjust = 0.5))+	
-  labs(x='perc of var')	
-show(plot)
+	
+# require(ggplot2)	
+# plot = ggplot(pco, aes(x=pco$per)) +	
+#   geom_histogram() + geom_vline(xintercept=corpp, color='yellow')+ 	
+#   labs(title = "Percent Var Explained by the first 3 PCs") +	
+#   theme(plot.title = element_text(hjust = 0.5))+	
+#   labs(x='perc of var')	
+# show(plot)	
+	
+plot_ly(x = pco$per, type = "histogram", name = "Data Histogram") %>% 	
+    layout(title='Histogram of a Bootstrap Simulation Showing Percent of Data Variability Captured by first 3 PCs', 	
+           xaxis = list(title = "Percent of Variability"), yaxis = list(title = "Frequency Count"), bargap=0.1)
 ```
 
-Suppose we want to fit a linear model `Top_of_SN_Voxel_Intensity_Ratio ~ Side_of_SN_Voxel_Intensity_Ratio + Part_IA`. We can plot the 3D scatterplot and the (univariate) linear model. 	
-
+Suppose we want to fit a linear model `Top_of_SN_Voxel_Intensity_Ratio ~ Side_of_SN_Voxel_Intensity_Ratio + Part_IA`. We can use `plot_ly` to show a 3D scatterplot and the (univariate) linear model.
+	
 ```{r}
 library(scatterplot3d)	
 	
 #Fit linear model	
 lm.fit <- lm(Top_of_SN_Voxel_Intensity_Ratio ~	Side_of_SN_Voxel_Intensity_Ratio + Part_IA, data = pd.sub)	
 	
-#plot results	
-myPlot <- scatterplot3d(pd.sub$Side_of_SN_Voxel_Intensity_Ratio, pd.sub$Part_IA, pd.sub$Top_of_SN_Voxel_Intensity_Ratio)	
-	
 # Get the ranges of the variable.names	
 summary(pd.sub$Side_of_SN_Voxel_Intensity_Ratio)	
 summary(pd.sub$Part_IA)	
 summary(pd.sub$Top_of_SN_Voxel_Intensity_Ratio)	
 	
-# Plot the linear model (line in 3D)	
-myCoef <- lm.fit$coefficients	
-plotX <- seq(0.93, 1.4,length.out = 100)	
-plotY <- seq(0,6,length.out = 100)	
-plotZ <- myCoef[1] + myCoef[2]*plotX + myCoef[3]*plotY # linear model	
-#Add the linear model to the 3D scatterplot	
-myPlot$points3d(plotX,plotY,plotZ, type = "l", lwd=2, col = "red")
+# #plot results	
+# myPlot <- scatterplot3d(pd.sub$Side_of_SN_Voxel_Intensity_Ratio, pd.sub$Part_IA,	
+#                 pd.sub$Top_of_SN_Voxel_Intensity_Ratio)	
+# # Plot the linear model (line in 3D)	
+# myCoef <- lm.fit$coefficients	
+# plotX <- seq(0.93, 1.4,length.out = 100)	
+# plotY <- seq(0,6,length.out = 100)	
+# plotZ <- myCoef[1] + myCoef[2]*plotX + myCoef[3]*plotY # linear model	
+# #Add the linear model to the 3D scatterplot	
+# myPlot$points3d(plotX,plotY,plotZ, type = "l", lwd=2, col = "red")	
+	
+cf = lm.fit$coefficients	
+pltx = seq(summary(pd.sub$Side_of_SN_Voxel_Intensity_Ratio)[1],	
+           summary(pd.sub$Side_of_SN_Voxel_Intensity_Ratio)[6], 	
+           length.out = length(pd.sub$Side_of_SN_Voxel_Intensity_Ratio))	
+plty = seq(summary(pd.sub$Part_IA)[1], summary(pd.sub$Part_IA)[6],length.out = length(pd.sub$Part_IA))	
+pltz = cf[1] + cf[2]*pltx + cf[3]*plty	
+	
+# Plot Scatter and add the LM line to the plot	
+plot_ly() %>%	
+  add_trace(x = ~pltx, y = ~plty, z = ~pltz, type="scatter3d", mode="lines",	
+        line = list(color = "red", width = 4), 	
+        name="lm(Top_of_SN_Voxel_Intensity_Ratio ~	Side_of_SN_Voxel_Intensity_Ratio + Part_IA)") %>% 	
+  add_markers(x = ~pd.sub$Side_of_SN_Voxel_Intensity_Ratio, y = ~pd.sub$Part_IA, 	
+              z = ~pd.sub$Top_of_SN_Voxel_Intensity_Ratio, color = ~pd.sub$Part_II, mode="markers") %>% 	
+  layout(title="lm(Top_of_SN_Voxel_Intensity_Ratio ~	Side_of_SN_Voxel_Intensity_Ratio + Part_IA)",	
+    legend=list(orientation = 'h'), showlegend = F,	
+    scene = list(xaxis = list(title = 'Side_of_SN_Voxel_Intensity_Ratio'),	
+                 yaxis = list(title = 'Part_IA'),	
+                 zaxis = list(title = 'Top_of_SN_Voxel_Intensity_Ratio'))) %>% 	
+  hide_colorbar()
 ```
 
-However, we can also plot in 3D a bivariate 2D plane model (e.g., `lm.fit', or `pca1`) for the 3D scatter (Top_of_SN_Voxel_Intensity_Ratio, Side_of_SN_Voxel_Intensity_Ratio, Part_IA). Below is an example using the linear model.	
+We can also plot in 3D a bivariate 2D plane model (e.g., `lm.fit', or `pca1`) for the 3D scatter (Top_of_SN_Voxel_Intensity_Ratio, Side_of_SN_Voxel_Intensity_Ratio, Part_IA). Below is an example using the linear model.
 
 ```{r}
 myPlot <- scatterplot3d(pd.sub$Side_of_SN_Voxel_Intensity_Ratio, pd.sub$Part_IA, pd.sub$Top_of_SN_Voxel_Intensity_Ratio)	
@@ -558,7 +664,7 @@ myPlot$plane3d(lm.fit, lty.box = "solid")
 # planes3d(a, b, c, d, alpha = 0.5)	
 # planes3d draws planes using the parametrization a*x + b*y + c*z + d = 0.	
 # Multiple planes may be specified by giving multiple values for the normal	
-# vector (a, b, c) and the offset parameter d
+# vector (a, b, c) and the offset parameter d	
 ```
 
 Next are examples of plotting the 3D scatter along with the 2D PCA model using either `rgl` or `plot_ly`.	
@@ -602,8 +708,8 @@ plot3d(pd.sub$Side_of_SN_Voxel_Intensity_Ratio, pd.sub$Part_IA, pd.sub$Top_of_SN
 planes3d(normVec[1], normVec[2], normVec[3], d, alpha = 0.5)
 ```
 
-Another alternative is to use `plot_ly` for the interactive 3D visualization. First, we demonstrate displaying the `lm()` derived plane modeling superimposed on the 3D scatterplot (using `pd.sub$Side_of_SN_Voxel_Intensity_Ratio`, `pd.sub$Top_of_SN_Voxel_Intensity_Ratio`, and `pd.sub$Part_IA`).	
-
+Another alternative is to use `plot_ly` for the interactive 3D visualization. First, we demonstrate displaying the `lm()` derived plane modeling superimposed on the 3D scatterplot (using `pd.sub$Side_of_SN_Voxel_Intensity_Ratio`, `pd.sub$Top_of_SN_Voxel_Intensity_Ratio`, and `pd.sub$Part_IA`).
+	
 ```{r}
 # Define the 3D features	
 x <- pd.sub$Side_of_SN_Voxel_Intensity_Ratio	
@@ -623,23 +729,43 @@ z.seq <- function(x,y) coef.lm.fit[1]+coef.lm.fit[2]*x+coef.lm.fit[3]*y
 z <- t(outer(x.seq, y.seq, z.seq))	
 	
 # First draw the 2D plane embedded in 3D, and then add points with "add_trace"	
-library(plotly)	
-myPlotly <- plot_ly(x=~x.seq, y=~y.seq, z=~z,	
-    colors = c("blue", "red"),type="surface", opacity=0.7) %>%	
-  	
-  add_trace(data=myDF, x=x, y=y, z=pd.sub$Part_IA, mode="markers", 	
-            type="scatter3d", marker = list(color="green", opacity=0.9, 	
-                                            symbol=105)) %>%	
-  	
-  layout(scene = list(	
-    aspectmode = "manual", aspectratio = list(x=1, y=1, z=1),	
-    xaxis = list(title = "Side_of_SN_Voxel_Intensity_Ratio"),	
-    yaxis = list(title = "Top_of_SN_Voxel_Intensity_Ratio"),	
-    zaxis = list(title = "Part_IA"))	
-    )	
-# print(myPlotly)	
-myPlotly
+# library(plotly)	
+# myPlotly <- plot_ly(x=~x.seq, y=~y.seq, z=~z,	
+#     colors = c("blue", "red"),type="surface", opacity=0.7) %>%	
+#   	
+#   add_trace(data=myDF, x=x, y=y, z=pd.sub$Part_IA, mode="markers", 	
+#             type="scatter3d", marker = list(color="green", opacity=0.9, 	
+#                                             symbol=105)) %>%	
+#   	
+#   layout(scene = list(	
+#     aspectmode = "manual", aspectratio = list(x=1, y=1, z=1),	
+#     xaxis = list(title = "Side_of_SN_Voxel_Intensity_Ratio"),	
+#     yaxis = list(title = "Top_of_SN_Voxel_Intensity_Ratio"),	
+#     zaxis = list(title = "Part_IA"))	
+#     )	
+# # print(myPlotly)	
+# myPlotly	
+	
+#Setup Axis	
+axis_x <- seq(min(x), max(x), length.out=100)	
+axis_y <- seq(min(y), max(y), length.out=100)	
+	
+#Sample points	
+library(reshape2)	
+lm_surface <- expand.grid(x = axis_x, y = axis_y, KEEP.OUT.ATTRS = F)	
+lm_surface$z <- predict.lm(lm.fit, newdata = lm_surface)	
+lm_surface <- acast(lm_surface, x ~ y, value.var = "z") # z ~ 0 + x + y	
+	
+plot_ly(myDF, x = ~x, y = ~y, z = ~z,	
+        text = paste0("Part_II: ", pd.sub$Part_II), type="scatter3d", mode="markers", color=pd.sub$Part_II) %>%	
+  add_trace(x=~axis_x, y=~axis_y, z=~lm_surface, type="surface", color="gray", name="LM model", opacity=0.3) %>%	
+  layout(title="3D Plane Regression (Part_IA ~ Side_of_SN_Voxel + Top_of_SN_Voxel); Color=Part II", showlegend = F,	
+         scene = list ( xaxis = list(title = "Side_of_SN_Voxel_Intensity_Ratio"),	
+                        yaxis = list(title = "Top_of_SN_Voxel_Intensity_Ratio"),	
+                        zaxis = list(title = "Part_IA"))) %>% 	
+  hide_colorbar()
 ```
+
 
 Second, we show the PCA-derived 2D plane model superimposed on the 3D scatterplot.	
 
@@ -650,7 +776,7 @@ y <- pd.sub$Top_of_SN_Voxel_Intensity_Ratio
 z <- pd.sub$Part_IA	
 myDF <- data.frame(x, y, z)	
 	
-### Fit (compute) the 2D PCA space (dimensionaltiy reduction)	
+### Fit (compute) the 2D PCA space (dimensionality reduction)	
 pca1 <- prcomp(as.matrix(cbind(pd.sub$Side_of_SN_Voxel_Intensity_Ratio, pd.sub$Top_of_SN_Voxel_Intensity_Ratio, pd.sub$Part_IA)), center = T); summary(pca1)	
 # Compute the Normal to the 2D PC plane	
 normVec = c(pca1$rotation[2,1]*pca1$rotation[3,2]-	
@@ -670,28 +796,24 @@ x.seq <- seq(min(x),max(x),length.out=100)
 y.seq <- seq(min(y),max(y),length.out=100)	
 z.seq <- function(x,y) -(d + normVec[1]*x + normVec[2]*y)/normVec[3]	
 # define the values of z = z(x.seq, y.seq), as a Matrix of dimension c(dim(x.seq), dim(y.seq))	
-#z <- t(outer(x.seq, y.seq, z.seq))/10; range(z)  # we need to check this 10 correction, to ensure the range of z is apporproate!!!	
+#z <- t(outer(x.seq, y.seq, z.seq))/10; range(z)  # we need to check this 10 correction, to ensure the range of z is appropriate!!!	
 z <- t(outer(x.seq, y.seq, z.seq)); range(z)	
 	
 # Draw the 2D plane embedded in 3D, and then add points with "add_trace"	
-library(plotly)	
+# library(plotly)	
 myPlotly <- plot_ly(x=~x.seq, y=~y.seq, z=~z,	
     colors = c("blue", "red"),type="surface", opacity=0.7) %>%	
-  	
-  add_trace(data=myDF, x=x, y=y, z=pd.sub$Part_IA, mode="markers", 	
-            type="scatter3d", marker = list(color="green", opacity=0.9, 	
-                                            symbol=105)) %>%	
-  	
-  layout(scene = list(	
+    add_trace(data=myDF, x=x, y=y, z=(pd.sub$Part_IA-mean(pd.sub$Part_IA))*10, mode="markers", 	
+            showlegend=F, type="scatter3d", marker=list(color="green", opacity=0.9, symbol=105)) %>%	
+    layout(scene = list(	
     aspectmode = "manual", aspectratio = list(x=1, y=1, z=1),	
-    xaxis = list(title = "Side_of_SN_Voxel_Intensity_Ratio", range = c(min(x),max(x))),	
-    yaxis = list(title = "Top_of_SN_Voxel_Intensity_Ratio", range = c(min(y),max(y))),	
-    zaxis = list(title = "Part_IA"))	
-    )	
+    xaxis = list(title = "Side_of_SN_Voxel_Intensity_Ratio"),	
+    yaxis = list(title = "Top_of_SN_Voxel_Intensity_Ratio"),	
+    zaxis = list(title = "Part_IA")) ) %>%	
+  hide_colorbar()	
 # print(myPlotly)	
 myPlotly
 ```
-
 As stated in the [summary table](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/05_DimensionalityReduction.html#4_summary_(pca_vs_ica_vs_fa)), classical PCA assumes that the bivariate relations are linear in nature. The non-linear PCA is a generalization that allows us to incorporate nominal and ordinal variables, as well as to handle and identify nonlinear relationships between variables in the dataset. See Chapter 2 of this textbook [Nonparametric inference in nonlinear principal components analysis: exploration and beyond](https://openaccess.leidenuniv.nl/handle/1887/12386).	
 
 Non-linear PCA assigns values to the categories representing the numeric variables, which maximize the association (e.g., correlation) between the quantified variables (i.e., optimal scaling to quantify the variables according to their analysis levels). The [Bioconductor's pcaMethods](https://www.bioconductor.org/packages/release/bioc/html/pcaMethods.html) package provides the funcitonality for non-linear PCA.	
@@ -740,12 +862,22 @@ a <- fastICA(X, 2, alg.typ = "parallel", fun = "logcosh", alpha = 1,
                  tol = 0.0001)
 ```
 
-To visualize how correlated the pre-processed data is and how independent our $S$ is we can draw the following two plots.	
+ To visualize the correlation of the original pre-processed data ($X$) and the independence of the corresponding ICA components $S=fastICA(X)\$S$ we can draw the following composite scatter-plot.
 
 ```{r}
-par(mfrow = c(1, 2))	
-plot(a$X, main = "Pre-processed data")	
-plot(a$S, main = "ICA components")
+# par(mfrow = c(1, 2))	
+# plot(a$X, main = "Pre-processed data")	
+# plot(a$S, main = "ICA components")	
+	
+plot_ly() %>%  	
+  add_markers(x = a$X[ , 1], y =~a$X[ , 2], name="Pre-processed data", 	
+              marker = list(color="green", opacity=0.9, symbol=105)) %>%	
+  add_markers(x = a$S[ , 1], y = a$S[ , 2], name="ICA components",	
+              marker = list(color="blue", opacity=0.99, symbol=5))  %>% 	
+  layout(title='Scatter Plots of the Original (Pre-processed) Data and the corresponding ICA Transform', 	
+         xaxis = list(title="Twin 1 (standardized height)", scaleanchor = "y"), 	
+         yaxis = list(title="Twin 2 (standardized height)", scaleanchor = "x"),	
+         legend = list(orientation = 'h'))	
 ```
 
 Finally we can confirm that the correlation of two components is nearly 0.
@@ -790,7 +922,24 @@ ev <- eigen(cor(pd.sub)) # get eigenvalues
 ap <- parallel(subject=nrow(pd.sub), var=ncol(pd.sub), rep=100, cent=.05)	
 nS <- nScree(x=ev$values, aparallel=ap$eigen$qevpea)	
 summary(nS)	
-plotnScree(nS)
+# plotnScree(nS)	
+	
+plot_ly() %>% 	
+  add_trace(y = nS$Analysis$Eigenvalues, type="scatter", name = 'Eigenvalues', 	
+              mode = 'lines+markers', marker = list(opacity=0.99, size=20, symbol=5)) %>%	
+  add_trace(y = nS$Analysis$Par.Analysis, type="scatter", 	
+            name = 'Parallel Analysis (centiles of random eigenvalues)', 	
+            mode = 'lines+markers', marker = list(opacity=0.99, size=20, symbol=2)) %>%	
+  # add_trace(y = nS$Analysis$OC, type="scatter", 	
+  #           name = 'Critical Optimal Coordinates', 	
+  #           mode = 'lines+markers', marker = list(opacity=0.99, size=20, symbol=3)) %>%	
+  add_trace(y = nS$Analysis$Acc.factor, type="scatter", 	
+            name = 'Acceleration Factor', 	
+            mode = 'lines+markers', marker = list(opacity=0.99, size=20, symbol=15)) %>%	
+  layout(title='Scree plot', 	
+         xaxis = list(title="Components)", scaleanchor = "y"), 	
+         yaxis = list(title="Eigenvalues)", scaleanchor = "x"),	
+         legend = list(orientation = 'h'))
 ```
 
 Note that 3 out of 4 Cattell's Scree test rules summary suggest we should use 2 factors. Thus, in the function `factanal()` we can specify `factors=2`. In addition, we can use `varimax` rotation of the factor axes maximizing the variance of the squared loadings of factors (columns) on the original variables (rows), which effectively differentiates the original variables by the extracted factors. Oblique `promax` and `Procrustes rotation` (projecting the loadings to a target matrix with a simple structure) are two alternative and commonly used matrix rotations that may be specified.	
@@ -805,8 +954,22 @@ Here the p-value 0.854 is very large, suggesting that we failed to reject the nu
 
 ```{r}
 load <- fit$loadings	
-plot(load, type="n") # set up plot 	
-text(load, labels=colnames(pd.sub), cex=.7) # add variable names
+# plot(load, type="n") # set up plot 	
+# text(load, labels=colnames(pd.sub), cex=.7) # add variable names	
+	
+df <- as.data.frame(load[])	
+Features <- rownames(df)	
+X <- df$Factor1	
+Y <- df$Factor2	
+df1 <- data.frame(Features, X, Y)	
+cols <- palette(rainbow(6))   # as.numeric(as.factor(Features))	
+cols <- cols[2:7]   # this is necessary as cols has 8 rows (not 6, as df1 does!)	
+	
+plot_ly(df1, x = ~X, y = ~Y, text = ~Features, color = cols) %>% 	
+  add_markers(marker = list(opacity=0.99, size=20, color=cols, symbol=~as.numeric(as.factor(Features)))) %>% 	
+  add_text(textfont = list(family= "Times", size= 20, color= cols), textposition="top right") %>% 	
+  layout(title = '2D FA', xaxis = list(title = 'Factor 1', zeroline = TRUE,range = c(-0.5, 1)),	
+         yaxis = list(title = 'Factor 2'), showlegend = FALSE)	
 ```
 
 This plot displays *factors 1* and *2* on the x-axis and y-axis, respectively.
@@ -886,10 +1049,10 @@ This optimization leads to an embedding mapping that "preserves" the object (dat
 
 ## t-SNE Example: Hand-written Digit Recognition
 
-Later, in [Chapter 10](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/10_ML_NN_SVM_Class.html) and [Chapter 22](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/22_DeepLearning.html), we will present the Optical Character Recognition (OCR) and analysis of hand-written notes (unstructured text). 	
+Later, in [Chapter 10](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/10_ML_NN_SVM_Class.html) and [Chapter 22](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/22_DeepLearning.html), we will present the Optical Character Recognition (OCR) and analysis of hand-written notes (unstructured text).
 
-Below, we show a simple example of generating a 2D embedding of the [hand-written digits dataset](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/data/DigitRecognizer_TrainingData.zip) using t-SNE.	
-
+ Below, we show a simple example of generating a 2D embedding of the [hand-written digits dataset](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/data/DigitRecognizer_TrainingData.zip) using t-SNE.
+	
 ```{r}
 # install.packages("tsne"); library (tsne)	
 # install.packages("Rtsne")	
@@ -925,9 +1088,9 @@ train$label<-as.factor(train$label)
 train.labels.colors <- colMap(train.labels)	
 names(train.labels.colors) <- train$label # unique(train$label)	
 	
-# May need to check and increase the RAM allocation	
-memory.limit() 	
-memory.limit(50000)	
+# # May need to check and increase the RAM allocation	
+# memory.limit() 	
+# memory.limit(50000)	
 	
 # Remove the labels (column 1) and Scale the image intensities to [0; 1]	
 train  <- data.matrix(train[, -1]); dim(train)	
@@ -938,8 +1101,9 @@ library("imager")
 # first convert the CSV data (one row per image, 42,000 rows)	
 array_3D <- array(train[ , ], c(28, 28, 42000))	
 mat_2D <- matrix(array_3D[,,1], nrow = 28, ncol = 28)	
-plot(as.cimg(mat_2D))	
-	
+plot(as.cimg(mat_2D))
+```
+```{r}
 N <- 42000	
 img_3D <- as.cimg(array_3D[,,], 28, 28, N)	
 	
@@ -947,7 +1111,8 @@ img_3D <- as.cimg(array_3D[,,], 28, 28, N)
 k <- 5; plot(img_3D, k)	
 k <- 6; plot(img_3D, k)	
 k <- 7; plot(img_3D, k)	
-	
+```
+```{r}
 pretitle <- function(index) bquote(bold("Image: "~.(index)))	
 #layout(t(1:2))	
 op <- par(mfrow = c(2,2), oma = c(5,4,0,0) + 0.1, mar = c(0,0,1,1) + 0.1)	
@@ -955,22 +1120,53 @@ op <- par(mfrow = c(2,2), oma = c(5,4,0,0) + 0.1, mar = c(0,0,1,1) + 0.1)
 for (k in 1:4) {	
   plot(img_3D, k, xlim = c(0,28), ylim = c(28,0), axes=F, ann=T, main=pretitle(k))	
 }	
-	
+```
+```{r}
 # Run the t-SNE, tracking the execution time (artificially reducing the sample-size to get reasonable calculation time)	
-execTime_tSNE <- system.time(tsne_digits <- Rtsne(t(train)[1:10000 , ], dims = 2, perplexity=30, verbose=TRUE, max_iter = 500)); execTime_tSNE	
+execTime_tSNE <- system.time(tsne_digits <- Rtsne(t(train)[1:10000 , ], dims = 2, perplexity=30, verbose=TRUE, max_iter = 500)); execTime_tSNE
+```
+```{r}
 # Full dataset(42K * 1K) execution may take over 5-mins	
 # execTime_tSNE <- system.time(tsne_digits <- Rtsne(train[ , ], dims = 2, perplexity=30, verbose=TRUE, max_iter = 500)); execTime_tSNE	
 	
-# Plot the result 2D map embedding of the data with digits or solid discs	
-par(mfrow=c(1,1)) # reset the plot canvas	
-	
 # Plot only first 1,000 cases (to avoid clutter)	
-plot(tsne_digits$Y[1:1000, ], t='n', main="t-SNE") # don't plot the points to avoid clutter	
-text(tsne_digits$Y[1:1000, ], labels=names(train.labels.colors)[1:1000], col=train.labels.colors[1:1000])	
+# plot(tsne_digits$Y[1:1000, ], t='n', main="t-SNE") # don't plot the points to avoid clutter	
+# text(tsne_digits$Y[1:1000, ], labels=names(train.labels.colors)[1:1000], col=train.labels.colors[1:1000])	
 	
-# plot all cases as solid discs with colors corresponding to each of the 10 numbers	
-plot(tsne_digits$Y, main="t-SNE Clusters", col=train.labels.colors, pch = 19)	
-legend("topright", unique(names(train.labels.colors)), fill=unique(train.labels.colors), bg='gray90', cex=0.5)	
+# 2D t-SNE Plot	
+df <- data.frame(tsne_digits$Y[1:1000, ], train.labels.colors[1:1000])	
+plot_ly(df, x = ~X1, y = ~X2, mode = 'text') %>%	
+  add_text(text = names(train.labels.colors)[1:1000], textfont = list(color = df$train.labels.colors.1.1000.)) %>%	
+  layout(title = "t-SNE 2D Embedding", xaxis = list(title = ""),  yaxis = list(title = ""))
+```
+```{r}
+# 3D t_SNE plot	
+execTime_tSNE <- system.time(tsne_digits3D <- Rtsne(t(train)[1:10000 , ], dims = 3, perplexity=30, verbose=TRUE, max_iter = 500)); execTime_tSNE	
+	
+df3D <- data.frame(tsne_digits3D$Y[1:1000, ], train.labels.colors[1:1000])	
+plot_ly(df3D, x = ~df3D[, 1], y = ~df3D[, 2], z= ~df3D[, 3], mode = 'markers+text') %>%	
+  add_text(text = names(train.labels.colors)[1:1000], textfont = list(color = df$train.labels.colors.1.1000.)) %>%	
+  layout(title = "t-SNE 3D Embedding", 	
+         scene = list(xaxis = list(title=""),  yaxis=list(title=""), zaxis=list(title="")))
+```
+```{r}
+# Classic plot all cases as solid discs with colors corresponding to each of the 10 numbers	
+# plot(tsne_digits$Y, main="t-SNE Clusters", col=train.labels.colors, pch = 19)	
+# legend("topright", unique(names(train.labels.colors)), fill=unique(train.labels.colors), bg='gray90', cex=0.5)	
+	
+plot_ly(df3D, x = ~df3D[, 1], y = ~df3D[, 2], z= ~df3D[, 3], mode = 'markers+text') %>%	
+  add_text(text = names(train.labels.colors)[1:1000], textfont = list(color = df$train.labels.colors.1.1000.)) %>%	
+  layout(title = "t-SNE 3D Embedding", 	
+         scene = list(xaxis = list(title=""),  yaxis=list(title=""), zaxis=list(title="")))
+```
+```{r}
+cols <- palette(rainbow(10)) 	
+	
+plot_ly(df3D, x=~df3D[, 1], y=~df3D[, 2], z=~df3D[, 3], color=train.labels.colors[1:1000], 	
+        colors=cols, name=names(train.labels.colors)[1:1000]) %>% 	
+  add_markers() %>% 	
+  layout(scene=list(xaxis=list(title=''), yaxis=list(title=''), zaxis=list(title='')), showlegend=F) %>%	
+  hide_colorbar()
 ```
 
 The [hands-on interactive SOCR t-SNE Dimensionaltiy Reduction Activity](https://socr.umich.edu/HTML5/SOCR_TensorBoard_UKBB) provides an interactive demonstration of t-SNE utilizing TensorBoard and the UK Biobank data.	
