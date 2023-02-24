@@ -1171,18 +1171,437 @@ plot_ly(df3D, x=~df3D[, 1], y=~df3D[, 2], z=~df3D[, 3], color=train.labels.color
 
 The [hands-on interactive SOCR t-SNE Dimensionaltiy Reduction Activity](https://socr.umich.edu/HTML5/SOCR_TensorBoard_UKBB) provides an interactive demonstration of t-SNE utilizing TensorBoard and the UK Biobank data.	
 
+# Uniform Manifold Approximation and Projection (UMAP)
+
+In 2018, McInnes and Healy proposed the [Uniform Manifold Approximation and Projection (UMAP)](https://arxiv.org/abs/1802.03426) (UMAP) technique for dimensional reduction.
+
+Similar to t-SNE, UMAP first constructs a high dimensional graph representation of initial data and employs graph-layout algorithms to project the original high-dimensional data into a lower dimensional space. The iterative process aims to preserve the *graph structure* as much as possible. The initial high-dimensional graph representation uses *simplicial complexes*, as weighted graphs where edge weights represent likelihoods of the connectivity between two graph points are connected, i.e., neighborhoods. For a given point, the UMAP connectedness metric computes the distance with other points based on the overlap of their respective neighborhoods.
+
+The parameter controlling the neighborhood size (i.e., radius) determines the tradeoff between within and between cluster sizes. Choosing too small radius may lead to small and rather isolated clusters. Selecting too large radius may cluster all points into a single group. For local radius selection, UMAP preprocessing utilizes the distances between each point and its nth nearest neighbor.
+
+A "fuzzy" simplicial complex (graph) is constructed by iterative minimization of the connectivity likelihood function as the radius increases. Assuming that each point is connected to at least one of its closest neighbors, UMAP ensures that local and global graph structure is (somewhat protected and) preserved during the optimization process (e.g., based on stochastic gradient descent).
+
+## Mathematical formulation
+
+UMAP relies on local approximations of patches on the manifold to construct local fuzzy simplicial complex (topological) representations of the high dimensional data.  For each low dimensional representation of the projection of the data, UMAP tries to generate an analogous equivalent simplicial complex representation. The iterative UMAP optimization process aims to preserve the topological layout in the low dimensional space by minimizing the cross-entropy between the high- and low-dimensional topological representations.
+
+The [DSPA Appendix on Shape](http://www.socr.umich.edu/people/dinov/courses/DSPA_notes/DSPA_Appendix_03.1_Geometric_Parametric_Surface_Viz.html) includes examples of how to generate some of geometric and topological primitives, including 0, 1, and 2 simplicial complexes.
+
+The figure below shows the first few such primitives - a point, line, triangle, and tetrahedron.
+
+```{r}
+library(plotly)	
+	
+p <- plot_ly(type = 'mesh3d',	
+             # Define all (4) zero-cells (points or vertices)	
+             # P_i(x,y,z), 0<=i<4	
+             x = c(0,           1/sqrt(3), -1/(2*sqrt(3)), -1/(2*sqrt(3))),	
+             y = c(sqrt(2/3),   0,          0,             0),	
+             z = c(0,           0,          -1/2,          1/2),	
+             	
+             # Next define all triples (i,j,k) of vertices that form a 2-cell face. 	
+             # All Tetrahedra have 4 faces	
+             i = c(0, 0, 0, 1),	
+             j = c(1, 2, 3, 2),	
+             k = c(2, 3, 1, 3),	
+             	
+             # Define the appearance of the 4 faces (2-cells)	
+             facecolor = toRGB(viridisLite::viridis(4)),	
+             showscale = TRUE, 	
+             opacity=0.8	
+) 	
+traceEdge <- list( 	
+  x1 = c(-1/(2*sqrt(3)), -1/(2*sqrt(3))), 	
+  y1 = c(0, 0), 	
+  z1 = c(-1/2, 1/2), 	
+  line = list(	
+    color = "rgb(1, 1, 1)",  #dark color for line traces	
+    width = 20 # width of line	
+  ), 	
+  mode = "lines", 	
+  opacity = 1,	
+  type = "scatter3d"	
+)	
+	
+# emphasize one of the faces by stressing the three 1-cells (edges)	
+p <- add_trace(p, x=~traceEdge$x1, y=~traceEdge$y1, z=~traceEdge$z1,	
+               type="scatter3d", mode=traceEdge$mode,	
+               opacity=traceEdge$opacity,	
+               line = list(color=traceEdge$line$color,	
+                           width=traceEdge$line$width), showlegend=F)	
+# add one 0-cell (point)	
+p <- add_trace(p, x=-1/(2*sqrt(3)), y=0, z=1/2, type="scatter3d",	
+                mode="markers", marker = list(size =16, 	
+                                      color="blue", opacity = 1.0)) %>%	
+  layout(title = "Simplicial Complexes (0,1,2,3) Cells", showlegend = FALSE,	
+         scene = list(	
+          xaxis = list(title = "X"),	
+          yaxis = list(title = "Y"),	
+          zaxis = list(title = "Z")	
+        ))	
+p
+```
+
+For a given finite set of data observations, we are trying to represent the underlying topological space the data is sampled from. This topological formulation can be approximated as patches of open covers modeled by simplicial complexes. Locally, the data may be assumed to lie in a metric space where distances between data points can be measured. This leads to neighborhood approximations that can locally be represented as $nD$ balls centered at each data point. This topological space covering may not represent a complete and open cover as all data samples are finite and small, biased, or incomplete samples may lead to poor approximations of the topology of the problem state-space. Zero-cells (0-simplexes, points) are fit for for each observed data point, 1-cells (lines) are fit for each pair of data in the same neighborhood, and so on. More information about simplex trees is available in this article [The Simplex Tree: An Efficient Data Structure for General Simplicial Complexes](https://link.springer.com/chapter/10.1007/978-3-642-33090-2_63).
+
+Example of simplicial tree decomposition of 10 data points using the `R` package [simplextree](https://cran.r-project.org/web/packages/simplextree/).
+
+```{r}
+# install.packages("simplextree")	
+library(simplextree)	
+	
+simplicialTreeExample <- simplex_tree(list(1:3, 2:5, 5:8, 7:8, c(7,9,10)))	
+plot(simplicialTreeExample, color_pal = rainbow(simplicialTreeExample$dimension + 1))
+```
+```{r}
+# Generate some data	
+n <- 30 #number of points to generate	
+	
+#generate space of parameter	
+theta = seq(length.out=n, from=0, to=pi) 	
+	
+a <- 0.0; b <- 0.0; r <- 5.0	
+	
+x = a + r*cos(theta) + rnorm(n, 0, 0.4)	
+y = b + r*sin(theta) + rnorm(n, 0, 0.4)	
+	
+x1 = a + r*cos(theta)	
+y1 = b + r*sin(theta)	
+	
+df <- as.data.frame(cbind(x,y))	
+#code to plot the circle for visualization	
+# plot(x,y)	
+	
+plot_ly() %>% 	
+  add_trace(x=x, y=y, type="scatter", name = 'Simulated Data Sample', 	
+              mode = 'markers', marker = list(opacity=0.99, size=20, symbol=1)) %>%	
+  add_trace(x=x1, y = y1, type="scatter", 	
+            name = '(Quadratic) Model', 	
+            mode = 'lines') %>%	
+  layout(title='Sample Data from Quadratic Model', 	
+         xaxis = list(title="X)", scaleanchor = "y"), 	
+         yaxis = list(title="Y)", scaleanchor = "x"),	
+         legend = list(orientation = 'h'))
+```
+```{r}
+# install.packages("reticulate")	
+library(reticulate)	
+# specify the path of the Python version that you want to use	
+py_path = "C:/Users/nobuo/Anaconda3/"  # manual	
+# py_path = Sys.which("python3")       # automated	
+use_python(py_path, required = T) 	
+Sys.setenv(RETICULATE_PYTHON = "C:/Users/nobuo/Anaconda3/")
+```
+Go into python to generate the simplicial complex for the data.
+```{python}
+import matplotlib	
+import matplotlib.pyplot as plt	
+import numpy as np	
+import os 	
+os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = 'C:/Users/nobuo/Anaconda3/Library/plugins/platforms'	
+	
+print(r.df[1:6])
+```
+This set of functions allows for building a Vietoris-Rips simplicial complex from point data
+
+```{python}
+def euclidianDist(a,b):	
+  return np.linalg.norm(a - b) #Euclidean distance metric	
+	
+#Build neighborhood graph	
+def buildGraph(raw_data, epsilon = 3.1, metric=euclidianDist): #raw_data is a numpy array	
+  nodes = [x for x in range(raw_data.shape[0])] #initialize node set, reference indices from original data array	
+  edges = [] #initialize empty edge array	
+  weights = [] #initialize weight array, stores the weight (which in this case is the distance) for each edge	
+  for i in range(raw_data.shape[0]): #iterate through each data point	
+      for j in range(raw_data.shape[0]-i): #inner loop to calculate pairwise point distances	
+          a = raw_data[i]	
+          b = raw_data[j+i] #each simplex is a set (no order), hence [0,1] = [1,0]; so only store one	
+          if (i != j+i):	
+              dist = metric(a,b)	
+              if dist <= epsilon:	
+                  edges.append({i,j+i}) #add edge	
+                  weights.append([len(edges)-1,dist]) #store index and weight	
+  return nodes,edges,weights	
+	
+def lower_nbrs(nodeSet, edgeSet, node):	
+    return {x for x in nodeSet if {x,node} in edgeSet and node > x}	
+	
+def rips(graph, k):	
+    nodes, edges = graph[0:2]	
+    VRcomplex = [{n} for n in nodes]	
+    for e in edges: #add 1-simplexes (edges)	
+        VRcomplex.append(e)	
+    for i in range(k):	
+        for simplex in [x for x in VRcomplex if len(x)==i+2]: #skip 0-simplexes	
+            #for each u in simplex	
+            nbrs = set.intersection(*[lower_nbrs(nodes, edges, z) for z in simplex])	
+            for nbr in nbrs:	
+                VRcomplex.append(set.union(simplex,{nbr}))	
+    return VRcomplex	
+	
+def drawComplex(origData, ripsComplex, axes=[-6,8,-6,6]):	
+  plt.clf()	
+  plt.axis(axes)	
+  plt.scatter(origData[:,0],origData[:,1]) #plotting just for clarity	
+  for i, txt in enumerate(origData):	
+      plt.annotate(i, (origData[i][0]+0.05, origData[i][1])) #add labels	
+	
+  #add lines for edges	
+  for edge in [e for e in ripsComplex if len(e)==2]:	
+      #print(edge)	
+      pt1,pt2 = [origData[pt] for pt in [n for n in edge]]	
+      #plt.gca().add_line(plt.Line2D(pt1,pt2))	
+      line = plt.Polygon([pt1,pt2], closed=None, fill=None, edgecolor='r')	
+      plt.gca().add_line(line)	
+	
+  #add triangles	
+  for triangle in [t for t in ripsComplex if len(t)==3]:	
+      pt1,pt2,pt3 = [origData[pt] for pt in [n for n in triangle]]	
+      line = plt.Polygon([pt1,pt2,pt3], closed=False, color="blue",alpha=0.3, fill=True, edgecolor=None)	
+      plt.gca().add_line(line)	
+  plt.show()
+```
+Visualize the simplicial complex.
+```{python}
+newData = np.array(r.df)	
+# print(newData)	
+graph = buildGraph(raw_data=newData, epsilon=1.7)	
+ripsComplex = rips(graph=graph, k=3)	
+drawComplex(origData=newData, ripsComplex=ripsComplex)	
+```
+	
+The 2D simplicial complex construction above illustrated a weighted graph representation of the 2D data using 0, 1, and 2 cells. In general, similar decomposition using higher order simplexes can be obtained, with increasing computational complexity. This simplex graph help with the lower dimensional projections in the UMAP algorithm as the simplicial decomposition captures the topological structure of the data.
+
+Our aim is to generate a low dimensional representation of the data that has similar (or homologous) topological structure as the higher-dimensional simplicial decomposition. The UMAP projection is low dimensional representation of the data into the desired embedding space (e.g., $R^2$ or $R^3$). We will measure distances on the manifolds using some metric, e.g., standard Euclidean distance. In particular, we focus on distances to the nearest neighbors, where neighborhoods are defined as balls centered at specific data point of a `min_dist` diameter, a user-specified hyper-parameter.
+
+The lower dimensional projections are driven by iteratively solving optimization problems of finding the low dimensional simplicial graph that closely resembles the fuzzy topological structure of the previous graph (or the original simplicial decomposition. The simplexes are represented as graphs with weighted edges that can be thought of as probabilities that compare the homologous 0-simplexes, 1-simplexes, and so on. These probabilities can be modeled as Bernoulli processes as (corresponding) simplexes either exist or don't exist and the probability is the univariate parameter of the Bernoulli distribution, which can be estimated using the cross entropy measure.
+
+ For example, if $S1$ the set of all possible 1-simplexes, let's denote by $\omega(e)$ and $\omega'(e)$ the weight functions of the 1-simplex $e$ in the high dimensional space and the corresponding lower dimensional counterpart. Then, the cross entropy measure for the 1-simplexes is:
+ $$\sum_{e\in E} {\left [ \underbrace{\omega(e)log\left ( \frac{\omega(e)}{\omega'(e)}\right )}_\text{attractive force}+
+ \underbrace{(1-\omega(e))log\left ( \frac{1-\omega(e)}{1-\omega'(e)}\right ) }_\text{repulsive force}\right ]} .$$
+The iterative optimization process would minimize the objective function composed of all cross entropies for all simplicial complexes using a strategy like stochastic gradient descent.
+
+The optimization process balances the push-pull between the *attractive forces* between the points favoring larger values of $\omega'(e)$ (that correspond to small distances between the points), and the *repulsive forces* between the ends of $e$ when $\omega(e)$ is small (that correspond to small values of $\omega'(e)$.
+
+## Hand-Written Digits Recognition
+
+Let's go back to the [MNIST digits dataset](https://en.wikipedia.org/wiki/MNIST_database) and apply UMAP projection from the original 784D space to 2D.
+
+The R package `umap` provides functionality to use UMAP for dimensional reduction of high-dimensional data.
+
+Let's demonstrate UMAP projecting the the hand-written digits dataset in 2D and using the projection for prediction and forecasting using new testing/validation data.
+
+```{r}
+# install.packages('plotly')	
+library(plotly)	
+# install.packages('umap')	
+library(umap)	
+# 	
+# # Specify the input data 	
+# umapData <- iris[ , 1:4]	
+# umapLabels <- iris[ , 5]	
+# 	
+# # UMAP projection in 2D	
+# umapData.umap <- umap(umapData)   # exclude the iris 3-class labels	
+# 	
+# # Using Python through R-reticulate interface	
+# # library(reticulate)	
+# # iris.umap_learn <- umap(umapData, method="umap-learn")	
+# 	
+# # Plot UMAP reduction in 2D	
+# plot(umapData.umap$layout, col=as.factor(umapLabels))	
+	
+# https://rdrr.io/cran/umap/man/umap.defaults.html	
+custom.settings = umap.defaults	
+custom.settings$n_neighbors = 5	
+custom.settings$n_components=3	
+# custom.settings	
+execTime_UMAP <- system.time(umap_digits3D <- umap(t(train)[1:10000 , ], umap.config=custom.settings)); execTime_UMAP
+```
+```{r}
+cols <- palette(rainbow(10)) 	
+	
+# 2D UMAP Plot	
+dfUMAP <- data.frame(umap_digits3D$layout[1:1000, ], train.labels.colors[1:1000])	
+plot_ly(dfUMAP, x = ~X1, y = ~X2, mode = 'text') %>%	
+  add_text(text=names(train.labels.colors)[1:1000], textfont=list(color=dfUMAP$train.labels.colors.1.1000.)) %>%	
+  layout(title="UMAP (748D->2D) Embedding", xaxis = list(title = ""),  yaxis = list(title = ""))
+```
+```{r}
+# 3D t_SNE plot	
+# execTime_UMAP <- system.time(umap_digits3D <- umap(t(train)[1:10000 , ], umap.config=custom.settings)); execTime_UMAP	
+# 	
+# df3D <- data.frame(tsne_digits3D$Y[1:1000, ], train.labels.colors[1:1000])	
+# plot_ly(df3D, x = ~df3D[, 1], y = ~df3D[, 2], z= ~df3D[, 3], mode = 'markers+text') %>%	
+#   add_text(text = names(train.labels.colors)[1:1000], textfont = list(color = df$train.labels.colors.1.1000.)) %>%	
+#   layout(title = "t-SNE 3D Embedding", 	
+#          scene = list(xaxis = list(title=""),  yaxis=list(title=""), zaxis=list(title="")))
+```
+```{r}
+# execTime_UMAP <- system.time(umapData.umap <- 	
+#                                umap(t(train)[1:10000 , ])) 	
+# execTime_UMAP	
+# # Full dataset(42K * 1K) execution may take much longer	
+# 	
+# # Plot the result 2D UMAP embedding of the data with digits or solid discs	
+# par(mfrow=c(1,1)) # reset the plot canvas	
+# 	
+# # Plot only first 1,000 cases (to avoid clutter)	
+# plot(umapData.umap$layout[1:200 , ], t='n', main="UMAP (748D->2D)") # don't plot the points to avoid clutter	
+# text(umapData.umap$layout[1:200,], labels=names(train.labels.colors)[1:200], col=train.labels.colors[1:200])	
+# 	
+# # plot(umapData.umap$layout[1:200 , ],	
+# #      col=as.factor(train.labels.colors[1:200]))
+```
+## Apply UMAP for class-prediction using new data
+
+ Using the MNIST hand-written digits dataset, or the simpler iris dataset, we will show how we can use UMAP for predicting the image-to-digit, or flower-to-species (taxa) mappings. In the MNIST data, we use a new 1K 2d images for prediction and for the iris data, we simulate new iris flower features by introducing random noise $N(0,0.1)$ to the original Iris data.
+ 
+```{r}
+# for IRIS data	
+# umapData <- iris[ , 1:4]	
+# umapLabels <- iris[ , 5]	
+# 	
+# # UMAP projection in 2D	
+# umapData.umap <- umap(umapData)	
+# 	
+# # Generate a new random set (from the original iris data)	
+# umapDataNoise <- umapData + matrix(rnorm(150*40, 0, 0.1), ncol=4)	
+# colnames(umapDataNoise) <- colnames(umapData)	
+# head(umapDataNoise, 5)	
+# 	
+# # Prediction/Forecasting	
+# umapDataNoisePred <- predict(umapData.umap, umapDataNoise)	
+# 	
+# # Stack the original and noise-corrupted data into the same object and plot	
+# plot(umapData.umap$layout, col=umapLabels, pch = 1, 	
+#      xlab='UMAP Dim 1', ylab='UMAP Dim 2')  # UMAP of Original data	
+# par(new=TRUE)	
+# plot(umapDataNoisePred, col=umapLabels, pch = 3, 	
+#      xaxt='n', yaxt='n', ann=FALSE)  # UMAP of Predictions on Noisy data	
+# Stack the original and noise-corrupted data into the same object and plot	
+# plot(umap_digits3D$layout, col=umapLabels, pch = 1, 	
+#      xlab='UMAP Dim 1', ylab='UMAP Dim 2')  # UMAP of Original data	
+# par(new=TRUE)	
+# plot(umapDataNoisePred, col=umapLabels, pch = 3, 	
+#      xaxt='n', yaxt='n', ann=FALSE)  # UMAP of Predictions on Noisy data	
+	
+	
+# Use the next 1,000 images as prospective new data to classify into 0,1, ..., 9 labels	
+umapData_1000 <- train[ , 10001:11000]	
+str(umapData_1000)	
+	
+# Prediction/Forecasting	
+umapData_1000_Pred <- predict(umap_digits3D, t(umapData_1000))  # mind transpose of data (case * Feature)	
+# train.labels.colors <- colMap(train.labels)	
+	
+# 2D UMAP Plot	
+dfUMAP <- data.frame(x=umap_digits3D$layout[1:1000, 1], y=umap_digits3D$layout[1:1000, 2],	
+                     col=train.labels.colors[1:1000])	
+plot_ly(dfUMAP, x = ~x, y = ~y, mode = 'text') %>%	
+    # Add training data UMAP projection scatter Digits	
+    add_text(text=names(train.labels.colors)[1:1000], textfont=list(color=~col, size=15), showlegend=F) %>%	
+    # Add 1,000 testing hand-written digit cases onto the 2D UMAP projection pane as colored scatter points	
+    # add_markers(marker = list(opacity=0.99, size=10, color=train.labels.colors[10001:11000],	
+    #                           symbol=~as.numeric(as.factor(train.labels.colors[10001:11000]))))	
+    add_markers(x=umapData_1000_Pred[ , 1], y=umapData_1000_Pred[ , 2], 	
+                name =train.labels[10001:11000], marker = list(color=train.labels.colors[10001:11000])) %>%	
+    layout(title="UMAP Prediction: Projection of 1,000 New Images in 2D", 	
+           xaxis = list(title = ""),  yaxis = list(title = ""))	
+```
+```{r}
+# #############################################################################	
+# # plot(range(umapData.umap$layout)[ , 1], range(umapData.umap$layout[ , 2]))	
+# # points(umapData.umap$layout[,1], umapData.umap$layout[,2],	
+# #        col=umapLabels, cex=2, pch=1)	
+# # mtext(side=3, main="UMAP")	
+# # df <- as.data.frame(cbind(umapData.umap$layout[ , 1], umapData.umap$layout[ , 2]))	
+# library(plotly)	
+# plot_ly(x = umapData.umap$layout[ , 1] , 	
+#         y = umapData.umap$layout[ , 2], z = umapData.umap$layout[ , 2], 	
+#         color = ~umapLabels,	
+#         opacity = .5,	
+#         colors = c('darkgreen', 'red'), 	
+#         type = "scatter3d", 	
+#         mode = "markers",	
+#         marker = list(size = 5, width=2), 	
+#         text = ~umapLabels,	
+#         hoverinfo = "text") %>%	
+#   layout(	
+#     title = "UMAP clusters"	
+#   )	
+# 	
+# # p <-plot_ly(	
+# #   x = umapData.umap$layout[ , 1] , 	
+# #         y = umapData.umap$layout[ , 2], z = umapData.umap$layout[ , 2], 	
+# #   type="scatter3d",	
+# #   mode = "markers",	
+# #   color = as.factor(umapLabels)) %>%	
+# #   layout(	
+# #     title = "UMAP clusters"	
+# #   )	
+# # p	
+```
+ 
+## UMAP Parameters
+
+The UMAP configuration allows specifying the 21 parameters controlling the UMAP projection embedding of the function `umap()`.
+
+- *n_neighbors*: integer; number of nearest neighbors
+- *n_components*: integer; dimension of target (output) space
+- *metric*: character or function determining how distances between data points are computed. String-labeled metrics include : *euclidean*, *manhattan*, *cosine*, *pearson*, *pearson2*. The triangle inequality may not be satisfied by some  metrics and the internal **knn** search may not be optimal
+- *n_epochs*: integer; number of iterations performed during layout optimization
+- *input*: character, use either "data" or "dist"; determines whether the primary input argument to `umap()` is treated as a data matrix or as a distance matrix
+- *init*: character or matrix. The default string "spectral" computes an initial embedding using eigenvectors of the connectivity graph matrix. An alternative is the string "random", which creates an initial layout based on random coordinates. This setting.can also be set to a matrix, in which case layout optimization begins from the provided coordinates.
+- *min_dist*: numeric; determines how close points appear in the final layout
+- *set_op_ratio_mix_ratio*: numeric in range [0,1]; determines the knn-graph  used to create a fuzzy simplicial graph
+- *local_connectivity*: numeric; used during construction of fuzzy simplicial set
+- *bandwidth*: numeric; used during construction of fuzzy simplicial set	
+- *alpha*: numeric; initial value of "learning rate" of layout optimization	
+- *gamma*: numeric; determines, together with alpha, the learning rate of layout optimization	
+- *negative_sample_rate*: integer; determines how many non-neighbor points are used per point and per iteration during layout optimization	
+- *a*: numeric; contributes to gradient calculations during layout optimization. When left at NA, a suitable value will be estimated automatically.	
+- *b*: numeric; contributes to gradient calculations during layout optimization.	
+- *spread*: numeric; used during automatic estimation of a/b parameters.	
+- *random_state*: integer; seed for random number generation used during umap()	
+- *transform_state*: integer; seed for random number generation used during `predict()`	
+- *knn.repeat*: number of times to restart knn search	
+- *verbose*: logical or integer; determines whether to show progress messages	
+- *umap_learn_args*: vector of arguments to python package umap-learn
+
+## Stability, Replicability and Reproducibility
+
+*Reproducibility* is a stronger condition that requires obtaining consistent computational results using a *fixed* protocol including input data, computational steps, scientific methods, software code, compiler, and other experimental conditions.
+
+*Replicability* is a weaker condition that requires obtaining homologous results across multiple studies examining the same phenomenon aiming at answering the same scientific questions, each study using its own independent (yet homologous) input data.
+
+As most UMAP implementations involve stochastic processes that employ random number generation, there may be variations in the output results from repeated runs of the algorithm. To stabilize these outputs and ensure result reproducibility we can use seed-setting, `umapData.umap.1234 = umap(umapData, random_state=1234)
+
+## UMAP Interpretation
+
+Below is a summary of key UMAP interpretation points:
+
+- The choice of the hyperparameters will effect the output: Choosing optimal parameter values may be difficult and is always data dependent. The stability of running UMAP repeatedly with a range of hyperparameters may provide a more sensible interpretation of the lower dimensional UMAP projection.	
+- The sizes of the lower dimensional UMAP cluster should not be over-interpreted, since UMAP relies only on local graph neighborhood distances (not global) to construct the initial high-dimensional graph representation.	
+- Similarly, between-cluster distances are not representative of dissimilarities between the cluster elements.	
+- Initial random noise in the data will not be preserved as random variation in the UMAP projections and some spurious clustering may be present that may not be signal related.
+
 # Dimensionality Reduction Case Study (Parkinson's Disease)
 
 ## Step 1: Collecting Data	
- 	
-The data we will be using in this case study is the Clinical, Genetic and Imaging Data for Parkinson's Disease in the SOCR website. A detailed data explanation is on the following link [PD data](https://wiki.socr.umich.edu/index.php/SOCR_Data_PD_BiomedBigMetadata). Let's import the data into R.	
+
+The data we will be using in this case study is the Clinical, Genetic and Imaging Data for Parkinson's Disease in the SOCR website. A detailed data explanation is on the following link [PD data](https://wiki.socr.umich.edu/index.php/SOCR_Data_PD_BiomedBigMetadata). Let's import the data into R. 	
 
 ```{r}
-# Loading required package: xml2	
+# Loading required package: xml2
+library(xml2)
+library(rvest)
 wiki_url <- read_html("https://wiki.socr.umich.edu/index.php/SOCR_Data_PD_BiomedBigMetadata")	
 html_nodes(wiki_url, "#content")	
 pd_data <- html_table(html_nodes(wiki_url, "table")[[1]])	
-head(pd_data); summary(pd_data)
+head(pd_data)
+summary(pd_data)	
 ```
 
 ## Step 2: Exploring and preparing the data	
@@ -1200,27 +1619,63 @@ pd_data <- pd_data[, -c(1, 33)]
 
 ## PCA
 
-Now we start the process of fitting a PCA model. Here we will use the `princomp()` function and use the correlation rather than the covariance matrix for calculation.	
+Now we start the process of fitting a PCA model. Here we will use the `princomp()` function and use the correlation rather than the covariance matrix for calculation. Mind that previous, we used `prcomp()` and now we are employing `princomp()`, two different functions, to compute the PCA.
 
 ```{r}
 pca.model <- princomp(pd_data, cor=TRUE)	
 summary(pca.model) # pc loadings (i.e., eigenvector columns)	
-plot(pca.model)	
-biplot(pca.model)	
-	
+```
+```{r}
+plot(pca.model)
+```
+```{r}
+biplot(pca.model)
+```
+```{r}
+library("factoextra")
 fviz_pca_biplot(pca.model, axes = c(1, 2), geom = "point",	
   col.ind = "black", col.var = "steelblue", label = "all",	
   invisible = "none", repel = F, habillage = pd_data$Sex, 	
   palette = NULL, addEllipses = TRUE, title = "PCA - Biplot")
 ```
+```{r}
+plot_ly(x = c(1:length(pca.model$sdev)), y = pca.model$sdev*pca.model$sdev, name = "Scree", type = "bar") %>%	
+  layout(title="Scree Plot", xaxis = list(title="PC's"),  yaxis = list(title="Variances (SD^2)"))
+```
+```{r}
+# Scores	
+scores <- pca.model$scores	
+# Loadings	
+loadings <- pca.model$loadings	
+	
+# Visualization scale factor for loadings	
+scaleLoad <- 10	
+	
+p <- plot_ly() %>%	
+  add_trace(x=scores[,1], y=scores[,2], z=scores[,3], type="scatter3d", mode="markers", name=pd_data$Dx,	
+            marker = list(color=pd_data$Dx, colorscale = c("gray", "red"), opacity = 0.7), showlegend=F) 	
+for (k in 1:nrow(loadings)) {	
+   x <- c(0, loadings[k,1])*scaleLoad	
+   y <- c(0, loadings[k,2])*scaleLoad	
+   z <- c(0, loadings[k,3])*scaleLoad	
+   p <- p %>% add_trace(x=x, y=y, z=z, type="scatter3d", mode="lines", 	
+  name=paste0("Loading PC ", k, " ", colnames(pd_data)[k]), line=list(width=8), opacity=1) 	
+}	
+	
+p <- p %>%	
+  layout(legend = list(orientation = 'h'), 	
+         title=paste0("3D Projection of ", length(pca.model$sdev),"D PD Data along First 3 PCs (Colored by Dx)")) 	
+p	
+```
 
-Albeit the two cohorts (normal controls and patients) are slightly separated in the second principal direction, we can see in this real world example that PCs do not necessarily correspond to a definitive "elbow" plot suggesting an optimal number of components. In our PCA model, each PC explains about the same amount of variation. Thus, it is hard to tell how many PCs, or factors, we need to select. This would be an *ad hoc* decision in this case. We can understand this better after understanding the following FA model. 	
- 	
+Albeit the two cohorts (normal controls and patients, $DX$, red and gray colored markers in the 3D scene) are slightly separated in the second principal direction, we can see in this real world example that PCs do not necessarily correspond to a definitive "elbow" plot suggesting an optimal number of components. In our PCA model, each PC explains about the same amount of variation. Thus, it is hard to tell how many PCs, or factors, we need to select. This would be an *ad hoc* decision in this case. We can understand this better after understanding the following FA model.
+
 ## FA
 
 Let's set up an Cattel's Scree test to determine the number of factors first.
 
 ```{r}
+library(nFactors)
 ev <- eigen(cor(pd_data)) # get eigenvalues	
 ap <- parallel(subject=nrow(pd_data), var=ncol(pd_data), rep=100, cent=.05)	
 nS <- nScree(x=ev$values, aparallel=ap$eigen$qevpea)	
@@ -1239,10 +1694,25 @@ This data matrix has relatively low correlation. Thus, it is not suitable for IC
 ```{r}
 cor(pd_data)[1:10, 1:10]
 ```
+```{r}
+# generate some random categorical labels for all N observations	
+class <- pd_data$Dx	
+df <- as.data.frame(pd_data[1:5], class=class)	
+	
+plot_ly(df) %>%	
+    add_trace(type = 'splom', dimensions = list( list(label=colnames(pd_data)[1], values=~L_caudate_ComputeArea),	
+                                                 list(label=colnames(pd_data)[2], values=~L_caudate_Volume),	
+                                                 list(label=colnames(pd_data)[3], values=~R_caudate_ComputeArea),	
+                                                 list(label=colnames(pd_data)[4], values=~R_caudate_Volume),	
+                                                 list(label=colnames(pd_data)[5], values=~L_putamen_ComputeArea)),	
+              text=~class, marker = list(line = list(width = 1, color = 'rgb(230,230,230)'))) %>%	
+    layout(title= 'Parkinsons Disease (PD) Data Pairs Plot', hovermode='closest', dragmode= 'select',	
+        plot_bgcolor='rgba(240,240,240, 0.95)')	
+```
 
 ## t-SNE
 
-Finally, let's try the t-Distributed Stochastic Neighbor Embedding method on the [PD data](https://wiki.socr.umich.edu/index.php/SOCR_Data_PD_BiomedBigMetadata). 	
+Next, let's try the t-Distributed Stochastic Neighbor Embedding method on the [PD data](https://wiki.socr.umich.edu/index.php/SOCR_Data_PD_BiomedBigMetadata).
 
 ```{r}
 # install.packages("Rtsne")	
@@ -1251,21 +1721,28 @@ library(Rtsne)
 # If working with post-processed PD data above: remove duplicates (after stripping time)	
 # pd_data <- unique(pd_data[,])	
 	
-# If wqorking with raw PD data: reload it	
-pd_data <- html_table(html_nodes(wiki_url, "table")[[1]])	
-	
+# If working with raw PD data: reload it	
+library(xml2)
+library(rvest)
+wiki_url <- read_html("https://wiki.socr.umich.edu/index.php/SOCR_Data_PD_BiomedBigMetadata")	
+html_nodes(wiki_url, "#content")	
+pd_data <- html_table(html_nodes(wiki_url, "table")[[1]])
+pd_data <- unique(pd_data[,])	
+
 # Run the t-SNE, tracking the execution time (artificially reducing the sample-size to get reasonable calculation time)	
-execTime_tSNE <- system.time(tsne_digits <- Rtsne(pd_data, dims = 2, perplexity=30, verbose=TRUE, max_iter = 1000)); execTime_tSNE	
-	
+execTime_tSNE <- system.time(tsne_PD <- Rtsne(pd_data, dims = 3, perplexity=30, verbose=TRUE, max_iter = 1000)); execTime_tSNE
+```
+```{r}
 # Plot the result 2D map embedding of the data	
 # table(pd_data$Sex)	
-# plot(tsne_digits$Y, main="t-SNE Clusters", col=rainbow(length(unique(pd_data$Sex))), pch = 1)	
+# plot(tsne_PD$Y, main="t-SNE Clusters", col=rainbow(length(unique(pd_data$Sex))), pch = 1)	
 #legend("topright", c("Male", "Female"), fill=rainbow(length(unique(pd_data$Sex))), bg='gray90', cex=0.5)	
 	
-table(pd_data$Dx)	
-	
+table(pd_data$Dx)
+```
+```{r}
 # Either use the DX label column to set the colors col = as.factor(pd_data$Dx) 	
-#plot(tsne_digits$Y, main="t-SNE Clusters", col=as.factor(pd_data$Dx), pch = 15)	
+#plot(tsne_PDs$Y, main="t-SNE Clusters", col=as.factor(pd_data$Dx), pch = 15)	
 #legend("topright", c("HC", "PD", "SWEDD"), fill=unique(as.factor(pd_data$Dx)), bg='gray90', cex=0.5)	
 	
 	
@@ -1276,9 +1753,33 @@ CharToColor = function(input_char){
 }	
 pd_data$Dx.col = sapply(pd_data$Dx, CharToColor)	
 	
-plot(tsne_digits$Y, main="t-SNE Clusters", col=pd_data$Dx.col, pch = 15)	
-legend("topright", c("HC", "PD", "SWEDD"), fill=unique(pd_data$Dx.col), bg='gray90', cex=0.5)	
-
+# plot(tsne_PD$Y, main="t-SNE Clusters", col=pd_data$Dx.col, pch = 15)	
+# legend("topright", c("HC", "PD", "SWEDD"), fill=unique(pd_data$Dx.col), bg='gray90', cex=0.5)	
+	
+df3D <- data.frame(tsne_PD$Y, pd_data$Dx.col)	
+plot_ly(df3D, x = ~df3D[, 1], y = ~df3D[, 2], z= ~df3D[, 3], type="scatter3d",  mode = 'markers', 	
+        color = pd_data$Dx.col, name=pd_data$Dx) %>%	
+  layout(title = "PD t-SNE 3D Embedding", 	
+         scene = list(xaxis = list(title=""),  yaxis=list(title=""), zaxis=list(title="")))
 ```
 
-The results of the PCA, ICA, FA, and t-SNE methods on the [PD data](https://wiki.socr.umich.edu/index.php/SOCR_Data_PD_BiomedBigMetadata) imply that the data is complex and intrinsically high-dimensional, which prevents explicit embeddings into a low-dimensional (e.g., 2D) space. More advanced methods to interrogate this dataset will be demonstrated later. The [SOCR publications site](https://www.socr.umich.edu/people/dinov/publications.html) provides additional examples of Parkinson's disease studies.	
+## Uniform Manifold Approximation and Projection (UMAP)
+
+Similarly, we can try the UMAP method on the PD data.
+
+```{r}
+library(umap)
+execTime_UMAP <- system.time(umap_PD_3D <- umap(pd_data[, -c(27, 34)]))   # remove "Dx.col" & 	
+execTime_UMAP
+```
+```{r}
+cols <- palette(rainbow(3)) 	
+	
+# 2D UMAP Plot	
+dfUMAP <- data.frame(umap_PD_3D$layout, df3D$pd_data.Dx.col)	
+plot_ly(dfUMAP, x = ~X1, y = ~X2, mode = 'text') %>%	
+  add_text(text=pd_data$Dx, textfont=list(color=dfUMAP$df3D.pd_data.Dx.col)) %>%	
+  layout(title="UMAP PD (32D->2D) Embedding", xaxis = list(title = ""),  yaxis = list(title = ""))
+```
+
+The results of the PCA, ICA, FA, t-SNE, and UMAP methods on the [PD data](https://wiki.socr.umich.edu/index.php/SOCR_Data_PD_BiomedBigMetadata) imply that the data is complex and intrinsically high-dimensional, which prevents explicit embeddings into a low-dimensional (e.g., 2D or 3D) space. More advanced methods to interrogate this dataset will be demonstrated later. The [SOCR publications site](https://www.socr.umich.edu/people/dinov/publications.html) provides additional examples of Parkinson's disease studies.
