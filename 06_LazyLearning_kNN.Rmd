@@ -9,31 +9,584 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-In the next several chapters we will concentrate of various progressively advanced machine learning, classification and clustering techniques. There are two categories of machine learning techniques - unsupervised and supervised (human-guided). In general, supervised *classification* methods aim to identify or predict predefined classes and label new objects as members of specific classes. Whereas, unsupervised *clustering* approaches attempt to group objects into subsets, without knowing a priori labels, and determine relationships between objects.	
+In the next several chapters we will concentrate of various progressively advanced machine learning, classification and clustering techniques. There are two categories of machine learning techniques - unsupervised and supervised (human-guided). In general, supervised *classification* methods aim to identify or predict predefined classes and label new objects as members of specific classes. Whereas, unsupervised *clustering* approaches attempt to group objects into subsets, without knowing a priori labels, and determine relationships between objects.
+	
+In the context of machine learning, classification is supervised learning and clustering is unsupervised learning.
+	
+**Unsupervised classification** refers to methods where the outcomes (groupings with common characteristics) are automatically derived based on intrinsic affinities and associations in the data without human indication of clustering. Unsupervised learning is purely based on input data ($X$) without corresponding output labels. The goal is to model the underlying structure, affinities, or distribution in the data in order to learn more about its intrinsic characteristics. It is called unsupervised learning because there are no *a priori* correct answers and there is no human guidance. Algorithms are left to their own devises to discover and present the interesting structure in the data. *Clustering* (discover the inherent groupings in the data) and *association* (discover association rules that describe the data) represent the core unsupervised learning problems. The **k-means** clustering and the **Apriori association rule** provide solutions to unsupervised learning problems.
 
-In the context of machine learning, classification is supervised learning and clustering is unsupervised learning.	
+```{r}
+# install.packages("magrittr")	
+# install.packages("kableExtra")	
+library(kableExtra)	
+library(magrittr)	
+library("knitr")	
+	
+dt <- as.data.frame(cbind("Bayesian Classifier has high computational 	
+requirements. As there are a priori given labels, some prior is needed/specified to train the classifier, which is in turn used to label new data. Then, the newly labeled samples are subsequently used to train a new (supervised) classifier, i.e.,  	
+decision-directed unsupervised learning. If the initial classifier is not appropriate, the process may diverge", 	
+  "Chinese restaurant process (CRP), infinite Hidden Markov Model (HMM)",	
+  "Principal Direction Divisive Partitioning (PDDP)", 	
+  "Start with each case in a separate cluster and repeatedly join the closest pairs into clusters, until a stopping criterion is matched: (1) there is only a single cluster for all cases, (2) predetermined number of clusters is reached, (3) the distance between the closest clusters exceeds a threshold", 	
+  "SpecC", 	
+  "kmeans, hkmeans", 	
+  "Growing Neural Gas", 	
+  "mclust"))	
+	
+colnames(dt) <- c("Decision Based", "Non-parametric", "Divisive (Top-Down)", "Agglomerative (Bottom-Up)", "Spectral", "K-Means / Centroid", "Graph-Theoretic", "Model Based")	
+	
+kable(dt, "html") %>%	
+  kable_styling("striped", bootstrap_options = "bordered") %>%	
+  add_header_above(c("Bayesian" = 2, "Hierarchical" = 2, "Partitioning Based" = 4)) %>%	
+  add_header_above(c("Unsupervised Clustering Approaches" = 8))	
+```
 
-**Unsupervised classification** refers to methods where the outcomes (groupings with common characteristics) are automatically derived based on intrinsic affinities and associations in the data without human indication of clustering. Unsupervised learning is purely based on input data ($X$) without corresponding output labels. The goal is to model the underlying structure, affinities, or distribution in the data in order to learn more about its intrinsic characteristics. It is called unsupervised learning because there are no *a priori* correct answers and there is no human guidance. Algorithms are left to their own devises to discover and present the interesting structure in the data. *Clustering* (discover the inherent groupings in the data) and *association* (discover association rules that describe the data) represent the core unsupervised learning problems. The **k-means** clustering and the **Apriori association rule** provide solutions to unsupervised learning problems.	
+**Supervised classification** methods utilize user provided labels representative of specific classes associated with concrete observations, cases or units. These training classes/outcomes are used as references for the classification. Many problems can be addressed by decision-support systems utilizing combinations of supervised and unsupervised classification processes. Supervised learning involves input variables ($X$) and an outcome variable ($Y$) to learn mapping functions from the input to the output: $Y = f(X)$. The goal is to approximate the mapping function so that when it is applied to new (validation) data ($Z$) it (accurately) predicts the (expected) outcome variables ($Y$). It is called supervised learning because the learning process is supervised by initial training labels guiding and correcting the learning until the algorithm achieves an acceptable level of performance.
 
-<!--	
-<table>	
-     <TR>	
-         <TD COLSPAN="8">Unsupervised Clustering Approaches</TD>	
-     </TR>	
-     <TR>	
-         <TD COLSPAN="2">Bayesian</TD>	
-         <TD COLSPAN="2">Hierarchical</TD>	
-         <TD COLSPAN="4">Partitioning Based</TD>	
-     </TR>	
-     <TR>	
-         <TD>Decision Based</TD>	
-         <TD>Non-parametric</TD>	
-         <TD>Divisive</TD>	
-         <TD>Agglomerative</TD>	
-         <TD>Spectral</TD>	
-         <TD>K-Means/Centroid</TD>	
-         <TD>Graph-Theoretic</TD>	
-         <TD>Model Based</TD>	
-    </TR>	
-</table>	
--->
+*Regression* (output variable is a real value) and *classification* (output variable is a category) problems represent the two types of supervised learning. Examples of supervised machine learning algorithms include *Linear regression* and *Random forest*, both provide solutions for regression-type problems, but *Random forest* also provides solutions to classification problems.
+
+Just like categorization of exploratory data analytics, [Chapter 3](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/03_DataVisualization.html), is challenging, so is systematic codification of machine learning techniques. The **table** below attempts to provide a rough representation of common machine learning methods. However, it is not really intended to be a gold-standard protocol for choosing the best analytical method. Before you settle on a specific strategy for data analysis, you should always review the data characteristics in light of the assumptions of each technique and assess the potential to gain new knowledge or extract valid information from applying a specific technique.
+
+Inference | Outcome |     Supervised          | Unsupervised	
+----------|---------|-------------------------|------------------------	
+Classification & Prediction | Binary | Classification-Rules, OneR, kNN, NaiveBayes, Decision-Tree, C5.0, AdaBoost, XGBoost, LDA/QDA, Logit/Poisson, SVM | *Apriori*, Association-Rules, k-Means, NaiveBayes	
+Classification & Prediction | Categorical | Regression Modeling & Forecasting | *Apriori*, Association-Rules, k-Means, NaiveBayes	
+Regression Modeling | Real Quantitative | (MLR) Regression Modeling, LDA/QDA, SVM, Decision-Tree, NeuralNet | Regression Modeling Tree, *Apriori*/Association-Rules
+
+Many of these will be discussed in later chapters. In this chapter, we will present step-by-step the *k-nearest neighbor (kNN)* algorithm. Specifically, we will demonstrate (1) data retrieval and normalization, (2) splitting the data into *training* and *testing* sets, (3) fitting models on the training data, (4) evaluating model performance on testing data, (5) improving model performance, and (6) determining optimal values of $k$.
+
+In [Chapter 13](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/13_ModelEvaluation.html), we will present detailed strategies, and evaluation metrics, to assess the performance of all clustering and classification methods.
+
+# Motivation
+
+Classification tasks could be very difficult when the features and target classes are numerous, complicated or extremely difficult to understand. In those scenarios, where the items of similar class type tend to be homogeneous, nearest neighbor classification may be appropriate because assigning unlabeled cases to their most similar labeled neighbors may be fairly easy to accomplish.
+
+Such classification methods can help us understand the story behind the unlabeled data using known data and avoiding analyzing those complicated features and target classes. This is because these techniques have no prior distribution assumptions. However, this non-parametric approach makes the methods rely heavy on the training instances, which explains their *lazy algorithms* designation.
+
+# The kNN algorithm Overview
+
+The KNN algorithm involves the following steps:
+
+1. Create a training dataset that has classified examples labeled by nominal variables and different features in ordinal or numerical variables.	
+2. Create a *testing* dataset containing unlabeled examples with similar features as the *training* data.	
+3. Given a predetermined number $k$, match each *test case* with the $k$ closest *training* records that are "nearest" to the test case, according to a certain similarity or distance measure.	
+4. Assign a *test case* class label according to the majority vote of the $k$ nearest training cases.
+
+Mathematically, for a given $k$, a specific similarity metric $d$, and a new testing case $x$, the kNN classifier performs two steps ($k$ is typically *odd* to avoid ties):
+
+* Runs through the whole training dataset ($y$) computing $d(x,y)$. Let $A$ represent the $k$ closest points to $x$ in the training data $y$.
+
+* Estimates the conditional probability for each class, which corresponds to the fraction of points in $A$ with that given class label. If $I(z)$ is an indicator function $I(z) = \begin{cases} 1 & z= true \\ 0 & otherwise \end{cases}$, then the testing data input $x$ gets assigned to the class with the largest probability, $P(y=j|X=x)$:
+
+$$P(y=j|X=x) =\frac{1}{k} \sum_{i\in A}{I(y^{(i)}=j)}.$$
+## Distance Function and Dummy coding
+
+How to measure the similarity between records? We can think of similarity measures as the distance metrics between the two records or cases. There are many distance functions to choose from. Traditionally, we use *Euclidean distance* as our similarity metric.
+
+If we use a line to connect the two points representing the testing and the training records in $n$ dimensional space, the length of the line is the Euclidean distance. If $a, b$ both have $n$ features, the coordinates for them are $(a_1, a_2, ..., a_n)$ and $(b_1, b_2, ..., b_n)$. Our distance could be:
+
+$$dist(a, b)=\sqrt{(a_1-b_1)^2+(a_2-b_2)^2+...+(a_n-b_n)^2}.$$
+When we have nominal features, it requires a little trick to apply the Euclidean distance formula. We could create dummy variables as indicators of all the nominal feature levels. The dummy variable would equal to one when we have the feature and zero otherwise. We show two examples:
+
+$$	
+Gender= \left\{	
+\begin{array}{ll}	
+     0 & X=male \\	
+     1 & X=female \\	
+\end{array} 	
+\right. 	
+$$	
+$$	
+Cold= \left\{	
+\begin{array}{ll}	
+     0 & Temp \geq 37F \\	
+     1 & Temp < 37F \\	
+\end{array} 	
+\right. 	
+$$
+
+This allows only binary expressions. If we have multiple nominal categories, just make each one as a dummy variable and apply the Euclidean distance.
+
+## Ways to Determine *k*
+
+The parameter *k* could not be too large or too small. If our *k* is too large, the test record tends to be classified as the most popular class in the training records, rather than the most similar one. On the other hand, if the *k* is too small, outliers, noise, or mislabeled training data cases might lead to errors in predictions.
+
+The common practice is to calculate the square root of the number of training cases and use that number as (initial) estimate of *k*.
+
+A more robust way would be to choose several *k* values and select the one with the optimal (best) classifying performance.
+
+## Rescaling of the features
+
+ Different features might have different scales. For example, we can have a measure of pain scaling from 1 to 10 or 1 to 100. some similarity or distances measures assume the same measuring unit in all feature dimensions. This requires that the data may need to be transferred into the same scale. Re-scaling can make each feature contribute to the distance in a relatively equal manner, avoiding potential bias.
+ 
+## Rescaling Formulas
+
+There are many alternative strategies to rescale the data.	
+ 	
+### *min-max normalization*	
+ 	
+$$X_{new}=\frac{X-min(X)}{max(X)-min(X)}.$$	
+ 	
+After re-scaling the data, $X_{new}$ would range from 0 to 1, representing the distance between each value and its minimum as a percentage. Larger values indicate further distance from the minimum, 100% means that the value is at the maximum.	
+ 	
+### *z-score standardization*	
+ 	
+$$X_{new}=\frac{X-\mu}{\sigma}=\frac{X-Mean(X)}{SD(X)}$$	
+ 	
+This is based on the properties of normal distribution that we have talked about in [Chapter 2](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/02_ManagingData.html). After z-score standardization, the re-scaled feature will have unbounded range. This is different from the min-max normalization which always have a finite range from 0 to 1. Following z-score standardization, the transformed features are *uniteless* and may resemble standard normal distribution.
+ 
+# Case Study: Youth Development
+
+## Step 1: Collecting Data
+
+The data we are using for this case study is the "Boys Town Study of Youth Development", which is [the second case study, CaseStudy02_Boystown_Data.csv](https://umich.instructure.com/courses/38100/files/folder/Case_Studies).
+
+Variables:	
+ 	
+* **ID**: Case subject identifier	
+* **Sex**: dichotomous variable (1=male, 2=female) 	
+* **GPA**: Interval-level variable with range of 0-5 (0-"A" average, 1- "B" average, 2- "C" average, 3- "D" average, 4-"E", 5-"F"")	
+**Alcohol use**: Interval level variable from 0-11 (drink everyday - never drinked)	
+* **Attitudes on drinking in the household**: Alcatt- Interval level variable from 0-6 (totally approve - totally disapprove)	
+* **DadJob**: 1-yes, dad has a job and 2- no	
+* **MomJob**: 1-yes and 2-no 	
+* **Parent closeness** (example: In your opinion, does your mother make you feel close to her?) 	
+   * Dadclose: Interval level variable 0-7 (usually-never) 	
+   * Momclose: interval level variable 0-7 (usually-never)	
+* **Delinquency**:	
+   * larceny (how many times have you taken things >$50?): Interval level data 0-4 (never - many times), 	
+   * vandalism: Interval level data 0-7 (never - many times)
+
+## Step 2: Exploring and preparing the data
+
+First, we need to load and do some data manipulation. We are using the Euclidean distance so dummy variable should be used. The following codes transferred `sex`, `dadjob` and `momjob` into dummy variables.
+
+```{r}
+boystown<-read.csv("https://umich.instructure.com/files/399119/download?download_frd=1", sep=" ")	
+boystown$sex<-boystown$sex-1	
+boystown$dadjob<--1*(boystown$dadjob-2)	
+boystown$momjob<--1*(boystown$momjob-2)	
+str(boystown)	
+```
+
+The `str()` function tells that we have 200 observations and 11 variables. However, the ID variable is not important in this case study so we can delete it. The variable of most interest is the GPA variable. We can classify it into two categories. Whoever gets a "C" or higher will be classified into the "above average" category; Students who have average score below "C" will be in the "average or below" category. These two are the classes of interest for this case study.
+
+```{r}
+boystown<-boystown[, -1]	
+table(boystown$gpa)	
+boystown$grade<-boystown$gpa %in% c(3, 4, 5)	
+boystown$grade<-factor(boystown$grade, levels=c(F, T), labels = c("above_avg", "avg_or_below"))	
+table(boystown$grade)
+```
+
+ Let's look at the proportions for the two categorizes.
+ 
+```{r}
+round(prop.table(table(boystown$grade))*100, digits=1)
+```
+ 
+We can see that most of the students are above average (67%).
+
+The remaining 10 features are all numeric but with different scales. If we use these features directly, the ones with larger scale will have a greater impact on the classification performance. Therefore, re-scaling is needed in this scenario.
+
+```{r}
+summary(boystown[c("Alcoholuse", "larceny", "vandalism")])
+```
+
+## Normalizing Data
+
+First let's create a function of our own using the min-max normalization formula. We can check the function using some trial vectors.
+
+```{r}
+normalize<-function(x){	
+  return((x-min(x))/(max(x)-min(x)))	
+}	
+	
+# some test examples:	
+normalize(c(1, 2, 3, 4, 5))	
+normalize(c(1, 3, 6, 7, 9))
+```
+
+After confirming the function definition, we can use `lapply()` to apply the normalization transformation to each element in a "list". First, we need to make our dataset into a list. The `as.data.frame()` function convert our data into a data frame, which is a list of equal-length column vectors. Thus, each feature is an element in the list that we can apply the normalization function to.
+
+```{r}
+boystown_n<-as.data.frame(lapply(boystown[-11], normalize))
+```
+
+Let's examine one of the features that were normalized.
+
+```{r}
+summary(boystown_n$Alcoholuse)
+```
+
+This looks great! Now we can move to the next step.
+
+## Data preparation - creating training and test datasets
+
+We have 200 observations in this dataset. The more data we use to train the the algorithm, the more precise the prediction would be. We can use $3/4$ of the data for training and the remaining $1/4$ for testing. For simplicity, we will just take the first cases as training and the remaining as testing, however, later we will see how to use a better randomization strategy to split the data into testing and training sets.
+
+```{r}
+# may want to use random split of the raw data into training and testing	
+# subset_int <- sample(nrow(boystown_n),floor(nrow(boystown_n)*0.8))  	
+# 80% training + 20% testing	
+# bt_train<- boystown_n [subset_int, ]; bt_test<-boystown_n[-subset_int, ] 	
+	
+bt_train<-boystown_n[1:150, ]	
+bt_test<-boystown_n[151:200, ]
+```
+
+Then let's extract the labels or classes (column=11, Delinquency in terms of reoccurring `vandalism`) for our two subsets.
+
+```{r}
+bt_train_labels<-boystown[1:150, 11]
+bt_test_labels<-boystown[151:200, 11]
+```
+
+## Step 3 - Training a model on the data
+
+We are using the `class` package for the KNN algorithm in R.
+
+```{r}
+#install.packages('class', repos = "http://cran.us.r-project.org")	
+library(class)
+```
+
+The function `knn()` has following components:	
+ 	
+`p<-knn(train, test, class, k)`	
+ 	
+* train: data frame containing numeric training data (features)	
+* test: data frame containing numeric testing data (features)	
+* class/cl: class for each observation in the training data	
+* *k*: predetermined integer indication the number of nearest neighbors	
+ 	
+The first *k* we chose is the square root of our number of observations: $\sqrt{200}\approx 14$.
+
+```{r}
+bt_test_pred<-knn(train=bt_train, test=bt_test, 	
+                  cl=bt_train_labels, k=14)
+```
+
+## Step 4 - Evaluating model performance
+
+We utilize the `CrossTable()` function in [Chapter 2](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/02_ManagingData.html) to evaluate the KNN model. We have two classes in this example. The goal is to create a $2\times 2$ table that shows the matched true and predicted classes as well as the unmatched ones. However chi-square values are not needed so we use option `prop.chisq=False` to get rid of it.
+
+```{r}
+# install.packages("gmodels", repos="http://cran.us.r-project.org")	
+library(gmodels)
+CrossTable(x=bt_test_labels, y=bt_test_pred, prop.chisq = F)
+```
+
+In this table, the cells in the first row-first column and the second row-second column contain the number for cases that have predicted classes matching the true class labels. The other two cells are the counts for unmatched cases. The *accuracy* in this classifier is calculated by:$\frac{cell[1, 1]+cell[2, 2]}{total}=\frac{40}{50}=0.8.$ Note that this value may slightly fluctuate each time you run the classifier, due to the stochastic nature of the algorithm.
+
+## Step 5 - Improving model performance
+
+The above Normalization may be sub-optimal. We can try an alternative standardization method - standard Z-score centralization and normalization (via `scale()` method). Let's give it a try:
+
+```{r}
+bt_z<-as.data.frame(scale(boystown[, -11]))	
+summary(bt_z$Alcoholuse)
+```
+
+The `summary()` shows the re-scaling is working properly. Then, we can proceed to next steps (retraining the kNN, predicting and assessing the accuracy of the results):
+
+```{r}
+bt_train<-bt_z[1:150, ]	
+bt_test<-bt_z[151:200, ]	
+bt_train_labels<-boystown[1:150, 11]	
+bt_test_labels<-boystown[151:200, 11]	
+bt_test_pred<-knn(train=bt_train, test=bt_test, 	
+                  cl=bt_train_labels, k=14)	
+CrossTable(x=bt_test_labels, y=bt_test_pred, prop.chisq = F)
+```
+
+Under the z-score method, the prediction result is similar to previous result using the normalization strategy. Albeit, in general, there may be marginal differences, e.g., a few more cases may be correctly labeled based on one of the standardization or normalization approaches.
+
+## Testing alternative values of *k*
+
+Originally, we used the square root of 200 as our *k*. However, this might not be the best *k* in this study. We can test different *k*'s for their predicting performances.
+
+```{r}
+bt_train<-boystown_n[1:150, ]	
+bt_test<-boystown_n[151:200, ]	
+bt_train_labels<-boystown[1:150, 11]	
+bt_test_labels<-boystown[151:200, 11]	
+bt_test_pred1<-knn(train=bt_train, test=bt_test, 	
+                  cl=bt_train_labels, k=1)	
+bt_test_pred5<-knn(train=bt_train, test=bt_test, 	
+                  cl=bt_train_labels, k=5)	
+bt_test_pred11<-knn(train=bt_train, test=bt_test, 	
+                  cl=bt_train_labels, k=11)	
+bt_test_pred21<-knn(train=bt_train, test=bt_test, 	
+                  cl=bt_train_labels, k=21)	
+bt_test_pred27<-knn(train=bt_train, test=bt_test, 	
+                  cl=bt_train_labels, k=27)	
+ct_1<-CrossTable(x=bt_test_labels, y=bt_test_pred1, 	
+           prop.chisq = F)	
+ct_5<-CrossTable(x=bt_test_labels, y=bt_test_pred5, 	
+           prop.chisq = F)	
+ct_11<-CrossTable(x=bt_test_labels, y=bt_test_pred11, 	
+           prop.chisq = F)	
+ct_21<-CrossTable(x=bt_test_labels, y=bt_test_pred21, 	
+           prop.chisq = F)	
+ct_27<-CrossTable(x=bt_test_labels, y=bt_test_pred27, 	
+           prop.chisq = F)
+```
+
+The choice of $k$ in KNN clustering is very important and it can be fine-tuned using the `e1071::tune.knn()` method.
+
+```{r}
+# install.packages("e1071")	
+library(e1071)	
+knntuning = tune.knn(x= bt_train, y = bt_train_labels, k = 1:30)	
+knntuning	
+summary(knntuning)
+```
+
+ It's useful to visualize the `error rate` against the value of $k$. This can help us select the optimal $k$ parameter that minimizes the cross-validation (CV) error, see [Chapter 20](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/20_PredictionCrossValidation.html).
+ 
+```{r}
+library(class)	
+library(ggplot2)	
+library(reshape2)	
+# define a function that generates CV folds	
+cv_partition <- function(y, num_folds = 10, seed = NULL) {	
+  if(!is.null(seed)) {	
+    set.seed(seed)	
+  }	
+  n <- length(y)	
+  	
+  # split() divides the data into the folds defined by gl().	
+  # gl() generates factors according to the pattern of their levels	
+	
+  folds <- split(sample(seq_len(n), n), gl(n = num_folds, k = 1, length = n))	
+  folds <- lapply(folds, function(fold) {	
+    list(	
+      training = which(!seq_along(y) %in% fold),	
+      test = fold	
+    )	
+  })	
+  names(folds) <- paste0("Fold", names(folds))	
+  return(folds)	
+}	
+	
+# Generate 10-folds of the data	
+folds = cv_partition(bt_train_labels, num_folds = 10)	
+	
+# Define a training set_CV_error calculation function	
+train_cv_error = function(K) {	
+  #Train error	
+  knnbt = knn(train = bt_train, test = bt_train, 	
+                 cl = bt_train_labels, k = K)	
+  train_error = mean(knnbt != bt_train_labels)	
+	
+  #CV error	
+  cverrbt = sapply(folds, function(fold) {	
+    mean(bt_train_labels[fold$test] != knn(train = bt_train[fold$training,], cl = bt_train_labels[fold$training], test = bt_train[fold$test,], k=K))	
+    }	
+  )	
+	
+  cv_error = mean(cverrbt)	
+	
+  #Test error	
+  knn.test = knn(train = bt_train, test = bt_test, 	
+            cl = bt_train_labels, k = K)	
+  test_error = mean(knn.test != bt_test_labels)	
+  return(c(train_error, cv_error, test_error))	
+}	
+	
+k_err = sapply(1:30, function(k) train_cv_error(k))	
+df_errs = data.frame(t(k_err), 1:30)	
+colnames(df_errs) = c('Train', 'CV', 'Test', 'K')	
+dataL <- melt(df_errs, id="K")	
+	
+# require(ggplot2)	
+# library(reshape2)	
+# ggplot(dataL, aes_string(x="K", y="value", colour="variable",	
+#    group="variable", linetype="variable", shape="variable")) +	
+#    geom_line(size=0.8) + labs(x = "Number of nearest neighbors (k)",	
+#            y = "Classification error",	
+#            colour="", group="",	
+#            linetype="", shape="") +	
+#   geom_point(size=2.8) +	
+#   geom_vline(xintercept=4:5, colour = "pink")+	
+#   geom_text(aes(4,0,label = "4", vjust = 1)) +	
+#   geom_text(aes(5,0,label = "5", vjust = 1))	
+	
+library(plotly)	
+plot_ly(dataL, x = ~K, y = ~value, color = ~variable, type = "scatter", mode = "markers+lines") %>% 	
+  add_segments(x=4, xend=4, y=0.0, yend=0.3, type = "scatter", 	
+               line=list(color="lightgray", width = 2, dash = 'dot'), mode = "lines", showlegend=FALSE) %>% 	
+  add_segments(x=5, xend=5, y=0.0, yend=0.3, type = "scatter", 	
+               line=list(color="gray", width = 2, dash = 'dot'), mode = "lines", showlegend=FALSE) %>% 	
+  layout(title='K-NN Training, CV, and Testing Error Rates against k', 	
+           legend=list(title=list(text='<b> Samples </b>')), 	
+           xaxis=list(title='Number of nearest neighbors (k)'), yaxis=list(title='Classification error'))
+```
+
+## Quantitative Assessment
+
+ First review the [fundamentals of hypothesis testing inference](https://wiki.socr.umich.edu/index.php/AP_Statistics_Curriculum_2007_Hypothesis_Basics#Type_I_Error.2C_Type_II_Error_and_Power) and recall that:	
+ 	
+Confusion Matrix | Negative | Positive	
+--------------------|----|----	
+kNN Fails to reject | TN | FN	
+kNN rejects | FP | TP 	
+Metrics  | Specificity: TN/(TN+FP) | Sensitivity: TP/(TP+FN)
+
+Suppose we want to evaluate the kNN model ($k=5$) as to how well it predicts the **below-average** boys. Let's report manually some of the accuracy metrics for model5. Combining the results, we get the following results:
+
+```{r}
+# bt_test_pred5<-knn(train=bt_train, test=bt_test, cl=bt_train_labels, k=5)	
+# ct_5<-CrossTable(x=bt_test_labels, y=bt_test_pred5, prop.chisq = F)	
+mod5_TN <- ct_5$prop.row[1, 1]  	
+mod5_FP <- ct_5$prop.row[1, 2]	
+mod5_FN <- ct_5$prop.row[2, 1]	
+mod5_TP <- ct_5$prop.row[2, 2]	
+	
+mod5_sensi <- mod5_TN/(mod5_TN+mod5_FP) 	
+mod5_speci <- mod5_TP/(mod5_TP+mod5_FN)	
+print(paste0("mod5_sensi=", mod5_sensi))	
+print(paste0("mod5_speci=", mod5_speci))
+```
+
+Combining the results, we get the following table:	
+ 	
+k value | Total unmatched counts| Accuracy	
+--------|-----------------------|----------	
+1|9|0.82	
+**5**|**5**|**0.90**	
+11|9|0.82	
+21|12|0.76	
+27|14|0.72
+
+Therefore, `model5` yields a good choice for the number of clusters $k=5$. Nevertheless, we can always examine further near $5$ to get potentially the best choice of $k=5$.
+
+Another strategy for model validation and improvement involves the use of the `confusionMatrix()` method, which reports several complementary metrics quantifying the performance of the prediction model.
+
+Let's focus on model5 power to predict `Delinquency` in terms of reoccurring  **vandalism**.
+
+```{r}
+corr5 <- cor(as.numeric(bt_test_labels), as.numeric(bt_test_pred5))	
+corr5	
+# plot(as.numeric(bt_test_labels), as.numeric(bt_test_pred5))	
+	
+# install.packages("caret")	
+library("caret")	
+	
+# compute the accuracy, LOR, sensitivity/specificity of 3 kNN models	
+	
+# Model 1: bt_test_pred1	
+#confusionMatrix(as.numeric(bt_test_labels), as.numeric(bt_test_pred1))	
+confusionMatrix(bt_test_labels, bt_test_pred1)	
+	
+# Model 5: bt_test_pred5	
+confusionMatrix(bt_test_labels, bt_test_pred5)	
+	
+# Model 11: bt_test_pred11	
+confusionMatrix(bt_test_labels, bt_test_pred11)
+```
+
+Finally, we can use a 3D plot to display the `confusionMatrix()` results of model5 (mod5_TN, mod5_FN, mod5_FP, mod5_TP).
+
+```{r}
+# install.packages("scatterplot3d")	
+library(scatterplot3d)	
+grid_xy <- matrix(c(0, 1, 1, 0), nrow=2, ncol=2)	
+intensity <- matrix(c(mod5_TN, mod5_FN, mod5_FP, mod5_TP), nrow=2, ncol=2)	
+	
+# scatterplot3d(grid_xy, intensity, pch=16, highlight.3d=TRUE, type="h", main="3D Scatterplot") 	
+	
+s3d.dat <- data.frame(cols=as.vector(col(grid_xy)), 	
+      rows=as.vector(row(grid_xy)), 	
+      value=as.vector(intensity))	
+scatterplot3d(s3d.dat, pch=16, highlight.3d=TRUE, type="h", xlab="real", ylab="predicted", zlab="Agreement", main="3D Scatterplot: Model5 Results (FP, FN, TP, TN)") 	
+	
+# scatterplot3d(s3d.dat, type="h", lwd=5, pch=" ", xlab="real", ylab="predicted", zlab="Agreement", main="Model5 Results (FP, FN, TP, TN)")
+```
+```{r}
+plot_ly(x = c("TN", "FN", "FP", "TP"),	
+  y = c(mod5_TN, mod5_FN, mod5_FP, mod5_TP),	
+  name = c("TN", "FN", "FP", "TP"), type = "bar", color=c("TN", "FN", "FP", "TP")) %>% 	
+  layout(title="Consusion Matrix", 	
+           legend=list(title=list(text='<b> Metrics </b>')), 	
+           xaxis=list(title='Metrics'), yaxis=list(title='Probability'))	
+	
+# plot_ly(type = 'barpolar', r = c(0.2, 0.8, 0.2, 0.85),theta = c(0, 90, 180, 360)) %>% 	
+#     layout(polar = list(radialaxis = list(visible = T,range = c(0,10)),	
+#       sector = c(0,360), radialaxis = list(tickfont = list(size = 45)),	
+#       angularaxis = list(tickfont = list(size = 10))))
+```
+
+# Case Study: Predicting Galaxy Spins
+
+Let's now use the [SOCR Case-Study 22 (22_SDSS_GalaxySpins_Case_Study)](https://umich.instructure.com/courses/38100/files/folder/Case_Studies/22_SDSS_GalaxySpins_Case_Study) to train a kNN classifier on $49,122$ (randomly selected out of a total $51,122$) training cases and test the accuracy of predicting the Galactic Spin (L=left or R=right hand spin) on the remaining (randomly chosen testing $2,000$ galaxies). Evaluate and report the classifier performance. Try to compare and improve the performance of several independent classifiers, e.g., kNN, [naive Bayesian](http://www.socr.umich.edu/people/dinov/courses/DSPA_notes/07_NaiveBayesianClass.html), [LDA](http://www.socr.umich.edu/people/dinov/courses/DSPA_notes/07_NaiveBayesianClass.html).
+
+Report/graph the training, testing and [CV error rates](http://www.socr.umich.edu/people/dinov/courses/DSPA_notes/06_LazyLearning_kNN.html#38_testing_alternative_values_of_k) for different k parameters and justify your "optimal" choice for $k=k_o$. How good your Galactic spin classifier? Provide some visual and numeric evidence.
+
+Some sample code to get you started in included below.
+
+```{r}
+#loading libraries	
+library(e1071); library(caret); library(class); library(gmodels)	
+	
+#loading Galaxy data	
+galaxy_data <- read.csv("https://umich.instructure.com/files/6105118/download?download_frd=1", sep=",")	
+	
+#View(head(galaxy_data))	
+dim(galaxy_data)
+```
+```{r}
+#dropping Galaxy ID	
+galaxy_data <- galaxy_data[ , -1]
+str(galaxy_data)
+```
+```{r}
+#randomly assigning 2k for validation purposes	
+subset_int <- sample(nrow(galaxy_data), 2000) 	
+	
+#training data, dropping the label	
+galaxy_data_train <- galaxy_data[-subset_int, -3]; dim(galaxy_data_train)	
+galaxy_data_test <- galaxy_data[subset_int, -3]; dim(galaxy_data_test)
+	
+#summary(galaxy_data_train)	
+# labels	
+galaxy_train_labels <- as.factor(galaxy_data[-subset_int, 3])	
+galaxy_test_labels <- as.factor(galaxy_data[subset_int, 3])	
+	
+#summary(galaxy_data_test)
+```
+```{r}
+# trying to figure out the best K for this kNN model	
+# testing alternative values of K	
+gd_test_pred1<-knn(train=galaxy_data_train, test=galaxy_data_test,	
+                   cl=galaxy_train_labels, k=1)	
+gd_test_pred10<-knn(train=galaxy_data_train, test=galaxy_data_test,	
+                    cl=galaxy_train_labels, k=10)	
+gd_test_pred20<-knn(train=galaxy_data_train, test=galaxy_data_test,	
+                     cl=galaxy_train_labels, k=20)	
+gd_test_pred50<-knn(train=galaxy_data_train, test=galaxy_data_test,	
+                    cl=galaxy_train_labels, k=50)	
+ct_1<-CrossTable(x=galaxy_test_labels, y=gd_test_pred1, prop.chisq = F)	
+confusionMatrix(galaxy_test_labels, gd_test_pred1)
+```
+```{r}
+#Alternatively we can use the tuning function	
+knn.tune = tune.knn(x= galaxy_data_train, y = galaxy_train_labels, k = 1:20,	
+                    tunecontrol=tune.control(sampling = "fix") , fix=10)	
+	
+#Summarize the resampling results set	
+summary(knn.tune)
+```
+```{r}
+# plot(knn.tune)	
+df <- as.data.frame(cbind(x=knn.tune$performance$k, y=knn.tune$performance$error))	
+plot_ly(df, x = ~x, y = ~y, type = "scatter", mode = "markers+lines") %>% 	
+  add_segments(x=1, xend=1, y=0.0, yend=0.45, type = "scatter", 	
+               line=list(color="gray", width = 2, dash = 'dot'), mode = "lines", showlegend=FALSE) %>% 	
+  add_segments(x=5, xend=5, y=0.0, yend=0.45, type = "scatter", 	
+               line=list(color="lightgray", width = 2, dash = 'dot'), mode = "lines", showlegend=FALSE) %>% 	
+  layout(title='Galaxy-spin k-NN Prediction - Error Rate against k', 	
+           xaxis=list(title='Number of nearest neighbors (k)'), yaxis=list(title='Classification error'))
+```
+
