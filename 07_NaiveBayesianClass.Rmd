@@ -1,5 +1,5 @@
 ---
-title: "07 Naive Bayes Class"
+title: "07 Probabilistic Learning - Classification Using Naive Bayes"
 author: "nobuo"
 date: "2021/4/23"
 output: html_document
@@ -9,9 +9,9 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-Please review the introduction to [Chapter 6](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/06_LazyLearning_kNN.html), where we described the types of machine learning methods and presented lazy classification for numerical data. What about nominal features or textual data? In this chapter, we will begin to explore some classification techniques for categorical data. Specifically, we will (1) present the Naive Bayes algorithm, (2) review its assumptions, (3) discuss Laplace estimation, and (4) illustrate the naive Bayesian classifier on a Head and Neck Cancer Medication case-study.	
-
-Later, in [Chapter 19](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/19_NLP_TextMining.html), we will also discuss text mining and natural language processing of unstructured text data.	
+Please review the introduction to [Chapter 6](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/06_LazyLearning_kNN.html), where we described the types of machine learning methods and presented lazy classification for numerical data. What about nominal features or textual data? In this chapter, we will begin to explore some classification techniques for categorical data. Specifically, we will (1) present the Naive Bayes algorithm, (2) review its assumptions, (3) discuss Laplace estimation, and (4) illustrate the naive Bayesian classifier on a Head and Neck Cancer Medication case-study.
+	
+Later, in [Chapter 19](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/19_NLP_TextMining.html), we will also discuss text mining and natural language processing of unstructured text data.
 
 # Overview of the Naive Bayes Algorithm
 
@@ -242,8 +242,8 @@ A word cloud can help us visualize text data. More frequent words would have lar
 
 ```{r}
 # install.packages("wordcloud", repos = "http://cran.us.r-project.org")	
-library(wordcloud)	
-wordcloud(corpus_train, min.freq = 40, random.order = FALSE)
+library(wordcloud)
+wordcloud(corpus_train, min.freq = 40, random.order = FALSE, colors=brewer.pal(5, "Dark2"))
 ```
 
 The `random.order=FALSE` option makes more frequent words appear in the center of the word cloud. The `min.freq=40` option sets the cutoff word frequency to be at least 40 times in the corpus object. Therefore, the words must be appear in at least 40 medication summaries to be shown on the graph.  	
@@ -251,13 +251,15 @@ The `random.order=FALSE` option makes more frequent words appear in the center o
 We can also visualize the difference between early stages and later stages using this type of graph.	
 
 ```{r}
-early <- subset(hn_med_train, stage=="early_stage")	
-later <- subset(hn_med_train, stage=="later_stage")	
-wordcloud(early$MEDICATION_SUMMARY, max.words = 20)	
-wordcloud(later$MEDICATION_SUMMARY, max.words = 20)
+early<-subset(hn_med_train, stage=="early_stage")
+later<-subset(hn_med_train, stage=="later_stage")	
+wordcloud(early$MEDICATION_SUMMARY, max.words = 20, colors=brewer.pal(3, "Dark2"))
+```
+```{r}
+wordcloud(later$MEDICATION_SUMMARY, max.words = 20, colors=brewer.pal(3, "Dark2"))
 ```
 
-We can see that the frequent words are somewhat different in the medication summaries of the *early* and *later* stage patients.	
+We can see that the frequent words are somewhat different in the medication summaries of the *early* and *later* stage patients.``
 
 ### Data preparation - creating indicator features for frequent words	
  	
@@ -334,13 +336,26 @@ hn_test_pred <- predict(hn_classifier, hn_test)
 ```
 
 ## Step 4 - evaluating model performance	
- 	
-Similarly to the approach in [Chapter 6](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/06_LazyLearning_kNN.html), we use *cross table* to compare predicted class and the true class of our test dataset.	
+
+Similarly to the approach in [Chapter 6](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/06_LazyLearning_kNN.html), we use *cross table* to compare predicted class and the true class of our test dataset. 	
 
 ```{r}
 library(gmodels)	
-CrossTable(hn_test_pred, hn_med_test$stage)	
-# caret::confusionMatrix(hn_test_pred, hn_med_test$stage)
+CT <- CrossTable(hn_test_pred, hn_med_test$stage)	
+CT	
+mod_TN <- CT$prop.row[1, 1]  	
+mod_FP <- CT$prop.row[1, 2]	
+mod_FN <- CT$prop.row[2, 1]	
+mod_TP <- CT$prop.row[2, 2]	
+# caret::confusionMatrix(hn_test_pred, hn_med_test$stage)	
+# CT$prop.row	
+library(plotly)	
+plot_ly(x = c("TN", "FN", "FP", "TP"),	
+  y = c(mod_TN, mod_FN, mod_FP, mod_TP),	
+  name = c("TN", "FN", "FP", "TP"), type = "bar", color=c("TN", "FN", "FP", "TP")) %>% 	
+  layout(title="Confusion Matrix", 	
+           legend=list(title=list(text='<b> Metrics </b>')), 	
+           xaxis=list(title='Metrics'), yaxis=list(title='Probability'))
 ```
 
 It may be worth quickly looking forward in [Chapter 13](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/13_ModelEvaluation.html#31_binary_outcomes) where we present a summary table for the key measures used to evaluate the performance of binary tests, classifiers, or predictions.	
@@ -429,22 +444,22 @@ str(hn_med1); dim(hn_med1)
 Now we have only 580 observations. We can either use the first 480 of them as the training dataset and the last 100 as the test dataset, or select 80-20 (training-testing) split, and evaluate the prediction accuracy when `laplace=1`? 	
 
 ```{r}
-hn_med1_corpus <- Corpus(VectorSource(hn_med1$MEDICATION_SUMMARY))	
-corpus_clean1 <- tm_map(hn_med1_corpus, tolower)	
-corpus_clean1 <- tm_map(corpus_clean1, removePunctuation)	
-corpus_clean1 <- tm_map(corpus_clean1, removeNumbers)	
+hn_med1_corpus<-Corpus(VectorSource(hn_med1$MEDICATION_SUMMARY))	
+corpus_clean1<-tm_map(hn_med1_corpus, tolower)	
+corpus_clean1<-tm_map(corpus_clean1, removePunctuation)	
+corpus_clean1 <-tm_map(corpus_clean1, removeNumbers)	
 corpus_clean1 <- tm_map(corpus_clean1, stripWhitespace)	
 # corpus_clean1 <- tm_map(corpus_clean1, PlainTextDocument)	
-hn_med_dtm1 <- DocumentTermMatrix(corpus_clean1)	
+hn_med_dtm1<-DocumentTermMatrix(corpus_clean1)	
 	
 set.seed(11)	
 subset_int1 <- sample(nrow(hn_med1),floor(nrow(hn_med1)*0.8))  # 80% training + 20% testing	
-hn_med_train1 <- hn_med1[subset_int1, ]	
-hn_med_test1 <- hn_med1[-subset_int1, ]	
-hn_med_dtm_train1 <- hn_med_dtm1[subset_int1, ]	
-hn_med_dtm_test1 <- hn_med_dtm1[-subset_int1, ]	
-corpus_train1 <- corpus_clean1[subset_int1]	
-corpus_test1 <- corpus_clean1[-subset_int1]	
+hn_med_train1<-hn_med1[subset_int1, ]	
+hn_med_test1<-hn_med1[-subset_int1, ]	
+hn_med_dtm_train1<-hn_med_dtm1[subset_int1, ]	
+hn_med_dtm_test1<-hn_med_dtm1[-subset_int1, ]	
+corpus_train1<-corpus_clean1[subset_int1]	
+corpus_test1<-corpus_clean1[-subset_int1]	
 	
 #hn_med_train1<-hn_med1[1:480, ]	
 #hn_med_test1<-hn_med1[481:580, ]	
@@ -454,7 +469,7 @@ corpus_test1 <- corpus_clean1[-subset_int1]
 #corpus_test1<-corpus_clean1[481:580]
 ```
 
-We can use the same code for creating the classes in training and test dataset. Since the `seer_stage=8 or 9` is not in the data, we classify `seer_stage=0, 1, 2 or 3` as "early_stage" and `seer_stage=4, 5 or 7` as "later_stage".	
+We can use the same code for creating the classes in training and test dataset. Since the `seer_stage=8 or 9` is not in the data, we classify `seer_stage=0, 1, 2 or 3` as "early_stage" and `seer_stage=4, 5 or 7` as "later_stage".
 
 ```{r}
 hn_med_train1$stage <- hn_med_train1$seer_stage %in% c(4, 5, 7)	
@@ -498,20 +513,90 @@ train <- mydata[train_ind, ]
 # TESTING DATA	
 test <- mydata[-train_ind, ]	
 library("e1071")	
-nbc_model <- naiveBayes(train[ , c("Weight", "Height", "Age")],
-                        as.factor(train$Position), laplace = 15)	
-nbc_model	
+nbc_model <- naiveBayes(train[ , c("Weight", "Height", "Age")], as.factor(train$Position), laplace = 15)	
+nbc_model
+```
+```{r}
 predicted.nbcvalues <- predict(nbc_model, as.data.frame(test))	
 	
 # report results	
-table(predicted.nbcvalues, test$Position)	
+tab <- table(predicted.nbcvalues, test$Position)	
+tab_df <- tidyr::spread(as.data.frame(tab), key = Var2, value = Freq)	
 	
 sum(diag(table(predicted.nbcvalues, test$Position)))	
+	
+plot_ly(x = colnames(tab), y = colnames(tab), z = as.matrix(tab_df[, -1]), type = "heatmap")	
 	
 # write.csv(file="./test.csv" , table(predicted.nbcvalues, test$Position))
 ```
 
-Try to apply the Naive Bayesian classificaiton techniques to some [new data from the list of our Case-Studies](https://umich.instructure.com/courses/38100/files/).	
+## Medical Specialty Text-Notes Classification
 
+Let's demonstrate text-classification using a [clinical transcription text dataset](https://umich.instructure.com/courses/38100/files/folder/Case_Studies/35_MedicalSpecialty_NotesText_Classification_Dataset), which consists of an index and 5 data elements - description, 	medical_specialty (prediction outcome target),	sample_name,	transcription, and	keywords. Out task is to derive computed phenotypes automatically classifying the 40 different medical specialties using the clinical transcription text.
 
+```{r}
+dataCT <- read.csv('https://umich.instructure.com/files/21152999/download?download_frd=1', header=T)	
+str(dataCT)
+```
+```{r}
+# 1. EDA	
+library(dplyr)	
+mySummary <- dataCT %>%	
+  count(medical_specialty, sort = TRUE) 	
+mySummary
+```
+```{r}
+plot_ly(dataCT, x = ~medical_specialty) %>%	
+  add_histogram()
+```
+```{r}
+# 2. Preprocess the medical clinical notes (transcription)	
+# library(tm)	
+dataCT_corpus <- Corpus(VectorSource(dataCT$transcription))	
+dataCT_corpus_clean <- tm_map(dataCT_corpus, tolower)	
+dataCT_corpus_clean <- tm_map(dataCT_corpus_clean, removePunctuation)	
+dataCT_corpus_clean <- tm_map(dataCT_corpus_clean, removeNumbers)	
+dataCT_corpus_clean <- tm_map(dataCT_corpus_clean, stripWhitespace)	
+dataCT_corpus_dtm <- DocumentTermMatrix(dataCT_corpus_clean)	
+	
+set.seed(1234)	
+subset_train <- sample(nrow(dataCT),floor(nrow(dataCT)*0.8))  # 80% training + 20% testing	
+dataCT_train <- dataCT[subset_train, ]	
+dataCT_test <- dataCT[-subset_train, ]	
+dataCT_corpus_dtm_train <- dataCT_corpus_dtm[subset_train, ]	
+hn_med_dtm_test <- dataCT_corpus_dtm[-subset_train, ]	
+dataCT_corpus_train <- dataCT_corpus_clean[subset_train]	
+dataCT_corpus_test <- dataCT_corpus_clean[-subset_train]	
+	
+dataCT_train$MedSpecFac <- factor(dataCT_train$medical_specialty)	
+dataCT_test$MedSpecFac <- factor(dataCT_test$medical_specialty)	
+# prop.table(table(dataCT_test$medical_specialty))	
+prop.table(table(dataCT_test$MedSpecFac))
+```
+```{r}
+summary(findFreqTerms(dataCT_corpus_dtm_train, 5))	
+dataCT_corpus_dict <- as.character(findFreqTerms(dataCT_corpus_dtm_train, 5))	
+	
+dataCT_train1 <- DocumentTermMatrix(dataCT_corpus_train, list(dictionary=dataCT_corpus_dict))	
+dataCT_test1 <- DocumentTermMatrix(dataCT_corpus_test, list(dictionary=dataCT_corpus_dict))	
+	
+dataCT_train1 <- apply(dataCT_train1, MARGIN = 2, convert_counts)	
+dataCT_test1 <- apply(dataCT_test1, MARGIN = 2, convert_counts)	
+	
+dataCT_classifier <- naiveBayes(dataCT_train1, dataCT_train$MedSpecFac, laplace = 0)	
+dataCT_pred <- predict(dataCT_classifier, dataCT_test1)	
+# table(dataCT_pred)	
+	
+# report results	
+tab <- table(dataCT_pred, dataCT_test$MedSpecFac)	
+tab_df <- tidyr::spread(as.data.frame(tab), key = Var2, value = Freq)	
+# gmodels::CrossTable(dataCT_pred, dataCT_test$MedSpecFac)	
+	
+sum(diag(table(dataCT_pred, dataCT_test$MedSpecFac)))	
+	
+plot_ly(x = colnames(tab), y = colnames(tab), z = as.matrix(tab_df[, -1]), type = "heatmap") %>%	
+  layout(title="Consusion Matrix of Naive-Bayesian Classification of 40 Medical Specialties using Text-Notes (Test Data)",	
+          xaxis=list(title='True Specialties'), yaxis=list(title='Derived NB Class Labels'))
+```
 
+Try to apply the Naive Bayesian classification techniques to some [new data from the list of our Case-Studies](https://umich.instructure.com/courses/38100/files/).
