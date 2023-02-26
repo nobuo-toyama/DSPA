@@ -1,5 +1,5 @@
 ---
-title: "08 Decision Tree Class"
+title: "08 Decision Tree Divide and Conquer Classification"
 author: "nobuo"
 date: "2021/4/24"
 output: html_document
@@ -21,6 +21,85 @@ There are a number of `R` packages available for decision tree classification in
 # Hands-on Example: Iris Data	
  	
 Let's start by seeing a simple example using the Iris dataset, which we saw in [Chapter 2](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/02_ManagingData.html). The data features or attributes include `Sepal.Length`, `Sepal.Width`, `Petal.Length`, and `Petal.Width`, and classes are represented by the `Species taxa` (setosa, versicolor, and virginica).	
+
+```{r}
+# install.packages("party")
+library("party")
+str(iris)
+head(iris); table(iris$Species)
+```
+
+The `ctree(Species ~ Sepal.Length + Sepal.Width + Petal.Length + Petal.Width, data=iris)` function will build a conditional-inference decision tree.
+
+```{r}
+iris_ctree <- ctree(Species ~ Sepal.Length + Sepal.Width + Petal.Length + Petal.Width, data=iris)
+print(iris_ctree)
+plot(iris_ctree, cex=2)  #  party::plot.BinaryTree()
+```
+Similarly, we can demonstrate a classification of the *iris taxa* via `rpart`:
+
+```{r}
+library(rpart)
+library(rpart.utils)
+library(plotly)
+# iris_rpart = rpart(Species~., data=iris)
+# print(iris_rpart)
+# 
+# Use the `rattle::fancyRpartPlot` to generates an elegant plot
+# install.packages("rattle")
+# library(rattle)
+# fancyRpartPlot(iris_rpart, cex = 1.5, caption = "rattle::fancyRpartPlot (Iris flowers)")
+#
+#### Plot_ly decision tree visualization
+iris_rpart <- rpart(Species ~ . , method="class", data=iris)
+# printcp(iris_rpart)
+
+# Set the Graph/Tree Node names
+treeFrame <- iris_rpart$frame
+
+# Identify Leaf nodes
+isLeave <- treeFrame$var == "<leaf>"
+nodes <- rep(NA, length(isLeave))
+
+# Get the 3 Isis taxa labels: "setosa", "versicolor", "virginica" for all nodes (including leaves)
+ylevel <- attr(iris_rpart, "ylevels")
+nodes[isLeave] <- ylevel[treeFrame$yval][isLeave]
+nodes[!isLeave] <- labels(iris_rpart)[-1][!isLeave[-length(isLeave)]]
+
+# Get all Tree Graph Connections (source --> target)
+treeFrame <- iris_rpart$frame
+treeRules <- rpart.utils::rpart.rules(iris_rpart)
+
+targetPaths <- sapply(as.numeric(row.names(treeFrame)), 
+                      function(x) { strsplit(unlist(treeRules[x]),split=",") } )
+
+lastStop <- sapply(1:length(targetPaths),
+                   function(x) { targetPaths[[x]][length(targetPaths[[x]])] } )
+
+oneBefore <- sapply(1:length(targetPaths),
+                    function(x) { targetPaths[[x]][length(targetPaths[[x]])-1] } )
+
+# Initialize the tree edges
+target=c()
+source=c()
+values=treeFrame$n
+for(i in 2:length(oneBefore)) {
+  tmpNode=oneBefore[[i]]
+  q = which(lastStop==tmpNode)
+
+  q=ifelse(length(q)==0, 1, q)
+  source = c(source, q)
+  target = c(target, i)
+}
+source=source-1
+target=target-1
+
+# Display the sankey tree
+plot_ly(type = "sankey", orientation = "h", 
+             node = list(label = nodes, pad = 15, thickness = 30, line = list(color="black", width=1)),
+             link = list(source = source, target = target, value=values[-1])) %>% 
+ layout(title = "Iris rPart Decision Tree", font = list(size = 12))
+```
 
 # Decision Tree Overview
 
@@ -111,17 +190,38 @@ If we only have one class in the segment then the entropy is trivial,  $Entropy(
 For a two class problem, the relationship between class-proportions and entropy is illustrated in the following graph. Assume $x$ is the proportion for one of the classes.	
 
 ```{r}
+N <- 100	
 set.seed(1234)	
-x <- runif(100)	
-curve(-x*log2(x)-(1-x)*log2(1-x), col="red", 
-      main="Entropy for Different Proportions", 
-      xlab = "x (proportion for class 1)", ylab = "Entropy", lwd=3)	
-segments(0.8, 0, 0.8, 0.7219281, lwd=2, col="blue", lty = 2)	
-points(0.8, 0.7219281, col = "blue", pch=21, cex=2, lwd=2)	
-text(-0.02, 0.3, pos=4, srt = 90, "High-Structure/Low-Entropy")	
-text(0.48, 0.3, pos=4, srt = 90, "Low-Structure/High-Entropy")	
-text(0.96, 0.3, pos=4, srt = 90, "High-Structure/Low-Entropy")	
-text(0.65, 0.8, pos=4, "(x=0.8,Entr=0.72)")
+x <- runif(N)	
+x_ind <- sort(x)	
+y <- -x_ind*log2(x_ind)-(1-x_ind)*log2(1-x_ind)	
+	
+# curve(-x*log2(x)-(1-x)*log2(1-x), col="red", main="Entropy for Different Proportions", xlab = "x (proportion for class 1)", ylab = "Entropy", lwd=3)	
+# segments(0.8, 0, 0.8, 0.7219281, lwd=2, col="blue", lty = 2)	
+# points(0.8, 0.7219281, col = "blue", pch=21, cex=2, lwd=2)	
+# text(-0.02, 0.3, pos=4, srt = 90, "High-Structure/Low-Entropy")	
+# text(0.48, 0.3, pos=4, srt = 90, "Low-Structure/High-Entropy")	
+# text(0.96, 0.3, pos=4, srt = 90, "High-Structure/Low-Entropy")	
+# text(0.65, 0.8, pos=4, "(x=0.8,Entr=0.72)")	
+	
+modelLabels <- c('High-Structure/Low-Entropy', 'Low-Structure/High-Entropy', 'High-Structure/Low-Entropy')	
+modelLabels.x <- c(0.03, 0.5, 0.97)	
+modelLabels.y <- c(0.5, 0.7, 0.5)	
+modelLabels.col <- c("blue", "red", "blue")	
+plot_ly() %>%	
+  add_lines(x = ~x_ind, y = ~y, name="Entropy", line = list(width = 4)) %>%	
+  add_segments(x=0.8, xend=0.8, y=0.07, yend = 0.7219281, showlegend=F) %>%	
+  # add_segments(x=-0.2, xend=1.1, y=0, yend = 0, showlegend=F) %>%	
+  # add_markers(x = ~x, y = ~y, name="Sample Simulated Data") %>%	
+  #add_lines(x = ~c(point1$x,point2$x), y = ~c(point1$y,point2$y), name="Second PC, Orthogonal to lm(Y ~ X)", 	
+  #          line = list(width = 4))  %>% 	
+  add_markers(x = 0.8, y = 0.7219281, name="(x=0.8,Entropy=0.72)", marker = list(size = 20,	
+                                    color = 'green', line = list(color = 'yellow', width = 2))) %>%	
+  layout(title="Binary Class Entropy",	
+         xaxis=list(title="Proportion of Class 1 Obsevations", scaleanchor="y"),  # control the y:x axes aspect ratio	
+         yaxis = list(title="Entropy", scaleanchor  = "x", range=c(-0.1, 1.1)), legend = list(orientation = 'h'),	
+         annotations = list(text=modelLabels,  x=modelLabels.x, y=modelLabels.y, textangle=90,	
+                            font=list(size=15, color=modelLabels.col), showarrow=FALSE))
 ```
 
 The closer the binary proportion split is to $0.5$ the greater the entropy. The more homogeneous the split (one class becomes the majority) the lower the entropy. **Decision trees** aim to find splits in the data that reduce the entropy, i.e., increasing the homogeneity of the elements within all classes.	
@@ -199,7 +299,7 @@ qol <- qol[ , -1]
 Then, we are able to subset *training* and *testing* datasets. Here is an example of a *non-random split* of the entire data into training ($2114$) and testing ($100$) sets:	
 
 ```{r}
-qol_train <- qol[1:2114, ]	
+qol_train <- qol[1:2114, ]
 qol_test <- qol[2115:2214, ]
 ```
 
@@ -338,7 +438,7 @@ qol_model
 You can also plot directly using `rpart.plot
 
 ```{r}
-library(rpart.plot)	
+library(rpart.plot)
 rpart.plot(qol_model, type = 4, extra = 1, clip.right.labs = F)
 ```
 We can use `fancyRpartPlot` to render a more colorful decision tree.	
@@ -356,8 +456,16 @@ These results are consistent with their counterparts reported using `C5.0.` How 
 set.seed(1234)	
 control = rpart.control(cp = 0.000, xxval = 100, minsplit = 2)	
 qol_model= rpart(cd ~ ., data = qol_train[ , -40], control = control)	
-plotcp(qol_model)	
-printcp(qol_model)
+# plotcp(qol_model)	
+# printcp(qol_model)	
+	
+data <- as.data.frame(qol_model$cptable)	
+data$CP <- as.factor(data$CP)	
+	
+plot_ly(data = data, x = ~CP, y = ~xerror, type = 'scatter', mode='lines+markers',	
+        name = 'Test', error_y = ~list(array = xstd,  color = 'gray')) %>% 	
+  #add_segments(x=0, xend=0.23, y=0.76, yend = 0.76, line = list(dash = "dash"), showlegend=F) %>%	
+  layout(title="Complexity Parameter vs. (CV) Error Rate")
 ```
 
 Now, we can prune the tree according to the optimal `cp`, *complexity parameter* to which the `rpart` object will be trimmed. Instead of using the *real error* (e.g., $1-R^2$, RMSE) to capture the discrepancy between the observed labels and the model-predicted labels, we will use the `xerror` which averages the discrepancy between observed and predicted classifications using *cross-validation*, see [Chapter 20](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/20_PredictionCrossValidation.html).	
@@ -382,7 +490,7 @@ fancyRpartPlot(qol_model, cex = 0.1, caption = "rattle::fancyRpartPlot (QoL Data
 We can change *split="entropy"* to "error" or "gini" to apply an alternative information gain index. Experiment with these and compare the results.	
 
 ```{r}
-set.seed(1234)	
+set.seed(1234)
 qol_model = rpart(cd ~ ., data=qol_train[ , -40], parms = list(split = "entropy"))	
 fancyRpartPlot(qol_model, cex = 1, caption = "rattle::fancyRpartPlot (QoL data)")	
 	
@@ -472,23 +580,49 @@ Another idea is to repeat the generation of trees multiple times, predict accord
 require(randomForest)	
 set.seed(12)	
 # rf.fit <- tuneRF(qol_train[ , -40], qol_train[ , 40], stepFactor=1.5)	
-rf.fit <- randomForest(cd ~ . , data=qol_train[ , -40],
-                       importance=TRUE, ntree=2000, mtry=26)	
-varImpPlot(rf.fit, cex=0.5); print(rf.fit)	
+rf.fit <- randomForest(cd ~ . , data=qol_train[ , -40],importance=TRUE,ntree=2000,mtry=26)	
+# varImpPlot(rf.fit, cex=0.5); print(rf.fit)	
 	
-rf.fit1 <- randomForest(cd ~ . , data=qol_train[ , -40],
-                        importance=TRUE, ntree=2000, mtry=26)	
-rf.fit2 <- randomForest(cd ~ . , data=qol_train[ , -40],
-                        importance=TRUE, nodesize=5, ntree=5000, mtry=26)	
+# type either 1 or 2, specifying the type of importance measure (1=mean decrease in accuracy, 2=mean decrease in node impurity)	
 	
-plot(rf.fit,log="x", 
-     main="MSE Errors vs. Iterations: Three Models rf.fit, rf.fit1, rf.fit2")	
-points(1:5000, rf.fit1$mse, col="red", type="l")	
-points(1:5000, rf.fit2$mse, col="green", type="l")	
-legend("topright", col=c("black", "red", "green"),
-       lwd=c(2, 2, 2), legend=c("rf.fit", "rf.fit1", "rf.fit2"))	
+# Accuracy	
+imp_rf.fit <- importance(rf.fit)	
+x <- rownames(imp_rf.fit)	
+y <- imp_rf.fit[,3]	
+plot_ly(x = ~y, y = ~reorder(x,y),  name = "Var.Imp", type = "bar") %>%	
+  layout(title="RF Variable Importance Plot (Accuracy)",	
+         xaxis=list(title="Importance (mean decrease in accuracy)"),  	
+         yaxis = list(title="Variables (Ordered)"))
+```
+```{r}
+# Gini Index	
+y <- imp_rf.fit[,4]	
+plot_ly(x = ~y, y = ~reorder(x,y),  name = "Var.Imp", type = "bar") %>%	
+  layout(title="RF Variable Importance Plot (Gini)",	
+         xaxis=list(title="Importance (Gini mean decrease)"),  	
+         yaxis = list(title="Variables (Ordered)"))
+```
+```{r}
+rf.fit1 <- randomForest(cd~. , data=qol_train[ , -40],importance=TRUE,ntree=2000,mtry=26)	
+rf.fit2 <- randomForest(cd~. , data=qol_train[ , -40], importance=TRUE, nodesize=5, ntree=5000, mtry=26)	
 	
-qol_pred2 <- predict(rf.fit2, qol_test, type = 'class')	
+# plot(rf.fit,log="x",main="MSE Errors vs. Iterations: Three Models rf.fit, rf.fit1, rf.fit2")	
+# points(1:5000, rf.fit1$mse, col="red", type="l")	
+# points(1:5000, rf.fit2$mse, col="green", type="l")	
+# legend("topright", col=c("black", "red", "green"), lwd=c(2, 2, 2), legend=c("rf.fit", "rf.fit1", "rf.fit2"))	
+	
+plot_ly(x = c(1:1000), y = rf.fit$err.rate[1:1000,1], name = 'OOB (rf.fit)', type = 'scatter', mode = 'lines',	
+        line = list(width = 2)) %>% 	
+  add_trace(x = c(1:1000), y = rf.fit1$err.rate[1:1000,1], name = 'OOB (rf.fit1)', type = 'scatter', mode = 'lines',	
+        line = list(width = 2)) %>% 	
+  add_trace(x = c(1:1000), y = rf.fit2$err.rate[1:1000,1], name = 'OOB (rf.fit2)', type = 'scatter', mode = 'lines',	
+        line = list(width = 2)) %>% 	
+  layout(title = "Out Of Bag Error Rates for 3 RF Models",	
+         xaxis = list(title = "Number of Trees"),	
+         yaxis = list (title = "OOB Error"))
+```
+```{r}
+qol_pred2<-predict(rf.fit2, qol_test, type = 'class')	
 confusionMatrix(table(qol_pred2, qol_test$cd))
 ```
 
@@ -504,19 +638,45 @@ We can also use the `randomForest::partialPlot()` method to examine the relative
 Note that for binary features, `partialPlot()` would result in only two values of the corresponding mass function. Whereas for continuous variables, it generates the marginal probability effect of the variable corresponding to the class probability (for classification problems) or the continuous response (for regression problems). Using the [QoL case-study](https://umich.instructure.com/files/481332/download?download_frd=1), (`Case06_QoL_Symptom_ChronicIllness.csv`), this example shows the partial plots of the *top six* rank-ordered features of the QoL dataset chosen by the random forest model.	
 
 ```{r}
+#' 	
 imp <- randomForest::importance(rf.fit)	
 impvar <- rownames(imp)[order(imp[, 1], decreasing=TRUE)]	
-op <- par(mfrow=c(2, 3))	
+# op <- par(mfrow=c(2, 3))	
+# for (i in 1:6) {   # seq_along(impvar)) { # to plot the marginal probabilities for all features	
+#     partialPlot(rf.fit, qol_train, impvar[i], xlab=impvar[i],	
+#                 main=paste("Partial Dependence of 'CD'\n on ", impvar[i]))	
+# }	
+	
+p <- vector("list", 6)	
 for (i in 1:6) {   # seq_along(impvar)) { # to plot the marginal probabilities for all features	
-    partialPlot(rf.fit, qol_train, impvar[i], xlab=impvar[i],	
-                main=paste("Partial Dependence of 'CD'\n on ", impvar[i]))	
-}
+    p[[i]] <- partialPlot(rf.fit, qol_train, impvar[i], xlab=impvar[i],	
+                main=paste("Partial Dependence of 'CD'\n on ", impvar[i]), plot=F)	
+}	
+	
+plot_ly(x = p[[1]]$x, y = p[[1]]$y, name = impvar[1], type = 'scatter', mode = 'lines',	
+        line = list(width = 2)) %>% 	
+  layout(title = paste0("CD Partial Dependence on ",impvar[1]),	
+         xaxis = list(title = impvar[1]), yaxis = list (title = "Impact"))
+```
+```{r}
+plot_ly(x = p[[2]]$x, y = p[[2]]$y, name = impvar[2], type = 'scatter', mode = 'lines',	
+        line = list(width = 2)) %>% 	
+  layout(title = paste0("CD Partial Dependence on ",impvar[2]),	
+         xaxis = list(title = impvar[2]), yaxis = list (title = "Impact"))
+```
+```{r}
+plot_ly(x = p[[3]]$x, y = p[[3]]$y, name = impvar[3], type = 'scatter', mode = 'lines',	
+        line = list(width = 2)) %>%	
+  add_trace(x = p[[4]]$x, y = p[[4]]$y, name = impvar[4], type = 'scatter', mode = 'lines',	
+        line = list(width = 2)) %>%	
+  add_trace(x = p[[5]]$x, y = p[[5]]$y, name = impvar[5], type = 'scatter', mode = 'lines',	
+        line = list(width = 2)) %>%	
+  add_trace(x = p[[6]]$x, y = p[[6]]$y, name = impvar[6], type = 'scatter', mode = 'lines',	
+        line = list(width = 2)) %>% 	
+  layout(title = paste0("CD Partial Dependence on ",impvar[3], " ", impvar[4], " ",impvar[5], " ",impvar[6]),	
+         xaxis = list(title = "MSA Questions"), yaxis = list (title = "Impact"))
 ```
 
-```{r}
-# reset the device plot canvas	
-par(op)
-```
 
 In random forest (RF) classification, the node size (`nodesize`) refers to the smallest node that can be split, i.e., nodes with fewer cases than the `nodesize` are never subdivided. Increasing the node size leads to smaller trees, which may compromise previous predictive power. On the flip side, increasing the tree size (`maxnodes`) and the number of trees (`ntree`) tends to increase the predictive accuracy. However, there are tradeoffs between increasing node-size and tree-size simultaneously. To optimize the RF predictive accuracy, try smaller node sizes and more trees. Ensembling (forest) results from a larger number of trees will likely generate better results.	
  	
@@ -526,7 +686,7 @@ Another decision three technique we can test is `Extra-Trees` (*extremely random
 
 ```{r}
 library(caret)	
-library(extraTrees)	
+#library(extraTrees)	
 # For direct Extra-Tree Call	
 # install.packages("extraTrees")	
 # library(extraTrees)	
@@ -550,32 +710,54 @@ control <- trainControl(method="repeatedcv", number=10, repeats=3)
 	
 ## Run all subsequent models in parallel	
 library(doParallel)	
-cl <- makePSOCKcluster(4)	
+cl <- makePSOCKcluster(3)	
 registerDoParallel(cl)	
 system.time({	
   rf.fit  <- train(cd~., data=qol_test[ , -40], method="rf", trControl=control);	
   knn.fit <- train(cd~., data=qol_test[ , -40], method="knn", trControl=control);	
   svm.fit <- train(cd~., data=qol_test[ , -40], method="svmRadial", trControl=control);	
-  et.fit  <- train(cd~., data=qol_test[ , -40], method="extraTrees", trControl=control)	
-})	
+#  et.fit  <- train(cd~., data=qol_test[ , -40], method="extraTrees", trControl=control)	
+})
+```
+```{r}
 stopCluster(cl) # close multi-core cluster	
 	
-results <- resamples(list(RF=rf.fit, kNN=knn.fit, SVM=svm.fit, ET=et.fit))	
+results <- resamples(list(RF=rf.fit, kNN=knn.fit, SVM=svm.fit))	
 	
 # summary of model differences	
-summary(results)	
-	
+summary(results)
+```
+```{r}
 # plot summaries	
-scales <- list(x=list(relation="free"), y=list(relation="free"))	
+scales <- list(x=list(relation="free"), y=list(relation="free"))
 bwplot(results, scales=scales)                 # Box plots of 	
 densityplot(results, scales=scales, pch = "|") # Density plots of accuracy	
 dotplot(results, scales=scales)                # Dot plots of accuracy & Kappa	
 splom(results)      # contrast pair-wise model scatterplots of prediction accuracy
 ```
 
+
 # Practice Problem	
  	
 In the previous case study, we classified the `CHRONICDISEASESCORE` into two groups. What will happen if we use three groups? Let's separate `CHRONICDISEASESCORE` evenly into three groups. Recall the `quantile()` function that we talked about in [Chapter 2](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/notes/02_ManagingData.html). We can use it to get the cut-points for classification. Then, a `for` loop will help us split the variable `CHRONICDISEASESCORE` into three categories.  	
+
+```{r}
+quantile(qol$CHRONICDISEASESCORE, probs = c(1/3, 2/3))	
+for(i in 1:2214){	
+  if(qol$CHRONICDISEASESCORE[i]>0.7&qol$CHRONICDISEASESCORE[i]<2.2){	
+    qol$cdthree[i]=2	
+  }	
+  else if(qol$CHRONICDISEASESCORE[i]>=2.2){	
+    qol$cdthree[i]=3	
+  }	
+  else{	
+    qol$cdthree[i]=1	
+  }	
+}	
+	
+qol$cdthree<-factor(qol$cdthree, levels=c(1, 2, 3), labels = c("minor_disease", "mild_disease", "severe_disease"))	
+table(qol$cdthree)
+```
 
 ```{r}
 quantile(qol$CHRONICDISEASESCORE, probs = c(1/3, 2/3))	
@@ -602,8 +784,8 @@ After labeling the three categories in the new variable `cdthree`, our job of pr
 # qol_train1<-qol[1:2114, ]	
 # qol_test1<-qol[2115:2214, ]	
 train_index <- sample(seq_len(nrow(qol)), size = 0.8*nrow(qol))	
-qol_train1 <- qol[train_index, ]	
-qol_test1 <- qol[-train_index, ]	
+qol_train1<-qol[train_index, ]	
+qol_test1<-qol[-train_index, ]	
 	
 prop.table(table(qol_train1$cdthree))	
 prop.table(table(qol_test1$cdthree))	
@@ -616,8 +798,8 @@ qol_pred1<-predict(qol_model1, qol_test1)
 confusionMatrix(table(qol_test1$cdthree, qol_pred1))
 ```
 
-We can see that the prediction accuracy with three categories is way lower than the one we did with two categories.	
- 	
+We can see that the prediction accuracy with three categories is way lower than the one we did with two categories.
+
 Secondly, try to build a rule classifier with `OneR()`.	
 
 ```{r}
@@ -738,8 +920,3 @@ knitr::kable(resultAggregate)
 ```
 
 Try these techniques with [other data from the list of our Case-Studies](https://umich.instructure.com/courses/38100/files/).	
-
-
-
-
-
