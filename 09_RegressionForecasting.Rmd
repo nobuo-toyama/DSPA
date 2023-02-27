@@ -1,5 +1,5 @@
 ---
-title: "09 Forecasting Regression"
+title: "09 Forecasting Numeric Data using Regression Models"
 author: "nobuo"
 date: "2021/4/24"
 output: html_document
@@ -31,14 +31,22 @@ This formula would be familiar, as we showed examples in previous chapters. In t
 However, this is the ideal case. Bivariate scatterplots using real world data may show patterns that are not necessarily precisely linear, see [Chapter 2](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/02_ManagingData.html). Let's look at a bivariate scatterplot and try to fit a simple linear regression line using two variables, e.g., `hospital charges` or `CHARGES` as a dependent variable, and `length of stay` in the hospital or `LOS` as an independent predictor. The data is available in the [DSPA Data folder](https://umich.instructure.com/courses/38100/files/folder/Case_Studies) as `CaseStudy12_AdultsHeartAttack_Data`. We can remove the pair of observations with missing values using the command `heart_attack<-heart_attack[complete.cases(heart_attack), ]`. 	
 
 ```{r}
+library(plotly)
 heart_attack<-read.csv("https://umich.instructure.com/files/1644953/download?download_frd=1", stringsAsFactors = F)	
-heart_attack$CHARGES <- as.numeric(heart_attack$CHARGES)	
-heart_attack <- heart_attack[complete.cases(heart_attack), ]	
+heart_attack$CHARGES<-as.numeric(heart_attack$CHARGES)	
+heart_attack<-heart_attack[complete.cases(heart_attack), ]	
 	
-fit1 <- lm(CHARGES ~ LOS, data=heart_attack)	
-par(cex=.8)	
-plot(heart_attack$LOS, heart_attack$CHARGES, xlab="LOS", ylab = "CHARGES")	
-abline(fit1, lwd=2, col="red")
+fit1<-lm(CHARGES ~ LOS, data=heart_attack)	
+# par(cex=.8)	
+# plot(heart_attack$LOS, heart_attack$CHARGES, xlab="LOS", ylab = "CHARGES")	
+# abline(fit1, lwd=2, col="red")	
+
+plot_ly(heart_attack, x = ~LOS, y = ~CHARGES, type = 'scatter', mode = "markers", name="Data") %>%
+    add_trace(x=~mean(LOS), y=~mean(CHARGES), type="scatter", mode="markers",
+            name="(mean(LOS), mean(Charge))", marker=list(size=20, color='blue', line=list(color='yellow', width=2))) %>%
+    add_lines(x = ~LOS, y = fit1$fitted.values, mode = "lines", name="Linear Model") %>%
+    layout(title=paste0("lm(CHARGES ~ LOS), Cor(LOS,CHARGES) = ", 
+                        round(cor(heart_attack$LOS, heart_attack$CHARGES),3)))	
 ```
 
 As expected, longer hospital stays are expected to be associated with higher medical costs, or hospital charges. The scatterplot shows dots for each pair of observed measurements ($x=LOS$ and $y=CHARGES$), and an increasing linear trend. 	
@@ -54,17 +62,32 @@ Once the linear model is fit, i.e., its coefficients are estimated, we can make 
 How did we get the estimated expression? The most common estimating method in statistics is *ordinary least squares* (OLS). OLS estimators are obtained by minimizing sum of the squared errors - that is the sum of squared vertical distance from each dot on the scatter plot to the regression line. 	
 
 ```{r}
-plot(heart_attack$LOS, heart_attack$CHARGES, xlab="LOS", ylab = "CHARGES")	
-abline(fit1, lwd=2, col="red")	
-segments(15, 7767.05, 15, 10959, col = 'blue', lwd=2)	
-text(18, 9363.025, "error", cex=1.5)	
-text(16, 9363.025, '}', cex = 7)	
-text(15, 10959, '.', col = "green", cex=5)	
-text(16, 11500, "true value(y)", cex = 1.5)	
-text(15, 7767.05, '.', col = "green", cex=5)	
-text(15, 7400.05, "estimated value(y.hat)", cex = 1.5)
+# plot(heart_attack$LOS, heart_attack$CHARGES, xlab="LOS", ylab = "CHARGES")	
+# abline(fit1, lwd=2, col="red")	
+# segments(15, 7767.05, 15, 10959, col = 'blue', lwd=2)	
+# text(18, 9363.025, "error", cex=1.5)	
+# text(16, 9363.025, '}', cex = 7)	
+# text(15, 10959, '.', col = "green", cex=5)	
+# text(16, 11500, "true value(y)", cex = 1.5)	
+# text(15, 7767.05, '.', col = "green", cex=5)	
+# text(15, 7400.05, "estimated value(y.hat)", cex = 1.5)	
+	
+plot_ly(heart_attack, x = ~LOS, y = ~CHARGES, type = 'scatter', mode = "markers", name="Data") %>% 	
+  add_lines(x = ~LOS, y = fit1$fitted.values, mode = "lines", name="Linear Model") %>%	
+  add_segments(x=15, xend=15, y=7767.05, yend = 10959, showlegend=F) %>%	
+  add_markers(x = 15, y = 7767.05, name="Model-estimated prediction (x=15,y=7767)",	
+      marker=list(size=20, color='red', line=list(color='yellow', width=2))) %>%	
+  add_markers(x = 15, y = 10959, name="True (observed) value (x=15,y=10959)",	
+      marker=list(size=20, color='green', line=list(color='yellow', width=2))) %>%	
+  layout(title=paste0("lm(CHARGES ~ LOS), Cor(LOS,CHARGES) = ", 	
+                        round(cor(heart_attack$LOS, heart_attack$CHARGES),3))) %>%	
+  layout(title="Ordinary Least Squares",	
+         xaxis=list(title="LOS"),  # control the y:x axes aspect ratio	
+         yaxis = list(title="CHARGES"),	
+         legend = list(orientation = 'h'),	
+         annotations = list(text="OLS Error",  x=15.5, y=9300, textangle=90,	
+                  font=list(size=15, color="black"), showarrow=FALSE))	
 ```
-
 
 OLS is minimizing the following expression:	
 $$\sum_{i=1}^{n}(y_i-\hat{y}_i)^2=\sum_{i=1}^{n}\left (\underbrace{y_i}_{\text{observed outcome}}-\underbrace{(a+b\times x_i)}_{\text{predicted outcome}}\right )^2=\sum_{i=1}^{n}\underbrace{e_i^2}_{\text{squared residual}}.$$	
@@ -83,13 +106,12 @@ $$b=\frac{Cov(x, y)}{var(x)}.$$
 Let's use the *heart attack data* to demonstrate these calculations.	
 
 ```{r}
-b <- cov(heart_attack$LOS, heart_attack$CHARGES) / var(heart_attack$LOS)	
+b<-cov(heart_attack$LOS, heart_attack$CHARGES)/var(heart_attack$LOS)	
 b	
-a <- mean(heart_attack$CHARGES )- b * mean(heart_attack$LOS)	
+a<-mean(heart_attack$CHARGES)-b*mean(heart_attack$LOS)	
 a	
 # compare to the lm() estimate:	
-fit1$coefficients[1]	
-# we can do the same for the slope paraameter (b==fit1$coefficients[2]
+fit1$coefficients
 ```
 
  We can see that this is exactly the same as previously computed estimate of the constant intercept terms using `lm()`.	
@@ -231,33 +253,44 @@ The data is good to go. Let's explore it using some summary statistics and plots
 summary(mlb$Weight)	
 hist(mlb$Weight, main = "Histogram for Weights")
 ```
+```{r}
+plot_ly(x = mlb$Weight, type = "histogram", name= "Histogram for Weights") %>%	
+  layout(title="Baseball Players' Weight Histogram", bargap=0.1,	
+         xaxis=list(title="Weight"),  # control the y:x axes aspect ratio	
+         yaxis = list(title="Frequency"))
+```
 
 The above plot illustrates our dependent variable `Weight`. As we learned from [Chapter 2](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/02_ManagingData.html), we know this is somewhat right-skewed.	
  	
 Applying `GGpairs` to obtain a compact dataset summary we can mark heavy weight and light weight players (according to $light \lt median \lt heavy$) by different colors in the plot:	
 
 ```{r}
-require(GGally)	
+# require(GGally)	
+# mlb_binary = mlb	
+# mlb_binary$bi_weight = as.factor(ifelse(mlb_binary$Weight>median(mlb_binary$Weight),1,0))	
+# g_weight <- ggpairs(data=mlb_binary[-1], title="MLB Light/Heavy Weights",	
+#            mapping=ggplot2::aes(colour = bi_weight),	
+#            lower=list(combo=wrap("facethist",binwidth=1)),	
+#            # upper = list(continuous = wrap("cor", size = 4.75, alignPercent = 1))	
+#            )	
+# g_weight	
 	
-mlb_binary = mlb	
-	
-mlb_binary$bi_weight = as.factor(ifelse(mlb_binary$Weight>median(mlb_binary$Weight),1,0))	
-	
-g_weight <- ggpairs(data=mlb_binary[-1], title="MLB Light/Heavy Weights",	
-            mapping=ggplot2::aes(colour = bi_weight),	
-            lower=list(combo=wrap("facethist",binwidth=1)),	
-            # upper = list(continuous = wrap("cor", size = 4.75, alignPercent = 1))	
-            )	
-g_weight
-```
-
-Next, we may also mark player positions by different colors in the plot.
-
-```{r}
-g_position <- ggpairs(data=mlb[-1], title="MLB by Position",	
-              mapping=ggplot2::aes(colour = Position),	
-              lower=list(combo=wrap("facethist",binwidth=1)))	
-g_position
+plot_ly(mlb) %>%	
+    add_trace(type = 'splom', dimensions = list( list(label='Position', values=~Position), 	
+    list(label='Height', values=~Height), list(label='Weight', values=~Weight), 	
+    list(label='Age', values=~Age), list(label='Team', values=~Team)),	
+        text=~Team,	
+        marker = list(color = as.integer(mlb$Team),	
+            size = 7, line = list(width = 1, color = 'rgb(230,230,230)')	
+        )	
+    ) %>%	
+    layout(title= 'MLB Pairs Plot', hovermode='closest', dragmode= 'select',	
+        plot_bgcolor='rgba(240,240,240, 0.95)')	
+# We may also mark player positions by different colors in the ggpairs plot	
+# g_position <- ggpairs(data=mlb[-1], title="MLB by Position",	
+#               mapping=ggplot2::aes(colour = Position),	
+#               lower=list(combo=wrap("facethist",binwidth=1)))	
+# g_position	
 ```
 
 What about our potential predictors?
@@ -326,11 +359,21 @@ There are some techniques that allow us to resolve such multi-colinearity issues
    + [Model-Free Screening](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3384506/) strategy basically uses  empirical  estimates  for  conditional  densities  of  the  response  given the predictors.  Most methods have  [consistency  in  ranking  (CIR) property](https://pdfs.semanticscholar.org/b2c8/4fca280bbdc4a895450687c979a528a91245.pdf), which ensures that the objective utility function ranks unimportant predictors lower than important predictors with high probability ($p \rightarrow 1$).	
  	
 ## Visualizing relationships among features - the scatterplot matrix	
- 	
-To visualize pairwise correlations, we could use scatterplot matrix. In R, `pairs()` function will give use these outputs. 	
+
+To visualize pairwise correlations, we could use scatterplot matrix, `pairs()`, `ggpairs()`, or `plot_ly()`. 	
 
 ```{r}
-pairs(mlb[c("Weight", "Height", "Age")])
+# pairs(mlb[c("Weight", "Height", "Age")])	
+plot_ly(mlb) %>%	
+    add_trace(type = 'splom', dimensions = list( list(label='Height', values=~Height),	
+              list(label='Weight', values=~Weight), list(label='Age', values=~Age)),	
+        text=~Position,	
+        marker = list(color = as.integer(mlb$Team),	
+            size = 7, line = list(width = 1, color = 'rgb(230,230,230)')	
+        )	
+    ) %>%	
+    layout(title= 'MLB Pairs Plot', hovermode='closest', dragmode= 'select',	
+        plot_bgcolor='rgba(240,240,240, 0.95)')	
 ```
 
 You might get a sense of it but it is difficult to see any linear pattern. We can make an more sophisticated graph using `pairs.panels()` in the `psych` package.	
@@ -367,8 +410,12 @@ As we can see from the output, factors are included in the model by creating sev
 As we did in previous case studies, let's examine model performance.	
 
 ```{r}
-summary(fit)	
-plot(fit, which = 1:2)
+summary(fit)
+# plot(fit, which = 1:2)
+plot_ly(x=fit$fitted.values, y=fit$residuals, type="scatter", mode="markers") %>%	
+  layout(title="LM: Fitted-values vs. Model-Residuals",	
+         xaxis=list(title="Fitted"), 	
+         yaxis = list(title="Residuals"))
 ```
 
 The **summary** shows us how well does the model fits the dataset.	
@@ -413,7 +460,26 @@ $k = 2$ yields the genuine AIC criterion, and $k = log(n)$ refers to BIC. Let's 
 ```{r}
 fit2 = step(fit, k=2, direction = "backward")	
 summary(fit2)	
-plot(fit2, which = 1:2)
+# plot(fit2, which = 1:2)
+plot_ly(x=fit2$fitted.values, y=fit2$residuals, type="scatter", mode="markers") %>%
+  layout(title="LM: Fitted-values vs. Model-Residuals",
+         xaxis=list(title="Fitted"), 
+         yaxis = list(title="Residuals"))
+```
+
+```{r}
+# compute the quantiles	
+QQ <- qqplot(fit2$fitted.values, fit2$residuals, plot.it=FALSE)	
+# take a smaller sample size to expedite the viz	
+ind <-  sample(1:length(QQ$x), 1000, replace = FALSE)	
+plot_ly() %>%	
+  add_markers(x=~QQ$x, y=~QQ$y, name="Quantiles Scatter", type="scatter", mode="markers") %>%	
+  add_trace(x = ~c(160,260), y = ~c(-50,80), type="scatter", mode="lines",	
+        line = list(color = "red", width = 4), name="Line", showlegend=F) %>%	
+  layout(title='Quantile plot',	
+           xaxis = list(title="Fitted"),	
+           yaxis = list(title="Residuals"),	
+           legend = list(orientation = 'h'))
 ```
 
 Sometimes, simpler models are preferable even if there is a little bit loss of performance. In this case, we have a simpler model and $R^2=0.365$. The whole model is still very significant. We can see that observations $65$, $160$ and $237$ are relatively far from other residuals. They are potential influential points or outliers. 	
@@ -431,7 +497,8 @@ summary(mlb)
 
 A deeper discussion of variable selection, controlling the false discovery rate, is provided in Chapters [16](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/16_FeatureSelection.html) and [17](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/17_RegularizedLinModel_KnockoffFilter.html).	
  	
-### Model specification - adding non-linear relationships	
+### Model specification - adding non-linear relationships
+
 In linear regression, the relationship between independent and dependent variables is assumed to be linear. However, this might not be the case. The relationship between age and weight could be quadratic, since middle-aged people might gain weight dramatically.	
 
 ```{r}
@@ -561,65 +628,105 @@ y = func(x) + sig * rnorm(n)  # define the output
 xtest = seq(-pi, pi, by=0.2)	
 	
 ##plot simulated data	
-plot(x, y, cex=1.0, col="gray")	
-points(xtest, rep(0, length(xtest)), col="blue", pch=1, cex=1.5)	
-legend("top", legend=c("Data", "(Conjugate) Flat Prior"),	
-   col=c("gray", "blue"), lwd=c(2,2), lty=c(3,3), bty="n", cex=0.9, seg.len=3)	
+# plot(x, y, cex=1.0, col="gray")	
+# points(xtest, rep(0, length(xtest)), col="blue", pch=1, cex=1.5)	
+# legend("top", legend=c("Data", "(Conjugate) Flat Prior"),	
+#    col=c("gray", "blue"), lwd=c(2,2), lty=c(3,3), bty="n", cex=0.9, seg.len=3)	
 	
+plot_ly(x=x, y=y, type="scatter", mode="markers", name="data") %>%	
+  add_trace(x=xtest, y=rep(0, length(xtest)), mode="markers", name="prior") %>%	
+  layout(title='(Conjugate) Flat Prior',	
+           xaxis = list(title="X", range = c(-1.3, 1.3)),	
+           yaxis = list(title="Y", range = c(-0.6, 1.6)),	
+           legend = list(orientation = 'h'))
+```
+```{r}
 # run the weighted BART (BART::wbart) on the simulated data  	
 # install.packages("BART")	
 library(BART)	
 set.seed(1234) # set seed for reproducibility of MCMC	
 # nskip=Number of burn-in MCMC iterations; ndpost=number of posterior draws to return	
-model_bart <- wbart(x.train=as.data.frame(x), y.train=y,
-                    x.test=as.data.frame(xtest), nskip=300, ndpost=1000) 	
-# result is a list containing the BART run 	
-	
+model_bart <- wbart(x.train=as.data.frame(x), y.train=y, x.test=as.data.frame(xtest), nskip=300, ndpost=1000) 	
+# result is a list containing the BART run
+```
+```{r}
 # explore the BART model fit	
-names(model_bart)	
-dim(model_bart$yhat.test)	
-	
+names(model_bart)
+```
+```{r}
+dim(model_bart$yhat.test)
+```
+```{r}
 # The (l,j) element of the matrix `yhat.test` represents the l^{th} draw of `func` evaluated at the j^{th} value of x.test	
 # A matrix with ndpost rows and nrow(x.train) columns. Each row corresponds to a draw f* from the posterior of f	
 # and each column corresponds to a row of x.train. The (i,j) value is f*(x) for the i^th kept draw of f 	
 # and the j^th row of x.train	
 	
-# plot the data, the BART Fit, and the uncertainty	
-plot(x, y, cex=1.2, cex.axis=0.8, cex.lab=0.8, mgp=c(1.3,.3,0), tcl=-0.2, col="gray")	
-lines(xtest, func(xtest), col="blue", lty=1, lwd=2)	
-lines(xtest, apply(model_bart$yhat.test, 2, mean), col="green", lwd=2, lty=2) # show the mean of f(x_j)	
-quant_marg = apply(model_bart$yhat.test, 2, quantile, probs=c(0.025, 0.975)) # plot the 2.5% and 97.5% quantiles	
-lines(xtest, quant_marg[1,], col="red", lty=1, lwd=2)	
-lines(xtest, quant_marg[2,], col="red", lty=1,lwd=2)	
-legend("top", legend=c("Data", "True Signal","Posterior Mean","95% CI"),	
-   col=c("black", "blue","green","red"), lwd=c(2, 2,2,2), lty=c(3, 1,1,1), bty="n", cex=0.9, seg.len=3)	
+# # plot the data, the BART Fit, and the uncertainty	
+# plot(x, y, cex=1.2, cex.axis=0.8, cex.lab=0.8, mgp=c(1.3,.3,0), tcl=-0.2, col="gray")	
+# lines(xtest, func(xtest), col="blue", lty=1, lwd=2)	
+# lines(xtest, apply(model_bart$yhat.test, 2, mean), col="green", lwd=2, lty=2) # show the mean of f(x_j)	
+# quant_marg = apply(model_bart$yhat.test, 2, quantile, probs=c(0.025, 0.975)) # plot the 2.5% and 97.5% quantiles	
+# lines(xtest, quant_marg[1,], col="red", lty=1, lwd=2)	
+# lines(xtest, quant_marg[2,], col="red", lty=1,lwd=2)	
+# legend("top", legend=c("Data", "True Signal","Posterior Mean","95% CI"),	
+#    col=c("black", "blue","green","red"), lwd=c(2, 2,2,2), lty=c(3, 1,1,1), bty="n", cex=0.9, seg.len=3)	
 	
+quant_marg = apply(model_bart$yhat.test, 2, quantile, probs=c(0.025, 0.975)) # plot the 2.5% and 97.5% quantiles	
+plot_ly(x=x, y=y, type="scatter", mode="markers", name="Data") %>%	
+  add_trace(x=xtest, y=func(xtest), mode="markers", name="True Signal") %>%	
+  add_trace(x=xtest, y=apply(model_bart$yhat.test, 2, mean), mode="lines", name="Posterior Mean") %>%	
+  add_trace(x=xtest, y=apply(model_bart$yhat.test, 2, quantile, probs=c(0.025, 0.975)),	
+            mode="markers", name="95% CI") %>%	
+  add_trace(x=xtest, y=quant_marg[1,], mode="lines", name="Lower Band") %>%	
+  add_trace(x=xtest, y=quant_marg[2,], mode="lines", name="Upper Band") %>%	
+  layout(title='BART Model  (n=300)',	
+           xaxis = list(title="X", range = c(-1.3, 1.3)),	
+           yaxis = list(title="Y", range = c(-0.6, 1.6)),	
+           legend = list(orientation = 'h'))
+```
+```{r}
 names(model_bart)	
 dim(model_bart$yhat.train)	
 summary(model_bart$yhat.train.mean-apply(model_bart$yhat.train, 2, mean))	
 summary(model_bart$yhat.test.mean-apply(model_bart$yhat.test, 2, mean))	
-# yhat.train(test).mean: Average the draws to get the estimate of the posterior mean of func(x)	
+# yhat.train(test).mean: Average the draws to get the estimate of the posterior mean of func(x)
 ```
 
-If we increase the sample size, n, the computational complexity increases and the BART model bounds should get tighter.	
-
+If we increase the sample size, n, the computational complexity increases and the BART model bounds should get tighter.
+	
 ```{r}
-n = 3000 # 200 --> 3,000	
+n = 3000 # 300 --> 3,000	
 set.seed(1234)	
 x = sort(2*runif(n)-1)	
 y = func(x) + sig*rnorm(n)	
 	
 model_bart_2 <- wbart(x.train=as.data.frame(x), y.train=y, x.test=as.data.frame(xtest), nskip=300, ndpost=1000)	
-	
-plot(x, y, cex=1.2, cex.axis=0.8, cex.lab=0.8, mgp=c(1.3,.3,0), tcl=-0.2, col="gray")	
-lines(xtest, func(xtest), col="blue", lty=1, lwd=2)	
-lines(xtest, apply(model_bart_2$yhat.test, 2, mean), col="green", lwd=2, lty=2) # show the mean of f(x_j)	
-quant_marg = apply(model_bart_2$yhat.test, 2, quantile, probs=c(0.025, 0.975)) # plot the 2.5% and 97.5% CI	
-lines(xtest, quant_marg[1,], col="red", lty=1, lwd=2)	
-lines(xtest, quant_marg[2,], col="red", lty=1,lwd=2)	
-legend("top",legend=c("Data (n=3,000)", "True Signal", "Posterior Mean","95% CI"),	
-   col=c("gray", "blue","green","red"), lwd=c(2, 2,2,2), lty=c(3, 1,1,1), bty="n", cex=0.9, seg.len=3)	
 ```
+```{r}
+# plot(x, y, cex=1.2, cex.axis=0.8, cex.lab=0.8, mgp=c(1.3,.3,0), tcl=-0.2, col="gray")	
+# lines(xtest, func(xtest), col="blue", lty=1, lwd=2)	
+# lines(xtest, apply(model_bart_2$yhat.test, 2, mean), col="green", lwd=2, lty=2) # show the mean of f(x_j)	
+# quant_marg = apply(model_bart_2$yhat.test, 2, quantile, probs=c(0.025, 0.975)) # plot the 2.5% and 97.5% CI	
+# lines(xtest, quant_marg[1,], col="red", lty=1, lwd=2)	
+# lines(xtest, quant_marg[2,], col="red", lty=1,lwd=2)	
+# legend("top",legend=c("Data (n=3,000)", "True Signal", "Posterior Mean","95% CI"),	
+#    col=c("gray", "blue","green","red"), lwd=c(2, 2,2,2), lty=c(3, 1,1,1), bty="n", cex=0.9, seg.len=3)	
+	
+quant_marg2 = apply(model_bart_2$yhat.test, 2, quantile, probs=c(0.025, 0.975)) # plot the 2.5% and 97.5% CI	
+plot_ly(x=x, y=y, type="scatter", mode="markers", name="Data") %>%	
+  add_trace(x=xtest, y=func(xtest), mode="markers", name="True Signal") %>%	
+  add_trace(x=xtest, y=apply(model_bart_2$yhat.test, 2, mean), mode="lines", name="Posterior Mean") %>%	
+  add_trace(x=xtest, y=apply(model_bart_2$yhat.test, 2, quantile, probs=c(0.025, 0.975)),	
+            mode="markers", name="95% CI") %>%	
+  add_trace(x=xtest, y=quant_marg2[1,], mode="lines", name="Lower Band") %>%	
+  add_trace(x=xtest, y=quant_marg2[2,], mode="lines", name="Upper Band") %>%	
+  layout(title='BART Model (n=3,000)',	
+           xaxis = list(title="X", range = c(-1.3, 1.3)),	
+           yaxis = list(title="Y", range = c(-0.6, 1.6)),	
+           legend = list(orientation = 'h'))
+```
+
 
 ## Higher-Dimensional Simulation	
  	
@@ -641,7 +748,8 @@ set.seed(1234)
 t1 <- system.time(model_bart_MD <- wbart(x.train=as.data.frame(X), y.train=y, x.test=as.data.frame(Xp),	
                       nkeeptrain=200, nkeeptest=100, nkeeptestmean=500, nkeeptreedraws=100)	
       )	
-	
+```
+```{r}
 dim(model_bart_MD$yhat.train)	
 dim(model_bart_MD$yhat.test)	
 names(model_bart_MD$treedraws)	
@@ -650,27 +758,50 @@ names(model_bart_MD$treedraws)
 # The trees are stored in a long character string and there are 100 draws each consisting of 200 trees.	
 	
 # To predict using the Multi-Dimensional BART model (MD)	
-t2 <- system.time({pred_model_bart_MD2 <- predict(model_bart_MD, as.data.frame(Xp), mc.cores=6)})	
-	
+t2 <- system.time({pred_model_bart_MD2 <- predict(model_bart_MD, as.data.frame(Xp), mc.cores=6)})
+```
+```{r}
 dim(pred_model_bart_MD2)	
 t1	
-t2	
-	
+t2
+```
+```{r}
 # pred_model_bart_MD2 has row dimension equal to the number of kept tree draws (100) and	
 # column dimension equal to the number of row in Xp (100,000).  	
 	
 # Compare the BART predictions using 1K trees vs. 100 kept trees (very similar results)	
-plot(model_bart_MD$yhat.test.mean, apply(pred_model_bart_MD2, 2, mean),	
-      xlab="BART Prediction using 1,000 Trees", ylab="BART Prediction using 100 Kept Trees")	
-abline(0,1, col="red", lwd=2)	
+# plot(model_bart_MD$yhat.test.mean, apply(pred_model_bart_MD2, 2, mean),	
+#       xlab="BART Prediction using 1,000 Trees", ylab="BART Prediction using 100 Kept Trees")	
+# abline(0,1, col="red", lwd=2)	
 	
+plot_ly() %>%	
+  add_trace(x = c(-30,50), y = c(-30,50), type="scatter", mode="lines",	
+        line = list(width = 4), name="Consistent BART Prediction (1,000 vs. 100 Trees)") %>%	
+  add_markers(x=model_bart_MD$yhat.test.mean, y=apply(pred_model_bart_MD2, 2, mean), 	
+              name="BART Prediction Mean Estimates", type="scatter", mode="markers") %>%	
+  layout(title='Scatter of BART Predictions (1,000 vs. 100 Trees)',	
+           xaxis = list(title="BART Prediction (1,000 Trees)"),	
+           yaxis = list(title="BART Prediction (100 Trees)"),	
+           legend = list(orientation = 'h'))
+```
+```{r}
 # Compare BART Prediction to a linear fit  	
 lm_func = lm(y ~ ., data.frame(X,y))	
 pred_lm = predict(lm_func, data.frame(Xp))	
 	
-plot(pred_lm, model_bart_MD$yhat.test.mean, xlab="Linear Model Predictions", ylab="BART Predictions",	
-        cex=0.5, cex.axis=1.0, cex.lab=0.8, mgp=c(1.3,.3,0), tcl=-0.2)	
-abline(0,1, col="red", lwd=2)
+# plot(pred_lm, model_bart_MD$yhat.test.mean, xlab="Linear Model Predictions", ylab="BART Predictions",	
+#         cex=0.5, cex.axis=1.0, cex.lab=0.8, mgp=c(1.3,.3,0), tcl=-0.2)	
+# abline(0,1, col="red", lwd=2)	
+	
+plot_ly() %>%	
+  add_markers(x=pred_lm, y=model_bart_MD$yhat.test.mean, 	
+              name="Consistent LM/BART Prediction", type="scatter", mode="markers") %>%	
+  add_trace(x = c(-30,50), y = c(-30,50), type="scatter", mode="lines",	
+        line = list(width = 4), name="LM vs. BART Prediction") %>%	
+  layout(title='Scatter of Linear Model vs. BART Predictions',	
+           xaxis = list(title="Linear Model Prediction"),	
+           yaxis = list(title="BART Prediction"),	
+           legend = list(orientation = 'h'))
 ```
 
 ##  Heart Attack Hospitalization Case-Study	
@@ -678,18 +809,20 @@ abline(0,1, col="red", lwd=2)
 Let's use BART to model the [heart attack dataset (CaseStudy12_ AdultsHeartAttack_Data.csv)](https://umich.instructure.com/courses/38100/files/folder/Case_Studies). The data includes about 150 observations and 8 features, including hospital charges (`CHARGES`), which will be used as a response variable.	
 
 ```{r}
-heart_attack <- read.csv("https://umich.instructure.com/files/1644953/download?download_frd=1", 	
+heart_attack<-read.csv("https://umich.instructure.com/files/1644953/download?download_frd=1", 	
                        stringsAsFactors = F)	
-str(heart_attack)	
-	
+str(heart_attack)
+```
+```{r}
 # convert the CHARGES (independent variable) to numerical form. 	
 # NA's are created so let's remain only the complete cases 	
 heart_attack$CHARGES <- as.numeric(heart_attack$CHARGES)	
 heart_attack <- heart_attack[complete.cases(heart_attack), ]	
 heart_attack$gender <- ifelse(heart_attack$SEX=="F", 1, 0)	
 heart_attack <- heart_attack[, -c(1,2,3)]	
-dim(heart_attack); colnames(heart_attack)	
-	
+dim(heart_attack); colnames(heart_attack)
+```
+```{r}
 x.train <- as.matrix(heart_attack[ , -3]) # x training, excluding the charges (output)	
 y.train = heart_attack$CHARGES # y=output for modeling (BART, lm, lasso, etc.)	
 	
@@ -698,7 +831,7 @@ y.train = heart_attack$CHARGES # y=output for modeling (BART, lm, lasso, etc.)
 	
 # We'll just do some random train/test splits and report the out of sample performance of BART and lasso	
 RMSE <- function(y, yhat) {	
-  return(sqrt(mean((y - yhat)^2)))	
+  return(sqrt(mean((y-yhat)^2)))	
 }	
 	
 nd <- 10 # number of train/test splits (ala CV validation)	
@@ -711,6 +844,8 @@ RMSE_LASSO <- rep(0, nd)
 pred_BART <- matrix(0.0, n-ntrain,nd) # Initialize the BART and LASSO out-of-sample predictions	
 pred_LASSO <- matrix(0.0, n-ntrain,nd)
 ```
+
+In Chapter 17, we will learn more about LASSO regularized linear modeling. Now, let’s use the 'glmnet::glmnet()' method to fit a LASSO model and compare it to BART using the Heart Attack hospitalization case-study.
 
 ```{r}
 library(glmnet)	
@@ -748,36 +883,120 @@ for(i in 1:nd) {
 }
 ```
 ```{r}
-# compare the out of sample RMSE measures	
-	
-qqplot(RMSE_BART, RMSE_LASSO)	
-abline(0, 1, col="red", lwd=2)	
-	
-# Next compare the out of sample predictions	
-	
-plot(as.double(pred_BART), as.double(pred_LASSO),xlab="BART Predictions",ylab="LASSO Predictions", col="gray")	
-abline(0, 1, col="red", lwd=2)	
-model_lm <- lm(B ~ L, data.frame(B=as.double(pred_BART), L=as.double(pred_LASSO)))	
-abline(model_lm$coef, col="blue", lty=2, lwd=3)	
-legend("topleft",legend=c("Scatterplot Predictions (BART vs. LASSO)", "Ideal Agreement", "LM (BART~LASSO)"),	
-   col=c("gray", "red","blue"), lwd=c(2,2,2), lty=c(3,1,1), bty="n", cex=0.9, seg.len=3)	
+
 ```
 
-If the default prior yields reasonable results, we can try longer BART runs.	
+Plot BART vs. LASSO predictions.
 
 ```{r}
-model_BART_long <- wbart(x.train, y.train, nskip=1000, ndpost=5000) 	
-plot(model_BART_long$sigma, xlab="Number of Posterior Draws Returned")	
+# compare the out of sample RMSE measures	
+# qqplot(RMSE_BART, RMSE_LASSO)	
+# abline(0, 1, col="red", lwd=2)	
 	
-plot(model_BART_long$yhat.train.mean, y.train, xlab="BART Predicted Charges", ylab="Observed Charges",	
-     main=sprintf("Correlation (Observed,Predicted)=%f", 	
-                         round(cor(model_BART_long$yhat.train.mean, y.train), digits=2)))	
-abline(0, 1, col="red", lty=2)	
-legend("topleft",legend=c("BART Predictions", "LM (BART~LASSO)"),	
-   col=c("gray", "red","blue"), lwd=c(2,2,2), lty=c(3,1,1), bty="n", cex=0.9, seg.len=3)	
+plot_ly() %>%	
+  add_markers(x=RMSE_BART, y=RMSE_LASSO, 	
+              name="", type="scatter", mode="markers") %>%	
+  add_trace(x = c(2800,4000), y = c(2800,4000), type="scatter", mode="lines",	
+        line = list(width = 4), name="") %>%	
+  layout(title='Scatter of Linear Model vs. BART RMSE',	
+           xaxis = list(title="RMSE (BART)"),	
+           yaxis = list(title="RMSE (Linear Model)"),	
+           legend = list(orientation = 'h'))
+```
+```{r}
+# Next compare the out of sample predictions	
+model_lm <- lm(B ~ L, data.frame(B=as.double(pred_BART), L=as.double(pred_LASSO)))	
+x1 <- c(2800,9000)	
+y1 <- 2373.0734628 + 0.5745497*x1	
 	
-ind <- order(model_BART_long$yhat.train.mean)	
-boxplot(model_BART_long$yhat.train[ , ind], ylim=range(y.train), xlab="case", ylab="BART Hospitalization Charge Prediction Range")	
+# plot(as.double(pred_BART), as.double(pred_LASSO),xlab="BART Predictions",ylab="LASSO Predictions", col="gray")	
+# abline(0, 1, col="red", lwd=2)	
+# abline(model_lm$coef, col="blue", lty=2, lwd=3)	
+# legend("topleft",legend=c("Scatterplot Predictions (BART vs. LASSO)", "Ideal Agreement", "LM (BART~LASSO)"),	
+#    col=c("gray", "red","blue"), lwd=c(2,2,2), lty=c(3,1,1), bty="n", cex=0.9, seg.len=3)	
+	
+plot_ly() %>%	
+  add_markers(x=as.double(pred_BART), y=as.double(pred_LASSO), 	
+              name="BART vs. LASSO Scatter", type="scatter", mode="markers") %>%	
+  add_trace(x = c(2800,9000), y = c(2800,9000), type="scatter", mode="lines",	
+        line = list(width = 4), name="Ideal Agreement") %>%	
+  add_trace(x = x1, y = y1, type="scatter", mode="lines",	
+        line = list(width = 4), name="LM (BART ~ LASSO)") %>%	
+  layout(title='Scatterplot Predictions (BART vs. LASSO)',	
+           xaxis = list(title="BART Predictions"),	
+           yaxis = list(title="LASSO Predictions"),	
+           legend = list(orientation = 'h'))	
+```
+
+f the default prior estimate (sigest of the error variance ($\sigma^2$) is inverted chi-squared, i.e., standard conditionally conjugate prior) yields reasonable results, we can try longer BART runs ('ndpost=5000'). Mind the stable distribution of the $\hat{\sigma^2}$
+ (y-axis) with respect to the number of posterior draws (x-axis).
+
+```{r}
+model_BART_long <- wbart(x.train, y.train, nskip=1000, ndpost=5000)
+```
+```{r}
+# plot(model_BART_long$sigma, xlab="Number of Posterior Draws Returned")	
+	
+plot_ly() %>%	
+  add_markers(x=c(1:length(model_BART_long$sigma)), y=model_BART_long$sigma, 	
+              name="BART vs. LASSO Scatter", type="scatter", mode="markers") %>%	
+  layout(title='Scatterplot BART Sigma (post burn in draws of sigma)',	
+           xaxis = list(title="Number of Posterior Draws Returned"),	
+           yaxis = list(title="model_BART_long$sigma"),	
+           legend = list(orientation = 'h'))
+```
+```{r}
+# plot(model_BART_long$yhat.train.mean, y.train, xlab="BART Predicted Charges", ylab="Observed Charges",	
+#      main=sprintf("Correlation (Observed,Predicted)=%f", 	
+#                          round(cor(model_BART_long$yhat.train.mean, y.train), digits=2)))	
+# abline(0, 1, col="red", lty=2)	
+# legend("topleft",legend=c("BART Predictions", "LM (BART~LASSO)"),	
+#    col=c("gray", "red","blue"), lwd=c(2,2,2), lty=c(3,1,1), bty="n", cex=0.9, seg.len=3)	
+	
+plot_ly() %>%	
+  add_markers(x=model_BART_long$yhat.train.mean, y=y.train, 	
+              name="BART vs. LASSO Scatter", type="scatter", mode="markers") %>%	
+  add_trace(x = c(2800,9000), y = c(2800,9000), type="scatter", mode="lines",	
+        line = list(width = 4), name="LM (BART~LASSO)") %>%	
+  layout(title=sprintf("Correlation (Observed,Predicted)=%f", 	
+                         round(cor(model_BART_long$yhat.train.mean, y.train), digits=2)),	
+           xaxis = list(title="BART Predicted Charges"),	
+           yaxis = list(title="Observed Charges"),	
+           legend = list(orientation = 'h'))
+```
+
+```{r}
+ind <- order(model_BART_long$yhat.train.mean)
+
+# boxplot(model_BART_long$yhat.train[ , ind], ylim=range(y.train), xlab="case", 
+#             ylab="BART Hospitalization Charge Prediction Range")
+
+caseIDs <- paste0("Case",rownames(heart_attack))
+rowIDs <- paste0("", c(1:dim(model_BART_long$yhat.train)[1]))
+colnames(model_BART_long$yhat.train) <- caseIDs
+rownames(model_BART_long$yhat.train) <- rowIDs
+
+df1 <- as.data.frame(model_BART_long$yhat.train[ , ind])
+df2_wide <- as.data.frame(cbind(index=c(1:dim(model_BART_long$yhat.train)[1]), df1))
+# colnames(df2_wide); dim(df2_wide)
+
+df_long <- tidyr::gather(df2_wide, case, measurement, Case138:Case8)
+# str(df_long )
+# 'data.frame': 74000 obs. of  3 variables:
+#  $ index      : int  1 2 3 4 5 6 7 8 9 10 ...
+#  $ case       : chr  "Case138" "Case138" "Case138" "Case138" ...
+#  $ measurement: num  5013 3958 4604 2602 2987 ...
+
+actualCharges <- as.data.frame(cbind(cases=caseIDs, value=y.train))
+
+plot_ly() %>%
+  add_trace(data=df_long, y = ~measurement, color = ~case, type = "box") %>%
+  add_trace(x=~actualCharges$cases, y=~actualCharges$value, type="scatter", mode="markers",
+            name="Observed Charge", marker=list(size=20, color='green', line=list(color='yellow', width=2))) %>%
+  layout(title="Box-and-whisker Plots across all 148 Cases (Highlighted True Charges)",
+           xaxis = list(title="Cases"),
+           yaxis = list(title="BART Hospitalization Charge Prediction Range"),
+           showlegend=F)
 ```
 
 The BART model indicates there is quite a bit of uncertainty in predicting the outcome (`CHARGES`) for each of the 148 cases using the other four features in the heart attack hospitalization data.	
