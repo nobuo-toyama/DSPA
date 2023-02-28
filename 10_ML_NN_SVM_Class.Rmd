@@ -1,5 +1,5 @@
 ---
-title: "10 Neural Networks and SVMs"
+title: "10 Black Box Machine-Learning Methods: Neural Networks and Support Vector Machines"
 author: "nobuo"
 date: "2021/4/25"
 output: html_document
@@ -35,12 +35,22 @@ Let's look at each of these components one by one.
 One of the functions is known as threshold activation function that results in an output signal once a specified input threshold has been attained.	
 
 ```{r}
-x <- runif(1000, -10, 10)	
-y <- ifelse(x>=0, 1, 0)	
-plot(x, y, t="n", xlab = "Sum of input signals", 
-     ylab = "Output signal", main = "Threshold Activation (th=0.0)")	
-segments(0, -0.1, 0, 1, col="black", lty=2)	
-lines(x[order(x)], y[order(x)], pch=16, col="black", lwd=4)
+# x<-runif(1000, -10, 10)	
+# y<-ifelse(x>=0, 1, 0)	
+# plot(x, y, t="n", xlab = "Sum of input signals", ylab = "Output signal", main = "Threshold Activation (th=0.0)")	
+# segments(0, -0.1, 0, 1, col="black", lty=2)	
+# lines(x[order(x)], y[order(x)], pch=16, col="black", lwd=4)	
+library(plotly)	
+	
+x <- c(-2, 0, 0, 0, 2)	
+y <- c( 0, 0, 0, 1, 1) 	
+plot_ly() %>%	
+  add_trace(x = x, y = y, type="scatter", mode="lines",	
+        line = list(width = 4), name="Threshold") %>%	
+  layout(title='Threshold Activation Function (t=0.0)',	
+           xaxis = list(title="Sum of Input Signals"),	
+           yaxis = list(title="Output signal"),	
+           legend = list(orientation = 'h'))
 ```
 
 $$	
@@ -57,25 +67,48 @@ This is the simplest form for activation functions. It may be rarely used in rea
 ```{r}
 x <- runif(100000, -10, 10)	
 y <- 1/(1+exp(-x))	
-plot(x, y, xlab = "Sum of input signals", 
-     ylab = "Output signal", main = "Sigmoid Activation (th1=0; th2=2)")	
-segments(0, -0.1, 0, 0.5, col="black", lty=2)	
-segments(2, -0.1, 2, (1/(1+exp(-2))), col="black", lty=2)
+	
+# plot(x, y, xlab = "Sum of input signals", ylab = "Output signal", main = "Sigmoid Activation (th1=0; th2=2)")	
+# segments(0, -0.1, 0, 0.5, col="black", lty=2)	
+# segments(2, -0.1, 2, (1/(1+exp(-2))), col="black", lty=2)	
+	
+plot_ly() %>%	
+  add_trace(x = x, y = y, type="scatter", mode="markers",	
+         name="Sigmoid") %>%	
+  add_trace(x = c(0,0), y = c(0, 0.5), type="scatter", mode="markers+lines",	
+         name="", showlegend=F) %>%	
+  add_trace(x = c(2,2), y = c(0, (1/(1+exp(-2)))), type="scatter", mode="markers+lines",	
+         name="", showlegend=F) %>%	
+  layout(title='Sigmoid Activation Function (t1=0; t2=2)',	
+           xaxis = list(title="Sum of Input Signals"),	
+           yaxis = list(title="Output signal"),	
+           legend = list(orientation = 'h'))
 ```
 
 Other activation functions might also be useful:
 
 ```{r}
-x <- runif(100000, -10, 10)	
-y1 <- x	
-y2 <- ifelse(x<=-5, -5, ifelse(x>=5, 5, x))	
-y3 <- (exp(x)-exp(-x))/(exp(x)+exp(-x))	
-y4 <- exp(-x^2/2)	
-par(mfrow=c(2, 2))	
-plot(x, y1, main="Linear", xlab="", ylab="")	
-plot(x, y2, main="Saturated Linear", xlab="", ylab="")	
-plot(x, y3, main="Hyperbolic tangent", xlab="", ylab="")	
-plot(x, y4, main = "Gaussian", xlab="", ylab="")
+x<-runif(10000, -10, 10)	
+y1<-x	
+y2<-ifelse(x<=-5, -5, ifelse(x>=5, 5, x))	
+y3<-(exp(x)-exp(-x))/(exp(x)+exp(-x))	
+y4<-exp(-x^2/2)	
+	
+# par(mfrow=c(2, 2))	
+# plot(x, y1, main="Linear", xlab="", ylab="")	
+# plot(x, y2, main="Saturated Linear", xlab="", ylab="")	
+# plot(x, y3, main="Hyperbolic tangent", xlab="", ylab="")	
+# plot(x, y4, main = "Gaussian", xlab="", ylab="")	
+	
+plot_ly() %>%	
+  add_trace(x = x, y = y1/10, type="scatter", mode="markers", name="Linear") %>%	
+  add_trace(x = x, y = y2/5, type="scatter", mode="markers", name="Saturated Linear") %>%	
+  add_trace(x = x, y = y3, type="scatter", mode="markers", name="Hyperbolic Tangent") %>%	
+  add_trace(x = x, y = y4, type="scatter", mode="markers", name="Gaussian") %>%	
+  layout(title='Various Activation Functions',	
+           xaxis = list(title="Input Signals"),	
+           yaxis = list(title="Output signal"),	
+           legend = list(orientation = 'h'))
 ```
 
 Depending on the specific problem, we can chose a proper activation function based on the corresponding codomain of the function. For example, with hyperbolic tangent activation function, we can only have outputs ranging from -1 to 1 regardless of what input do we have. With linear functions we can go from $-\infty$ to $+\infty$. The Gaussian activation function yields a model called *Radial Basis Function* network.	
@@ -209,8 +242,7 @@ google_model <- neuralnet(RealEstate ~ Unemployment + Rental +
                             DJI_Index + StdDJI, data=google_train)	
 plot(google_model)
 ```
-![](https://wiki.socr.umich.edu/images/e/e5/DSPA_Figs_plot_google_model_Ch6.png)	
- 	
+
 The above graph shows that we have only one hidden node. `Error` represents the aggregate sum of squared errors and `Steps` is how many iterations the model has go through. Note that these outputs could be different when you run exact same codes twice because the weights are stochastically estimated.	
  	
 Also, *bias nodes* (blue singletons in the graph) may be added to feedforward neural networks acting like intermediate input nodes that produce constant values, e.g., 1. They are not connected to nodes in previous layers, yet they generate biased activation. Bias nodes are not required but are helpful in some neural networks as they allow offsetting activation functions.	
@@ -245,14 +277,24 @@ google_model2 <- neuralnet(RealEstate ~ Unemployment + Rental +
 plot(google_model2)
 ```
 
-![](https://wiki.socr.umich.edu/images/d/d1/DSPA_Figs_plot_google_model2_ch6.png)	
- 	
-Although the graph looks more complicated than the previous neural network, we have smaller `Error`, i.e., sum of squared errors. The neural network models may be used both for *classification* and *regression*, which we will see in the next part. Let's first try regression.	
-
+Although the graph looks more complicated than the previous neural network, we have smaller `Error`, i.e., sum of squared errors. The neural network models may be used both for *classification* and *regression*, which we will see in the next part. Let's first try regression.
+	
 ```{r}
 google_pred2 <- compute(google_model2, google_test[, c(1:2, 4:8)])	
 pred_results2 <- google_pred2$net.result	
 cor(pred_results2, google_test$RealEstate)
+```
+```{r}
+plot_ly() %>%	
+  add_markers(x=pred_results2, y=google_test$RealEstate, 	
+              name="Data Scatter", type="scatter", mode="markers") %>%	
+  add_trace(x = c(0,1), y = c(0,1), type="scatter", mode="lines",	
+        line = list(width = 4), name="Ideal Agreement") %>%	
+  layout(title=paste0('Scatterplot (Normalized) Observed vs. Predicted Real Estate Values, Cor(Obs,Pred)=',	
+                      round(cor(pred_results2, google_test$RealEstate), 2)),	
+           xaxis = list(title="NN (hidden=4) Real Estate Predictions"),	
+           yaxis = list(title="(Normalized) Observed Real Estate"),	
+           legend = list(orientation = 'h'))
 ```
 
 We get an even higher correlation. This is almost an ideal result! The predicted and observed `RealEstate` indices have a strong linear relationship. Nevertheless, too many hidden nodes might sometimes decrease the correlation between predicted and observed values, which will be examined in the practice problems later in this chapter.	
@@ -268,7 +310,18 @@ google_model2 <- neuralnet(RealEstate ~ Unemployment + Rental + Mortgage +
 google_pred2 <- compute(google_model2, google_test[, c(1:2, 4:8)])	
 pred_results2 <- google_pred2$net.result	
 cor(pred_results2, google_test$RealEstate)	
-# plot(google_model2)
+```
+```{r}
+plot_ly() %>%	
+  add_markers(x=pred_results2, y=google_test$RealEstate, 	
+              name="Data Scatter", type="scatter", mode="markers") %>%	
+  add_trace(x = c(0,1), y = c(0,1), type="scatter", mode="lines",	
+        line = list(width = 4), name="Ideal Agreement") %>%	
+  layout(title=paste0('Scatterplot (Normalized) Observed vs. Predicted Real Estate Values, Cor(Obs,Pred)=',	
+                      round(cor(pred_results2, google_test$RealEstate), 2)),	
+           xaxis = list(title="NN (hidden=(4,3,3)) Real Estate Predictions"),	
+           yaxis = list(title="(Normalized) Observed Real Estate"),	
+           legend = list(orientation = 'h'))
 ```
 
 # Simple NN demo - learning to compute $\sqrt {\ \ \ }$	
@@ -281,14 +334,25 @@ rand_data <- abs(runif(1000, 0, 100))
  	
 # create a 2 column data-frame (and_data, sqrt_data)	
 sqrt_df <- data.frame(rand_data, sqrt_data=sqrt(rand_data)) 	
-plot(rand_data, sqrt_df$sqrt_data)
+# plot(rand_data, sqrt_df$sqrt_data)	
+	
+s <- seq(from=0, to=100, length.out=1000)	
+plot_ly(x = ~s, y = ~sqrt(s), type="scatter", mode = "lines") %>%	
+  layout(title='Square-root Funciton',	
+           xaxis = list(title="Input (x)", scaleanchor="y"),	
+           yaxis = list(title="Output (y=sqrt(x))", scaleanchor="x"),	
+           legend = list(orientation = 'h'))
 ```
+
+Next, fit the NN model.
 
 ```{r}
 # Train the neural net	
 set.seed(1234)	
 net.sqrt <- neuralnet(sqrt_data ~ rand_data,  sqrt_df, hidden=10, threshold=0.1)
 ```
+
+Examine the NN-prediction results on testing data.
 
 ```{r}
 # report the NN	
@@ -306,17 +370,33 @@ pred_sqrt <- predict(net.sqrt, test_data.df)
  # compute uses the trained neural net (net.sqrt), 	
  # to estimate the square-roots of the testing data 	
  	
- # compare real (test_data_sqrt) and NN-predicted (pred_sqrt) square roots of test_data	
-plot(pred_sqrt, test_data_sqrt, xlim=c(0, 12), ylim=c(0, 12)); 	
-abline(0,1, col="red", lty=2)	
-legend("bottomright",  c("Pred vs. Actual SQRT", "Pred=Actual Line"), cex=0.8, lty=c(1,2),	
-        lwd=c(2,2),col=c("black","red"))	
+# compare real (test_data_sqrt) and NN-predicted (pred_sqrt) square roots of test_data	
+# plot(pred_sqrt, test_data_sqrt, xlim=c(0, 12), ylim=c(0, 12)); 	
+# abline(0,1, col="red", lty=2)	
+# legend("bottomright",  c("Pred vs. Actual SQRT", "Pred=Actual Line"), cex=0.8, lty=c(1,2),	
+#         lwd=c(2,2),col=c("black","red"))	
+	
+plot_ly(x = ~pred_sqrt[,1], y = ~test_data_sqrt, type = "scatter", mode="markers", name="scatter") %>%	
+  add_trace(x = c(0,14), y = c(0,14), mode="lines", line = list(width = 4), name="Ideal Agreement") %>%	
+  layout(title='Scatterplot Predicted vs. Actual SQRT',	
+           xaxis = list(title="NN Predicted", scaleanchor="y"),	
+           yaxis = list(title="Actual Value (y=sqrt(x))", scaleanchor="x"),	
+           legend = list(orientation = 'h'))	
+```
+```{r}
 compare_df <-data.frame(pred_sqrt, test_data_sqrt); # compare_df	
  	
-plot(test_data, test_data_sqrt)	
-lines(test_data, pred_sqrt, pch=22, col="red", lty=2)	
-legend("bottomright",  c("Actual SQRT","Predicted SQRT"),	
-       lty=c(1,2),lwd=c(2,2),col=c("black","red"))
+# plot(test_data, test_data_sqrt)	
+# lines(test_data, pred_sqrt, pch=22, col="red", lty=2)	
+# legend("bottomright",  c("Actual SQRT","Predicted SQRT"),	
+#        lty=c(1,2),lwd=c(2,2),col=c("black","red"))	
+	
+plot_ly(x = ~test_data, y = ~test_data_sqrt,  type="scatter", mode="lines", name="SQRT") %>%	
+  add_trace(x = ~test_data, y = ~pred_sqrt, mode="markers", name="NN Model Prediction") %>%	
+  layout(title='Predicted vs. Actual SQRT',	
+           xaxis = list(title="Inputs"),	
+           yaxis = list(title="Outputs (y=sqrt(x))"),	
+           legend = list(orientation = 'h'))	
 ```
 
 We observe that the NN, `net.sqrt` actually learns and predicts pretty close the complex square root function. Of course, everyone's results may vary as we randomly generate the training data (rand_data) and the NN construction (net.sqrt) is also stochastic.	
@@ -422,13 +502,28 @@ The easiest shape would be an $(n-1)D$ plane embedded in $nD$, which splits the 
 As an example, consider lines, $(n-1)D$ planes, embedded in $R^2$. Assume that we have only two features, will you choose line $A$ or line $B$ as the better `hyperplane` separating the data? Or even another plane $C$?	
 
 ```{r}
-A <- c(1, 4, 3, 2, 4, 8, 6, 10, 9)	
-B <- c(1, 5, 3, 2, 3, 8, 8, 7, 10)	
-plot(A, B, xlab="", ylab="", pch=16, cex=2)	
-abline(v=5, col="red", lty=2)	
-text(5.4, 9, labels="A")	
-abline(12, -1, col="red", lty=2)	
-text(6, 5.4, labels="B")
+A<-c(1, 4, 3, 2, 4, 8, 6, 10, 9)	
+B<-c(1, 5, 3, 2, 3, 8, 8, 7, 10)	
+	
+# plot(A, B, xlab="", ylab="", pch=16, cex=2)	
+# abline(v=5, col="red", lty=2)	
+# text(5.4, 9, labels="A")	
+# abline(12, -1, col="red", lty=2)	
+# text(6, 5.4, labels="B")	
+	
+modelLabels <- c('A', 'B')	
+modelLabels.x <- c(5.4, 8.2)	
+modelLabels.y <- c(9, 4.1)	
+modelLabels.col <- c("blue", "red")	
+	
+plot_ly(x = A, y = B, type="scatter", mode="markers", name="Data") %>%	
+  add_lines(x = c(5,5), y = c(1,10), name="Line A")  %>% 	
+  add_lines(x = c(10,2), y = c(2,10), name="Line B")  %>% 	
+  layout(title="Illustration of Hyperplane (line) Separation of 2D Data",	
+         xaxis=list(title="X", scaleanchor="y"),  # control the y:x axes aspect ratio	
+         yaxis = list(title="Y", scaleanchor  = "x"), legend = list(orientation = 'h'),	
+         annotations = list(text=modelLabels,  x=modelLabels.x, y=modelLabels.y, textangle=c(90,0),	
+                            font=list(size=15, color=modelLabels.col), showarrow=FALSE))
 ```
 
 ### Finding the maximum margin	
@@ -440,20 +535,49 @@ We define support vectors as the points from each class that are closest to MMH.
 Using support vectors alone is insufficient for finding the MMH. Although tricky mathematical calculations are involved, the fundamental of the SVM process is fairly simple. Let's look at linearly separable data and non-linearly separable data individually.	
  	
 ### Linearly separable data	
- 	
-If the dataset is linearly separable, we can find the outer boundaries of our two groups of data points. These boundaries are called convex hull (red lines in the following graph). The MMH (black solid line) is just the line that perpendicular to the shortest line between the two convex hulls.	
 
+If the dataset is linearly separable, we can find the outer boundaries of our two groups of data points. These boundaries are called convex hull (red lines in the following graph). The MMH (green solid line) is just the line that perpendicular to the shortest line (orange, dash) between the two convex hulls. 	
+	
 ```{r}
-plot(A, B, xlab="", ylab="", pch=16, cex=2)	
-segments(1, 1, 4, 5, lwd=1, col = "red")	
-segments(1, 1, 4, 3, lwd = 1, col = "red")	
-segments(4, 3, 4, 5, lwd = 1, col = "red")	
-segments(6, 8, 10, 7, lwd = 1, col = "red")	
-segments(6, 8, 9, 10, lwd = 1, col = "red")	
-segments(10, 7, 9, 10, lwd = 1, col = "red")	
-segments(6, 8, 4, 5, lwd = 1, lty=2)	
-abline(9.833, -2/3, lwd=2)
+#' 	
+# plot(A, B, xlab="", ylab="", pch=16, cex=2)	
+# segments(1, 1, 4, 5, lwd=1, col = "red")	
+# segments(1, 1, 4, 3, lwd = 1, col = "red")	
+# segments(4, 3, 4, 5, lwd = 1, col = "red")	
+# segments(6, 8, 10, 7, lwd = 1, col = "red")	
+# segments(6, 8, 9, 10, lwd = 1, col = "red")	
+# segments(10, 7, 9, 10, lwd = 1, col = "red")	
+# segments(6, 8, 4, 5, lwd = 1, lty=2)	
+# abline(9.833, -2/3, lwd=2)	
+	
+modelLabels <- c('A', 'B')	
+modelLabels.x <- c(5.4, 8.2)	
+modelLabels.y <- c(8, 4.1)	
+modelLabels.col <- c("blue", "red")	
+	
+plot_ly() %>%	
+  add_lines(x = c(6,4), y = c(8,5), name="Shortest Line Between the Convex Clusters (A)", line=list(dash='dash'))  %>% 	
+  add_lines(x = c(10,2), y = c(3,8.7), name="MMH Line (B)")  %>% 	
+  add_segments(x=1, xend=4, y=1, yend = 5, line=list(color="red"), showlegend=F) %>%	
+  add_segments(x=1, xend=4, y=1, yend = 3, line=list(color="red"), showlegend=F) %>%	
+  add_segments(x=4, xend=4, y=3, yend = 5, line=list(color="red"), showlegend=F) %>%	
+  add_segments(x=6, xend=10, y=8, yend = 7, line=list(color="red"), showlegend=F) %>%	
+  add_segments(x=6, xend=10, y=8, yend = 7, line=list(color="red"), showlegend=F) %>%	
+  add_segments(x=10, xend=9, y=7, yend = 10, line=list(color="red"), showlegend=F) %>%	
+  add_markers(x = A, y = B, type="scatter", mode="markers", name="Data", marker=list(color="blue")) %>%	
+  add_markers(x = 4, y = 5, name="P1", 	
+              marker = list(size = 20, color = 'blue', line = list(color = 'yellow', width = 2))) %>%	
+  add_segments(x=6, xend=9, y=8, yend = 10, line=list(color="red"), showlegend=F) %>%	
+  add_markers(x = 6, y = 8, name="P2", 	
+              marker = list(size = 20, color = 'blue', line = list(color = 'yellow', width = 2))) %>%	
+  layout(title="Illustration of Hyperplane (line) Separation of 2D Data",	
+         xaxis=list(title="X", scaleanchor="y"),  # control the y:x axes aspect ratio	
+         yaxis = list(title="Y", scaleanchor  = "x"), legend = list(orientation = 'h'),	
+         annotations = list(text=modelLabels,  x=modelLabels.x, y=modelLabels.y, textangle=c(-40,0),	
+                            font=list(size=15, color=modelLabels.col), showarrow=FALSE))
 ```
+
+
 
 Mind the difference between *convex hull* and *concave hull* of a set of points.	
 
@@ -496,18 +620,66 @@ group1 <- list(x=A[6:9], y=B[6:9])
 # if duplicate points are expected, remove them to prevent ahull() function errors	
 group2 <- lapply(group1, "[" ,which(!duplicated(as.matrix(as.data.frame(group1)))))	
 concaveHull1 <- ahull(group2, alpha=6)	
-plot(concaveHull1, add=FALSE, col="blue", wpoints=FALSE, xlim=c(0,10),ylim=c(0,10))	
-points(group2, pch=19)	
+	
+# plot(concaveHull1, add=FALSE, col="blue", wpoints=FALSE, xlim=c(0,10),ylim=c(0,10))	
+# points(group2, pch=19)	
 	
 library(alphahull)	
 # Convex hull	
 group3 <- list(x=A[1:5], y=B[1:5])	
-points(group3, pch=19)	
+# points(group3, pch=19)	
 convHull2 <- lapply(group3, "[", chull(group3))	
-polygon(convHull2, lty=2, border="gray", lwd=2)	
-polygon(convexSplinePolygon(as.matrix(as.data.frame(convHull2)), 100),border="red",lwd=2)	
-legend("topleft",  c("Convex Hull", "Convex Spline Hull", "Concave Hull"), lty=c(2,1,1), lwd=c(2,2,2),col=c("gray","red", "blue"), cex=0.8)	
-text(5,2, "group 2", col="red"); text(8,6, "group 1", col="blue")
+	
+# polygon(convHull2, lty=2, border="gray", lwd=2)	
+# polygon(convexSplinePolygon(as.matrix(as.data.frame(convHull2)), 100),border="red",lwd=2)	
+# legend("topleft",  c("Convex Hull", "Convex Spline Hull", "Concave Hull"), lty=c(2,1,1), lwd=c(2,2,2),col=c("gray","red", "blue"), cex=0.8)	
+# text(5,2, "group 2", col="red"); text(8,6, "group 1", col="blue")	
+	
+library(sp)	
+SpP = SpatialPolygons(list(Polygons(list(Polygon(group2)),ID="s1"))) 	
+# plot(SpP)	
+# points(XY)	
+x1 <- SpP@polygons[[1]]@Polygons[[1]]@coords[,1]	
+y1 <- SpP@polygons[[1]]@Polygons[[1]]@coords[,2]	
+df1 <- convexSplinePolygon(as.matrix(as.data.frame(convHull2)), 100)	
+	
+plot_ly() %>%	
+  add_trace(x=df1[,1], y=df1[,2], type="scatter", mode="lines", name="Convex Hull", line=list(color="lightblue")) %>%	
+  add_lines(x = x1, y = y1, type="scatter", mode="lines", name="Concave Region", line=list(color="orange")) %>%	
+  add_segments(x = df1[1,1],  xend=df1[dim(df1)[1],1], y = df1[1,2], yend = df1[dim(df1)[1],2], type="scatter", 	
+            mode="lines", name="", line=list(color="gray"), showlegend=F) %>%	
+  add_segments(x = x1[3],  xend=x1[4], y = y1[3], yend = y1[4], type="scatter", 	
+            mode="lines", name="Concave Region", line=list(color="orange"), showlegend=F) %>%	
+  add_lines(x = c(6,4), y = c(8,5), name="Shortest Line Between the Convex Clusters (A)", line=list(dash='dash'))  %>% 	
+  add_lines(x = c(10,2), y = c(3,8.7), mode="lines", name="MMH Line (B)")  %>% 	
+  add_segments(x=1, xend=4, y=1, yend = 5, line=list(color="gray", dash='dash'), showlegend=F) %>%	
+  add_segments(x=1, xend=4, y=1, yend = 3, line=list(color="gray", dash='dash'), showlegend=F) %>%	
+  add_segments(x=4, xend=4, y=3, yend = 5, line=list(color="gray", dash='dash'), showlegend=F) %>%	
+  add_segments(x=6, xend=10, y=8, yend = 7, line=list(color="gray", dash='dash'), showlegend=F) %>%	
+  add_segments(x=6, xend=10, y=8, yend = 7, line=list(color="gray", dash='dash'), showlegend=F) %>%	
+  add_segments(x=10, xend=9, y=7, yend = 10, line=list(color="gray", dash='dash'), showlegend=F) %>%	
+  add_markers(x = A, y = B, type="scatter", mode="markers", name="Data", marker=list(color="blue")) %>%	
+  add_markers(x = 4, y = 5, name="P1", 	
+              marker = list(size = 20, color = 'blue', line = list(color = 'yellow', width = 2))) %>%	
+  add_segments(x=6, xend=9, y=8, yend = 10, line=list(color="gray", dash='dash'), showlegend=F) %>%	
+  add_markers(x = 6, y = 8, name="P2", 	
+              marker = list(size = 20, color = 'blue', line = list(color = 'yellow', width = 2))) %>%	
+  # add_lines(x = df1[,1], y = df1[,2], type="scatter", mode="lines", name="Convex Hull")  %>%	
+  layout(title="Illustration of Hyperplane (line) Separation of 2D Data",	
+         xaxis=list(title="X", scaleanchor="y"),  # control the y:x axes aspect ratio	
+         yaxis = list(title="Y", scaleanchor  = "x"), legend = list(orientation = 'h'),	
+         annotations = list(text=modelLabels,  x=modelLabels.x, y=modelLabels.y, textangle=c(-40,0),	
+                            font=list(size=15, color=modelLabels.col), showarrow=FALSE))
+```
+```{r}
+#   # extract the row numbers of the boundary points, in convex order.	
+# indx=concaveHull1$arcs[,"end1"]  	
+# points <- df[indx,2:3]               # extract the boundary points from df	
+# points <- rbind(points,points[1,])   # add the closing point	
+# # create the SpatialPolygonsDataFrame	
+# SpP = SpatialPolygons(list(Polygons(list(Polygon(points)),ID="s1"))) 	
+# plot(SpP)	
+# plot(SpP@polygons[[1]]@Polygons[[1]]@coords[,1], SpP@polygons[[1]]@Polygons[[1]]@coords[,2])	
 ```
 
 An alternative way to linearly separate the data into (two) clusters is to find two parallel planes that can separate the data into two groups, and then increase the distance between the two planes as much as possible.	
@@ -621,12 +793,12 @@ mtcars$vs[which(mtcars$vs == 0)] <- 'V-Shaped Engine'
 mtcars$vs[which(mtcars$vs == 1)] <- 'Straight Engine'	
 mtcars$vs <- as.factor(mtcars$vs)	
 	
-p_2D <- plot_ly(mtcars, x = ~wt, y = ~hp/10, color = ~vs, colors = c('blue', 'red')) %>%	
+p_2D <- plot_ly(mtcars, x = ~wt, y = ~hp/10, color = ~vs, colors = c('blue', 'red'), name=~vs) %>%	
   add_markers() %>%	
   add_segments(x = 1, xend = 6, y = 8, yend = 18, colors="gray", opacity=0.2, 	
-               showlegend = FALSE, showscale=FALSE) %>%	
-  layout(scene = list(xaxis = list(title = 'Weight'),	
-                     yaxis = list(title = 'Horsepower')))	
+               showlegend = FALSE) %>%	
+  layout(xaxis = list(title = 'Weight'), yaxis = list(title = 'Horsepower'), legend = list(orientation = 'h'),	
+         title="(mtcars) Automobile Weight vs. Horsepower Relation") %>% hide_colorbar()	
 p_2D
 ```
 
@@ -648,27 +820,27 @@ dMean <- c(3.2, -280, 2)
 	
 d <- as.numeric((-1)*normVec %*% dMean)  # force the plane to go through the mean	
 x=mtcars$wt; y=mtcars$hp; z=mtcars$qsec; w=mtcars$vs   # define the x, y, z dimensions	
-w.col = ifelse(w=="V-Shaped Engine", "blue", "red")	
+w.col = ifelse(mtcars$vs=="Straight Engine", "blue", "red")	
 	
 # Reparametrize the 2D (x,y) grid, and define the corresponding model values z on the grid. Recall z=-(d + ax+by)/c, where normVec=(a,b,c)	
 x.seq <- seq(min(x),max(x),length.out=100)	
 y.seq <- seq(min(y),max(y),length.out=100)	
 z.seq <- function(x,y) -(d + normVec[1]*x + normVec[2]*y)/normVec[3]	
 # define the values of z = z(x.seq, y.seq), as a Matrix of dimension c(dim(x.seq), dim(y.seq))	
-z1 <- t(outer(x.seq, y.seq, z.seq))/10; range(z1)  # we need to check this 10 correction, to ensure the range of z is apporproate!!!	
+z1 <- t(outer(x.seq, y.seq, z.seq))/10; range(z1)  # we need to check this 10 correction, to ensure the range of z is appropriate!!!	
 	
 # Draw the 2D plane embedded in 3D, and then add points with "add_trace"	
 myPlotly <- plot_ly(x=~x.seq, y=~y.seq, z=~z1,	
-    colors = "gray", type="surface", opacity=0.5, showlegend = FALSE, showscale=FALSE) %>%	
+                    colors = "gray", type="surface", opacity=0.5, showlegend = FALSE) %>%	
     add_trace(data=mtcars, x=x, y=y, z=mtcars$qsec, mode="markers", type="scatter3d", 	
-              marker = list(color=w.col, opacity=0.9, symbol=105), showscale = FALSE) %>%	
-  layout(showlegend = FALSE, showscale=FALSE, scene = list(	
-    aspectmode = "manual", aspectratio = list(x=1, y=1, z=1),	
-    xaxis = list(title = "Weight", range = c(min(x),max(x))),	
-    yaxis = list(title = "Horsepower", range = c(min(y),max(y))),	
-    zaxis = list(title = "1/4 mile time", range = c(14, 23)))	
-    )	
-myPlotly
+              marker = list(color=w.col, opacity=0.9, symbol=105)) %>%	
+    layout(showlegend = FALSE,  scene = list(	
+        aspectmode = "manual", aspectratio = list(x=1, y=1, z=1),	
+        xaxis = list(title = "Weight", range = c(min(x),max(x))),	
+        yaxis = list(title = "Horsepower", range = c(min(y),max(y))),	
+        zaxis = list(title = "1/4 mile time", range = c(14, 23)))	
+    ) %>% hide_colorbar()	
+myPlotly	
 ```
 
 How can we do that in practice? We transform our data using kernel functions. A general form for kernel functions would be:	
