@@ -162,25 +162,113 @@ We can further analyze the frequent terms using `itemFrequency()`. This will sho
 
 ```{r}
 itemFrequency(med[, 1:5])
-# itemFrequencyPlot(med, topN=20)
+```
+```{r}
+library(plotly)	
+
+# convert the data to a matrix	
+mat <- as.matrix(med@data)	
+# View matrix as image	
+# image(mat)	
+	
+# capture the row/column names	
+rowNames <- med@itemInfo$labels	
+colNames <- paste0("S", c(1:dim(mat)[2]))	
+rownames(mat) <- rowNames	
+colnames(mat) <- colNames	
+	
+# convert matrix to DF for processing, order rows based on their average (across subjects/cases/columns), back to matrix for display	
+df <- as.data.frame(1*mat)	
+df$avg <- rowMeans(df)	
+dfOrdered <- df[order(df$avg, decreasing = T), ]	
+matOrdered <- as.matrix(dfOrdered)	
+	
+# track the ordered row names	
+rowNames <- rownames(dfOrdered)	
+colNames <- colnames(dfOrdered)	
+	
+# 2D top 20 terms bar plot	
+# To order the meds based on "avg", instead of alphabetically (mind the "-" sign to order Large to small!)	
+plot_ly(x = reorder(rowNames[c(1:20)], -dfOrdered[1:20, "avg"]), y=dfOrdered[1:20, "avg"], name="Top 20 Meds", type="bar")  %>%	
+  layout(title='Frequency of Medications (Top 20) based on averaging across Cases',	
+           xaxis = list(title="Term"),	
+           yaxis = list(title="Relative Frequency"))
+```
+```{r}
+# 3D surface plot	
+plot_ly(x = colNames, y = rowNames, z = 2*matOrdered, type = "surface") %>%	
+  layout(title='Term (X) by Sample (Y) Frequency (Z) Plot',	
+           xaxis = list(title="Term"),	
+           yaxis = list(title="Sample ID")) %>% hide_colorbar()
 ```
 
-The above graph shows the top 20 medicines that are most frequently present in this dataset. Consistent with the prior `summary()` output, `fentanyl` is still the most frequent item. You can also try to plot the items with a threshold for support. Instead of `topN=20`, just use the option `support=0.1`, which will give you all the items have a support greater or equal to $0.1$. 	
+We can only display the top 20 medicines that are most frequently present in this dataset. Consistent with the prior `summary()` output, `fentanyl` is still the most frequent item. You can also try to plot the items with a threshold for support. Instead of `topN=20`, just use the option `support=0.1`, which will give you all the items have a support greater or equal to $0.1$. 
+
+Let's generalize this process and define a new function, `itemFrequencyPlotly(transactionObject, numTopItemps = 10)`, that can generate frequency plots for any transaction object.
+
+```{r}
+# define a generic plot_ly ItemFrequency plotting function	
+itemFrequencyPlotly <- function(transactionObject, numTopItemps = 10, name="") {	
+  name <- ifelse(name=="", 	
+                 paste0('Frequency of Items (Top ', numTopItemps, 	
+                     ' ) based on averaging across Cases'),	
+                 paste0('Frequency of Items (Top ', numTopItemps, 	
+                     ' ) based on averaging across Cases (Data=', name, ')'))	
+  	
+  mat <- as.matrix(transactionObject@data)	
+  # View matrix as image	
+  # image(mat)	
+  	
+  # capture the row/column names	
+  rowNames <- transactionObject@itemInfo$labels	
+  colNames <- paste0("S", c(1:dim(mat)[2]))	
+  rownames(mat) <- rowNames	
+  colnames(mat) <- colNames	
+  	
+  # convert matrix to DF for processing, order rows based on their average (across subjects/cases/columns), back to matrix for display	
+  df <- as.data.frame(1*mat)	
+  df$avg <- rowMeans(df)	
+  dfOrdered <- df[order(df$avg, decreasing = T), ]	
+  matOrdered <- as.matrix(dfOrdered)	
+  	
+  # track the ordered row names	
+  rowNames <- rownames(dfOrdered)	
+  colNames <- colnames(dfOrdered)	
+  	
+  # 2D top "20"numTopItemps" terms bar plot	
+  # To order the meds based on "avg", instead of alphabetically (mind the "-" sign to order Large to small!)	
+  plot_ly(x = reorder(rowNames[c(1:numTopItemps)], -dfOrdered[1:numTopItemps, "avg"]), 	
+          y=dfOrdered[1:numTopItemps, "avg"], name=paste0("Top ", numTopItemps, " Meds"), type="bar")  %>%	
+    layout(title=name,	
+             xaxis = list(title="Terms"),	
+             yaxis = list(title="Relative Frequency"))	
+}
+```
+ 	
  	
 ### Visualizing transaction data - plotting the sparse matrix	
- 	
-The sparse matrix will show what medications were prescribed for each patient.	
+
+The sparse matrix will show what medications were prescribed for each patient. Below we only show the top-20 medications for the first 15 cases.
 
 ```{r}
-# image(med[1:5, ])
+# image(med[1:5, ])	
+	
+plot_ly(x=reorder(rowNames[c(1:20)], -dfOrdered[1:20, "avg"]), y=colNames[1:15], 	
+        z=2*matOrdered[1:15, 1:20], type="heatmap") %>% 	
+  layout(title='Heatmap - Top-20 Medications for the first 15 Cases') %>% hide_colorbar()
 ```
-This images has 5 rows (we only requested the first 5 patients) and 88 columns (88 different medicines). Although the picture may be a little hard to interpret, it gives a sense of what kind of medicine is prescribed for each patient in the study.	
- 	
-Let's see an expanded graph including 100 randomly chosen patients.	
+
+This images has 15 rows (translations), as we only specified the first 15 patients) and 20 columns (top-20 meds). Although the picture may be a little hard to interpret, it gives a sense of what kind of medicine is prescribed for each patient in the study.
+
+Let's see an expanded graph including the top 30 medications for a random roster of 50 patients.
 
 ```{r}
-subset_int <- sample(nrow(med), 100, replace = F)  	
+subset_int <- sample(ncol(matOrdered), 50, replace = F)  	
 # image(med[subset_int, ])	
+	
+plot_ly(x=rowNames[1:30], y=colNames[subset_int], 	
+        z=2*t(matOrdered[1:30, subset_int]), type="heatmap") %>% 	
+  layout(title='Heatmap - Bottom-30 Medications for a Random set of 50 Patients') %>% hide_colorbar()
 ```
 
 It shows us clearly that some medications are more popular than others. Now, let's fit the *Apriori* model.	
@@ -232,7 +320,23 @@ Using the `arulesViz` package we can visualize the confidence and support scatte
 ```{r}
 # install.packages("arulesViz")	
 library(arulesViz)	
-plot(sort(med_rule))
+# plot(sort(med_rule))	
+	
+sortedRule <- sort(med_rule)	
+	
+x1   <- sortedRule@quality$support	
+y1   <- sortedRule@quality$confidence	
+z1   <- sortedRule@quality$lift	
+col1 <- sortedRule@quality$count	
+ruleNames <- paste0("Rule", c(1:length(sortedRule@quality$support)))	
+	
+plot_ly(x = ~x1, y = ~y1, z = ~z1, color = ~z1, name=ruleNames) %>% 	
+  add_markers() %>% 	
+  layout(title=paste0("Arule Support-Confidence-Lift Plot (for all ", length(sortedRule@quality$support), " rules)"),	
+         scene = list(xaxis = list(title = 'Support'),	
+                     yaxis = list(title = 'Confidence'),	
+                     zaxis = list(title = 'Lift'))) %>% 	
+  hide_colorbar()
 ```
 
 Again, we can utilize the `inspect()` function to see exactly what are these rules.	
@@ -268,10 +372,45 @@ Earlier, we saw that $\%in\%$ is a simple intuitive interface to `match()` and i
 
 ```{r}
 # ?arulesViz::plot()	
-plot(sort(fi_rules, by="lift"), method="grouped", control=list(type="items"), 	
-     main = "Grouped Matrix for the 14 Fentanyl-associated Rules")
-plot(fi_rules, method="graph", measure = "support", engine="htmlwidget", # nodeCol=rainbow(14),	
-     shading = "lift", control = list(verbose = TRUE))
+# plot(sort(fi_rules, by="lift"), method="grouped", control=list(type="items"), 	
+#      main = "Grouped Matrix for the 14 Fentanyl-associated Rules")	
+	
+# plot(sort(fi_rules, by="lift"), method = "graph", engine = "plotly")	
+# plot(sort(fi_rules, by="lift"), method = "graph", engine = "igraph")	
+# plot(sort(fi_rules, by="lift"), method = "graph", engine = "paracoord")	
+	
+plot(sort(fi_rules, by="lift"), method = "graph", engine = "htmlwidget",	
+     control=list(main = list(title="Grouped Matrix for the 14 Fentanyl-associated Rules")))
+```
+```{r}
+subrules2 <- sample(subset(fi_rules, lift > 2), 5)	
+plot(sort(subrules2, by="lift"), method="grouped", control=list(type="items"), engine = "htmlwidget")
+```
+```{r}
+plot(sort(fi_rules, by="lift"), method="grouped",  k = 7, control=list(type="items"), engine = "htmlwidget")
+```
+```{r}
+m <- rules2matrix(sort(fi_rules, by="lift")[1:10], measure = "lift")	
+#  m	
+plot(fi_rules[1:10], method = "matrix", engine = "htmlwidget")	
+```
+```{r}
+## Grouped matrix	
+# create a matrix with LHSs grouped in k = 10 groups	
+m <- rules2groupedMatrix(sort(fi_rules, by="lift")[1:10], k = 10)	
+# m$m	
+# number of rules per group	
+# table(m$clustering_rules)	
+# get rules for group 1	
+inspect(fi_rules[m$clustering_rules == 1])
+```
+```{r}
+# the corresponding plot	
+plot(fi_rules, method = "grouped matrix", k = 7, engine = "htmlwidget")
+# plot(fi_rules, method = "grouped matrix", k = 7)	
+	
+#### For interactive runs try the RShinyApp:	
+ruleExplorer(fi_rules)
 ```
 
 ## Saving association rules to a file or data frame	
@@ -303,7 +442,8 @@ summary(Groceries)
 We will try to find out the top 5 frequent grocery items and plot them.
 
 ```{r}
-itemFrequencyPlot(Groceries, topN=5)
+# itemFrequencyPlot(Groceries, topN=5)	
+itemFrequencyPlotly(Groceries, 10, "grocieries")
 ```
 
 Then, try to use `support = 0.006, confidence = 0.25, minlen = 2` to set up the grocery association rules. Sort the top 3 rules with highest lift.	
@@ -324,7 +464,120 @@ inspect(sort(groceryrules, by = "lift")[1:3])
 ```
 
 We observe mainly rules between dairy products. It makes sense that customers pick up milk when they walk down the dairy products isle. Experiment further with various parameter settings and try to interpret the results in the context of this grocery case-study.	
- 	
+
+## Titanic Passengers
+
+Next we'll use the [Titanic Passengers Dataset](https://umich.instructure.com/courses/38100/files/folder/data/16_TitanicPassengerSurvivalDataset). Let's start by loading the data first.
+
+```{r}
+dat <- read.csv("https://umich.instructure.com/files/9372716/download?download_frd=1")	
+	
+# Choose only the key data features	
+dat <- dat[ , c("pclass", "survived", "sex", "age", "fare", "cabin")]	
+	
+# Factorize categorical features	
+dat$pclass <- as.factor(dat$pclass)	
+dat$survived <- factor(dat$survived, levels = c("0", "1"))	
+dat$sex <- as.factor(dat$sex)	
+	
+# Convert the Cabin number to a character A-F, Z=missing cabin ID	
+dat$cabin <- substring(dat$cabin,1,1)	
+for (i in 1:length(dat$cabin))	
+     if ((dat$cabin[i]=="")) dat$cabin[i] <- "Z"	
+dat$cabin <- as.factor(dat$cabin)	
+	
+# Convert the Ticket Fair from numeric to categorical label	
+f <- as.character(dat$fare)	
+for (i in 1:length(dat$fare)) {	
+  if (is.na(dat$fare[i])) f[i] <- as.character("low")	
+  else if (dat$fare[i]<50) f[i] <- as.character("low") 	
+  else if (50<=dat$fare[i] && dat$fare[i]<100) f[i] <- as.character("medium") 	
+  else if (100<=dat$fare[i] && dat$fare[i]<200)  f[i] <- as.character("high")	
+  else f[i] <- as.character("extreme")   #  if (200<=dat$fare[i]) 	
+}	
+dat$fare <- as.factor(f)	
+table(as.factor(dat$fare))
+```
+```{r}
+# Convert Age from numeric to categorical (Decade-of-life) label	
+f <- as.character(dat$age)	
+for (i in 1:length(dat$age)) {	
+  if (is.na(dat$age[i])) f[i] <- as.character("1")	
+  else {	
+    a = 1 + dat$age[i] %/% 10  # integer division by 10 (per decade of life)	
+    f[i] <- as.character(a)	
+  } 	
+}	
+dat$age <- as.factor(f)	
+table(as.factor(dat$age))	
+str(dat)	
+```
+
+Next, we can mine the association rules.
+
+```{r}
+library(arules)	
+	
+rules <- apriori(dat, parameter = list(minlen=5, supp=0.02, conf=0.8))	
+inspect(rules[1:20])
+```
+
+We can focus on the binary *survival* outcome (Survived=1/0).
+
+```{r}
+# examine the rules with containing "Survived=1" in the RHS	
+rules <- apriori(dat,	
+  parameter = list(minlen=3, supp=0.02, conf=0.7),	
+  appearance = list(rhs="survived=1", default="lhs"), control = list(verbose=F))	
+rules.sorted <- sort(rules, by="lift")	
+inspect(head(rules.sorted, 30))
+```
+
+Prune any redundant association rules. For instance, some rules may provide no extra knowledge. Rules that are highly related with prior rules may be redundant. Pruning reduces the number of rules from *27 to 18*
+
+```{r}
+# search for redundant rules	
+rules_lift <- sort(rules, by = 'lift')	
+rules_pruned <- rules_lift[!is.redundant(rules_lift, measure="lift")]	
+inspect(head(rules_pruned, 30))	
+```
+
+The package `arulesViz` supplies rule-visualization routines using scatter, bubble, and parallel coordinates plots. The visualization of the frequent itemsets using parallel coordinates allows all items to be placed on the vertical axis with their position determined by their group and  by the frequency of the item in descending order, vertical ranking based the support of the 1-itemset containing the item, [see this paper](https://link.springer.com/chapter/10.1007/978-3-030-04921-8_12). To render the maximal frequent itemsets, all subsets are implicitly drawn as sub-segments of one polyline. All itemsets are visualized as a parallel coordinate polylines. The *support* can be  mapped to line color or width. The visualization effectively . Itemsets that share common parts may have overlapping polylines.
+
+```{r}
+library(arulesViz)	
+plot(rules)	
+# scatter plot of association rules
+```
+```{r}
+plot(rules_pruned, method="graph", control=list(verbose = FALSE), engine="htmlwidget")
+```
+```{r}
+# display association rules	
+# plot(rules_pruned, method="paracoord", control=list(reorder=TRUE, verbose = FALSE), engine="htmlwidget")	
+	
+# interactive association network graph	
+plot(rules_pruned, method="graph", measure = "support", engine="htmlwidget", nodeCol=rainbow(14),	
+     shading = "lift", control = list(verbose = FALSE))
+```
+```{r}
+#  <- rules2matrix(sort(rules_pruned, by="lift")[1:10], measure = "lift")	
+#  m	
+# plot(rules_pruned, method = "matrix", engine = "htmlwidget")	
+## Grouped matrix	
+# create a matrix with LHSs grouped in k = 10 groups	
+# m <- rules2groupedMatrix(sort(rules_pruned, by="lift")[1:10], k = 10)	
+# m$m	
+# number of rules per group	
+# table(m$clustering_rules)	
+# get rules for group 1	
+inspect(rules_pruned[m$clustering_rules == 1])	
+# the corresponding plot	
+plot(rules_pruned, method = "grouped matrix", k = 7, engine = "htmlwidget")	
+```
+
+Consider plotting *all rules* (not only the pruned list of association rules) and examining rules predicting passenger death (use `"survived=0"`).
+
 # Summary	
  	
 * The Apriori algorithm for association rule learning is only suitable for large transactional data. For some small datasets, it might not be very helpful.	
