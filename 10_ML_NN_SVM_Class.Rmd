@@ -868,16 +868,19 @@ In [Chapter 5](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/05_Dim
 In this example, we use an optical document image (data) that has already been pre-partitioned into rectangular grid cells containing 1 character of the [26 English letters, A through Z](https://wiki.socr.umich.edu/index.php/SOCR_LetterFrequencyData).	
  	
 The resulting gridded dataset is distributed by the [UCI Machine Learning Data Repository](http://archive.ics.uci.edu/ml). The [dataset contains 20, 000 examples of 26 English capital letters printed using 20 different randomly reshaped and morphed fonts](https://umich.instructure.com/courses/38100/files/folder/Case_Studies/16_HandwrittenLetters).	
- 	
-![This figure show an example of the preprocessed gridded handwritten letters.](https://wiki.socr.umich.edu/images/2/2d/SOCR_Data_Dinov_EnglishLetterFrequency_Fig2.png)	
+
+![This figure show an example of the preprocessed gridded handwritten letters.](https://wiki.socr.umich.edu/images/2/2d/SOCR_Data_Dinov_EnglishLetterFrequency_Fig2.png)
 
 ## Step 1: Prepare and explore the data
 
+Load the data and split it into training and testing sets.
+
 ```{r}
-# read in data and examine its structure	
-hand_letters <- read.csv("https://umich.instructure.com/files/2837863/download?download_frd=1", header = T)	
-str(hand_letters)	
-	
+# read in data and examine its structure
+hand_letters <- read.csv("https://umich.instructure.com/files/2837863/download?download_frd=1", header = T)
+str(hand_letters)
+```
+```{r}
 # divide into training (3/4) and testing (1/4) data	
 hand_letters_train <- hand_letters[1:15000, ]	
 hand_letters_test  <- hand_letters[15001:20000, ]
@@ -897,13 +900,11 @@ We can specify `vanilladot` as a linear kernel, or alternatively:
 * `stringdot` String kernel	
 
 ```{r}
-# begin by training a simple linear SVM	
 library(kernlab)	
 set.seed(123)	
-hand_letter_classifier <- ksvm(as.factor(letter) ~ .,
-                               data = hand_letters_train,
-                               kernel = "vanilladot")	
-	
+hand_letter_classifier <- ksvm(as.factor(letter) ~ ., data = hand_letters_train, kernel = "vanilladot")	
+```
+```{r}
 # look at basic information about the model	
 hand_letter_classifier
 ```
@@ -916,13 +917,21 @@ hand_letter_predictions <- predict(hand_letter_classifier, hand_letters_test)
 	
 head(hand_letter_predictions)	
 	
-table(hand_letter_predictions, hand_letters_test$letter)	
+# table(hand_letter_predictions, hand_letters_test$letter)	
 	
 # look only at agreements vs. disagreements	
 # construct a vector of TRUE/FALSE indicating correct/incorrect predictions	
 agreement <- hand_letter_predictions == hand_letters_test$letter # check if characters agree	
 table(agreement)	
 prop.table(table(agreement))
+```
+```{r}
+tab <- table(hand_letter_predictions, hand_letters_test$letter)	
+tab_df <- tidyr::spread(as.data.frame(tab), key = Var2, value = Freq)	
+	
+sum(diag(table(hand_letter_predictions, hand_letters_test$letter)))	
+	
+plot_ly(x = colnames(tab), y = colnames(tab), z = as.matrix(tab_df[, -1]), type = "heatmap")
 ```
 
 ## Step 4: Improving model performance	
@@ -1015,7 +1024,7 @@ iris.pred <- predict(iris_clas, iris_test)
 table(iris.pred, iris_test$Species)
 ```
 
-We can see that only 1-2 cases of may be classified as Iris versicolor. The species of the majority of the flowers are all correctly identified.	
+We can see that only few cases of may be classified as Iris versicolor. The species of the majority of the flowers are all correctly identified.	
  	
 To see the results more clearly, we can use the proportional table to show the agreements of the categories.	
 
@@ -1039,7 +1048,7 @@ agreement <- iris.pred1==iris_test$Species
 prop.table(table(agreement))
 ```
 
-Unfortunately, the model performance is actually worse than the previous one (you might get slightly different results). This is because this Iris dataset has a mostly linear feature space separation. In practice, we could try alternative kernel functions and see which one fits the dataset the best.	
+The model performance did not drastically improve, compared to the previous *linear* kernel case (you might get slightly different results). This is because this Iris dataset has a mostly linear feature space separation. In practice, we could try alternative kernel functions and see which one fits the dataset the best.
  	
 ## Parameter Tuning	
  	
@@ -1084,12 +1093,18 @@ ir_cost_errors = sapply(costs, function(cost) train_cv_error_svm(cost))
 df_errs = data.frame(t(ir_cost_errors), costs)	
 colnames(df_errs) = c('Train', 'CV', 'Test', 'Logcost')	
 dataL <- melt(df_errs, id="Logcost")	
-ggplot(dataL, aes_string(x="Logcost", y="value", colour="variable",	
-                         group="variable", linetype="variable", shape="variable")) +	
-  geom_line(size=1) + labs(x = "Cost",	
-                           y = "Classification error",	
-                           colour="",group="",	
-                           linetype="",shape="") + scale_x_log10()
+	
+# ggplot(dataL, aes_string(x="Logcost", y="value", colour="variable",	
+#                          group="variable", linetype="variable", shape="variable")) +	
+#   geom_line(size=1) + labs(x = "Cost",	
+#                            y = "Classification error",	
+#                            colour="",group="",	
+#                            linetype="",shape="") + scale_x_log10()	
+	
+plot_ly(dataL, x = ~log(Logcost), y = ~value, color = ~variable, 	
+        colors = c('blue', 'red', "green"), type="scatter", mode="lines") %>%	
+  layout(xaxis = list(title = 'log(Cost)'), yaxis = list(title = 'Classifier Error'), legend = list(orientation = 'h'),	
+         title="SVM CV-Plot of Model Performance (Iris Data)") %>% hide_colorbar()
 ```
 
 ## Improving the performance of Gaussian kernels	
