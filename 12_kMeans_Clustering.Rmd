@@ -21,45 +21,87 @@ As we mentioned earlier, clustering is a machine learning technique that bundles
 
 ```{r}
 # install.packages("rvest")	
+library(plotly)	
 library(rvest)	
 wiki_url <- read_html("https://wiki.socr.umich.edu/index.php/SOCR_012708_ID_Data_HotDogs")	
-html_nodes(wiki_url, "#content")	
-hotdog<- html_table(html_nodes(wiki_url, "table")[[1]])	
-plot(hotdog$Calories, hotdog$Sodium, main = "Hotdogs", xlab="Calories", ylab="Sodium")	
-segments(120, 280, 120, 570, lty=2)	
-segments(120, 280, 30, 280, lty=2)	
-segments(120, 570, 30, 570, lty=2)	
-segments(125, 250, 125, 600, lty=2)	
-segments(125, 250, 165, 250, lty=2)	
-segments(165, 250, 165, 600, lty=2)	
-segments(125, 600, 165, 600, lty=2)	
-segments(170, 400, 170, 700, lty=2)	
-segments(170, 400, 250, 400, lty=2)	
-text(100, 220, "cluster 1")	
-text(140, 200, "cluster 2")	
-text(185, 350, "cluster 3")	
-# install.packages("calibrate")	
-# library(calibrate)
+# html_nodes(wiki_url, "#content")	
+hotdog <- html_table(html_nodes(wiki_url, "table")[[1]])	
+# plot(hotdog$Calories, hotdog$Sodium, main = "Hotdogs", xlab="Calories", ylab="Sodium")	
+# segments(120, 280, 120, 570, lty=2)	
+# segments(120, 280, 30, 280, lty=2)	
+# segments(120, 570, 30, 570, lty=2)	
+# segments(125, 250, 125, 600, lty=2)	
+# segments(125, 250, 165, 250, lty=2)	
+# segments(165, 250, 165, 600, lty=2)	
+# segments(125, 600, 165, 600, lty=2)	
+# segments(170, 400, 170, 700, lty=2)	
+# segments(170, 400, 250, 400, lty=2)	
+# text(100, 220, "cluster 1")	
+# text(140, 200, "cluster 2")	
+# text(185, 350, "cluster 3")	
+# # install.packages("calibrate")	
+# # library(calibrate)	
+	
+modelLabels <- c('cluster 1', 'cluster 2', 'cluster 3')	
+modelLabels.x <- c(100, 145, 185)	
+modelLabels.y <- c(220, 200, 350)	
+modelLabels.col <- c("blue", "red", "green")	
+rect.x <- c(120, 80, 165, 125, 200, 170)	
+rect.y <- c(130, 570, 250, 600, 400, 700)	
+	
+plot_ly(hotdog, x = ~Calories, y = ~Sodium,  type="scatter",	
+        mode="markers", symbol = "na", symbols = "circle-open") %>%	
+  layout(title="2D Hotdogs Scatterplot (Calories vs. Sodium)",	
+         xaxis=list(title="Calories"),     # , scaleanchor="y"),  # control the y:x axes aspect ratio	
+         yaxis = list(title="Sodium"),     # , scaleanchor  = "x"), 	
+         legend = list(title=list(text='<b> Meat Type</b>'), orientation = 'h'),	
+         annotations = list(text=modelLabels,  x=modelLabels.x, y=modelLabels.y, textangle=c(90,90,90),	
+                            font=list(size=15, color=modelLabels.col), showarrow=FALSE),	
+         shapes = list(   # draw the rectangular boxes	
+               list(type="rect", fillcolor="lightblue", line=list(color="blue"), opacity=0.2,	
+                    x0=rect.x[1], x1=rect.x[2], xref="x", y0=rect.y[1], y1=rect.y[2], yref="y"),	
+               list(type="rect", fillcolor= "lightgreen", line=list(color="green"), opacity=0.2,	
+                 x0=rect.x[3], x1=rect.x[4], xref="x", y0=rect.y[3], y1=rect.y[4], yref = "y"),	
+               list(type="rect", fillcolor= "lightgray", line=list(color="orange"), opacity=0.2,	
+                 x0=rect.x[5], x1=rect.x[6], xref="x", y0=rect.y[5], y1=rect.y[6], yref = "y"))	
+         )
 ```
 
-In terms of calories and sodium, these hot dogs are clearly separated into three different clusters. *Cluster 1* has hot dogs of low calories and medium sodium content; *Cluster 2* has both calorie and sodium at medium levels; *Cluster 3* has both sodium and calories at high levels. We can make a bold guess about the ingredients used in the hot dogs in these three clusters. For cluster 1, it could be mostly *chicken* meat since it has low calories. The second cluster might be *beef* and the third one is likely to be *pork*, because beef hot dogs have considerably less calories and salt than pork hot dogs. However, this is just guessing. Some hot dogs have a mixture of two or three types of meat. The real situation is somewhat similar to what we guessed but with some random noise, especially in cluster 2.	
- 	
-The following pair of plots show the primary type of meat used for each hot dog labeled by name (top) and color-coded (bottom).	
 
-```{r}
-plot(hotdog$Calories, hotdog$Sodium)	
-text(hotdog$Calories, hotdog$Sodium, labels=hotdog$Type, pos=3)	
+In terms of calories and sodium, these hot dogs are clearly separated into three different clusters. *Cluster 1* has hot dogs of low calories and medium sodium content; *Cluster 2* has both calorie and sodium at medium levels; *Cluster 3* has both sodium and calories at high levels. We can make a bold guess about the ingredients used in the hot dogs in these three clusters. For cluster 1, it could be mostly *chicken* meat since it has low calories. The second cluster might be *beef* and the third one is likely to be *pork*, because beef hot dogs have considerably less calories and salt than pork hot dogs. However, this is just guessing. Some hot dogs have a mixture of two or three types of meat. The real situation is somewhat similar to what we guessed but with some random noise, especially in cluster 2.	
+
+The following plot shows a more nuanced scatter of the primary type of meat used for each hotdog designated by color and and glyph-symbol for meat-type. 	
 	
-library(ggplot2)	
-gg1_plot = ggplot(hotdog, aes(x=Calories, y=Sodium)) + 
-  geom_point(aes(color=Type, shape = Type, stroke = 5),alpha=1) +
-  theme_bw(base_size=15) +	
-  guides(colour = guide_legend(override.aes = list(size=5))) +
-  theme(legend.position="top")	
-gg1_plot
+```{r}
+# plot(hotdog$Calories, hotdog$Sodium)	
+# text(hotdog$Calories, hotdog$Sodium, labels=hotdog$Type, pos=3)	
+# 	
+# library(ggplot2)	
+# gg1_plot = ggplot(hotdog, aes(x=Calories, y=Sodium)) + geom_point(aes(color=Type, shape = Type, stroke = 5),alpha=1) + theme_bw(base_size=15) +	
+# guides(colour = guide_legend(override.aes = list(size=5))) +	
+# theme(legend.position="top")	
+# gg1_plot	
+	
+plot_ly(hotdog, x = ~Calories, y = ~Sodium, color=~Type, type="scatter",	
+        mode="markers", name=~Type, symbol=~Type, marker = list(size = 15)) %>%	
+  layout(title="2D Hotdogs Scatterplot (Calories vs. Sodium)",	
+         xaxis=list(title="Calories"),     # , scaleanchor="y"),  # control the y:x axes aspect ratio	
+         yaxis = list(title="Sodium"),     # , scaleanchor  = "x"), 	
+         legend = list(title=list(text='<b> Meat Type</b>'), orientation = 'h'),	
+         annotations = list(text=modelLabels,  x=modelLabels.x, y=modelLabels.y, textangle=c(90,90,90),	
+                            font=list(size=15, color=modelLabels.col), showarrow=FALSE),	
+         shapes = list(   # draw the rectangular boxes	
+               list(type="rect", fillcolor="lightblue", line=list(color="blue"), opacity=0.2,	
+                    x0=rect.x[1], x1=rect.x[2], xref="x", y0=rect.y[1], y1=rect.y[2], yref="y"),	
+               list(type="rect", fillcolor= "lightgreen", line=list(color="green"), opacity=0.2,	
+                 x0=rect.x[3], x1=rect.x[4], xref="x", y0=rect.y[3], y1=rect.y[4], yref = "y"),	
+               list(type="rect", fillcolor= "lightgray", line=list(color="orange"), opacity=0.2,	
+                 x0=rect.x[5], x1=rect.x[6], xref="x", y0=rect.y[5], y1=rect.y[6], yref = "y"))	
+         )
 ```
 
 # Silhouette plots	
+
 [Silhouette plots](https://en.wikipedia.org/wiki/Silhouette_(clustering)) are useful for interpretation and validation of consistency of all clustering algorithms. The silhouette value, $sil \in [-1,1]$, measures the similarity (cohesion) of a data point to its cluster relative to other clusters (separation). Silhouette plots rely on a distance metric, e.g., the [Euclidean distance](https://en.wikipedia.org/wiki/Euclidean_distance), [Manhattan distance](https://en.wikipedia.org/wiki/Manhattan_distance), [Minkowski distance]( https://en.wikipedia.org/wiki/Minkowski_distance), etc.	
  	
 * A high silhouette value suggest that the data matches its own cluster well.	
@@ -118,20 +160,105 @@ When we graph within-group homogeneity against $k$, we can find an "elbow point"
 ```{r}
 require(graphics)	
 x <- c(30, 200, 500, 1096.663, 3000, 5000, 7000, 10000)	
-y<-function(x){	
+y <- function(x){	
   y=log(x)	
 }	
-curve(log(x), 30, 10000, xlab="k", ylab="Within-group Homogeneity",
-      axes=F, main="Elbow Method")	
-Axis(side=1, at=c(0, 2000, 4000, 6000, 8000, 10000), labels = c(rep("", 6)))	
-Axis(side=2, at=4:9, labels = c(rep("", 6)))	
-points(x, y(x))	
-text(1000, 8, "elbow point")	
-segments(1096.663, 7.3, 1000, 7.7)
+# curve(log(x), 30, 10000, xlab="k", ylab="Within-group Homogeneity", axes=F, main="Elbow Method")	
+# Axis(side=1, at=c(0, 2000, 4000, 6000, 8000, 10000), labels = c(rep("", 6)))	
+# Axis(side=2, at=4:9, labels = c(rep("", 6)))	
+# points(x, y(x))	
+# text(1000, 8, "elbow point")	
+# segments(1096.663, 7.3, 1000, 7.7)	
+	
+elbowAnnot <- list(x = x[4], y = y(x[4]), text = "Elbow Point", xref = "x", yref = "y",	
+                   showarrow = TRUE, arrowhead = 1)	
+plot_ly(x = ~x, y = ~y(x), type = 'scatter', mode = 'markers+lines', marker=list(size=15)) %>%	
+    # add_annotation(x=1, y=7, text="Elbow Point", showarrow=True, arrowhead=1) %>%	
+    layout(title="Elbow Method", annotations = elbowAnnot,	
+           xaxis=list(title="Number of clusters (k)"),	
+           yaxis = list(title="Within-group Homogeneity"))
 ```
 
 This graph shows that homogeneity barely increases above the "elbow point". There are various ways to measure homogeneity within a cluster. Further detailed about these choices are provided in this paper [On clustering validation techniques, Journal of Intelligent Information Systems Vol. 17, pp. 107-145, by M. Halkidi, Y. Batistakis, and M. Vazirgiannis (2001)](http://dx.doi.org/10.1023/A:1012801612483).	
+
+More generally, we can develop a new method `drawElbowGraph()` to identify the *elbow* point and determine an appropriate value for the number of clusters $k$.
+
+```{r}
+# Estimate Elbow point	
+estimateElbowPoint <- function(xValues, yValues) {	
+  # Determine the extreme values to create line	
+  max_x_x <- max(xValues)	
+  max_x_y <- yValues[which.max(xValues)]	
+  max_y_y <- min(yValues)	
+  max_y_x <- xValues[which.min(yValues)]	
+  max_df  <- data.frame(x = c(max_y_x, max_x_x), y = c(max_y_y, max_x_y))	
+  	
+  # Create a straight line between the extreme values	
+  fit <- lm(max_df$y ~ max_df$x)	
+  	
+  # compute Euclidean Distance from point to line	
+  distances <- c()	
+  for(i in 1:length(xValues)) {	
+    distances <- c(distances, 	
+                   abs(coef(fit)[2]*xValues[i] - yValues[i] + coef(fit)[1]) / sqrt(coef(fit)[2]^2 + 1^2))	
+  }	
+  	
+  # Determine the Max distance point	
+  x_max_dist <- xValues[which.max(distances)]	
+  y_max_dist <- yValues[which.max(distances)]	
+  	
+  return(c(x_max_dist, y_max_dist, max(distances)))	
+}	
+	
+# Define elbow-drawing function	
+# https://en.wikibooks.org/wiki/Linear_Algebra/Orthogonal_Projection_Onto_a_Line 	
+# https://en.wikipedia.org/wiki/Vector_projection	
+drawElbowGraph <- function(x_K_clusters, y_WGH_values) {	
+  nbValues = length(y_WGH_values)	
+  extremes_lineSlope = (y_WGH_values[nbValues] - y_WGH_values[1]) / (x_K_clusters[nbValues] - x_K_clusters[1])	
+  extremes_orth_lineSlope = -1 / extremes_lineSlope	
+  elbowPoint_orth_proj = c(elbowPoint[1] + elbowPoint[3]/2, 	
+                           elbowPoint[2] + extremes_orth_lineSlope * (elbowPoint[3]/2))	
+  e1 = c(x_K_clusters[nbValues]-x_K_clusters[1], y_WGH_values[nbValues]-y_WGH_values[1])  # bottom-left (origin) point	
+  e2 = c(elbowPoint[1]-x_K_clusters[1], elbowPoint[2]-y_WGH_values[1]) # elbow point, e2	
+  p = ((e1 %*% e2)[1,1]/(e1 %*% e1)[1,1]) * e1 + c(x_K_clusters[1], y_WGH_values[1]); p  # Projection point	
+  distP <- e2-p	
+  dist <- sqrt((distP %*% distP)[1,1])	
+  distLabel <- (e2+p)/2 + c(100, 2)	
+    	
+  # plot(x_K_clusters, y_WGH_values, type="b", main='Within-Group Homogeneity (WGH) vs. number of clusters (k)', 	
+  #      xlab = 'k', ylab = 'WGH Value')	
+  # lines(x=c(x_K_clusters[1], x_K_clusters[nbValues]), y=c(y_WGH_values[1], y_WGH_values[nbValues]), 	
+  #       type="b", col='green')	
+  # lines(x=c(elbowPoint[1], p[1]), y=c(elbowPoint[2], p[2]), type="b", col='red')	
+	
+  plot_ly(x = ~x_K_clusters, y = ~y_WGH_values, type="scatter", mode = "markers+lines", name="Data") %>%	
+    add_lines(x = c(x_K_clusters[1], x_K_clusters[nbValues]), name="reference", 	
+              y = c(y_WGH_values[1], y_WGH_values[nbValues]), type = 'scatter', mode = 'lines') %>%	
+    add_lines(x = c(elbowPoint[1], p[1]), y = c(elbowPoint[2], p[2]), type = 'scatter', 	
+              name="Max Distance (Elbow)", mode = 'lines') %>%	
+    layout(title='Within-Group Homegeneity (WGH) vs. number of clusters (k)',	
+           xaxis = list(title="k"), # scaleanchor="y"),	
+           yaxis = list(title="WGH Value"), #, scaleanchor="x"))	
+           legend = list(orientation = 'h'),	
+           annotations = list(text=paste0("MaxDist=", round(dist, 3)),  	
+                   x=distLabel[1], y=distLabel[2], textangle=0, showarrow=T,	
+                   xref = "x", yref = "y", ax = 80, ay = -40))	
+}	
+	
+# Test the function: drawElbowGraph()	
+x <- c(30, 200, 500, 1096.663, 3000, 5000, 7000, 10000)	
+y <- function(x){	
+  return (log(x))	
+}	
+	
+elbowPoint = estimateElbowPoint(xValues = x, yValues = y(x))	
  	
+drawElbowGraph(x_K_clusters=x, y_WGH_values=y(x))
+```
+
+**Note**: Recall that the [projection of a point $\vec{P}$ onto a line $\vec{l}$](https://en.wikipedia.org/wiki/Vector_projection) is defined as the vector $\vec{Q}=\frac{\langle \vec{P} | \vec{l} \rangle }{\langle \vec{l} | \vec{l} \rangle }\vec{l}$. In the graph above the *max-distance* is the length $||\vec{Q}||$ and $\vec{Q} \perp \vec{l}$. However, since the scales of the horizontal and vertical axes are different, $\vec{Q}$ *appears* to be a vertical line (it's not!) and it represents the max-distance from the blue curve to the reference orange line.
+
 # Case Study 1: Divorce and Consequences on Young Adults	
  	
 ## Step 1 - collecting data	
@@ -227,7 +354,12 @@ require(cluster)
 dis = dist(di_z)	
 sil = silhouette(diz_clussters$cluster, dis)	
 summary(sil)	
-plot(sil)
+```
+```{r}
+plot(sil, col=c(1:length(diz_clussters$size)))
+```
+```{r}
+factoextra::fviz_silhouette(sil, label=T, palette = "jco", ggtheme = theme_classic())
 ```
 
 The next step would be to interpret the clusters in the context of this social study.
@@ -249,14 +381,20 @@ We can see that these three different clusters do contain three alternative type
 Bar plots provide an alternative strategy to visualize the difference between clusters.	
 
 ```{r}
-par(mfrow=c(1, 1), mar=c(4, 4, 4, 2))	
-myColors <- c("darkblue", "red", "green", "brown", "pink", "purple", "yellow")	
-barplot(t(diz_clussters$centers), beside = TRUE,
-        xlab="cluster", ylab="value", col = myColors)	
-legend("top", ncol=2, legend = c("DIVYEAR", "momint", "dadint", "momclose",
-                                 "depression", "livewithmom", "gethitched"),
-       fill = myColors)	
-
+# par(mfrow=c(1, 1), mar=c(4, 4, 4, 2))	
+# myColors <- c("darkblue", "red", "green", "brown", "pink", "purple", "yellow")	
+# barplot(t(diz_clussters$centers), beside = TRUE, xlab="cluster", 	
+# ylab="value", col = myColors)	
+# legend("top", ncol=2, legend = c("DIVYEAR", "momint", "dadint", "momclose", "depression", "livewithmom", "gethitched"), fill = myColors)	
+	
+df <- as.data.frame(t(diz_clussters$centers))	
+rowNames <- rownames(df)	
+colnames(df) <- paste0("Cluster",c(1:3))	
+plot_ly(df, x = rownames(df), y = ~Cluster1, type = 'bar', name = 'Cluster1') %>% 	
+  add_trace(y = ~Cluster2, name = 'Cluster2') %>% 	
+  add_trace(y = ~Cluster3, name = 'Cluster3') %>% 	
+  layout(title="Explicating Derived Cluster Labels",	
+         yaxis = list(title = 'Cluster Centers'), barmode = 'group')
 ```
 
 For each of the three clusters, the bars in the plot above represent the following order of features `DIVYEAR, momint, dadint, momclose, depression, livewithmom, gethitched`.	
@@ -273,26 +411,26 @@ divorce[1:5, ]
 We can also examine the relationship between live with mom and feel close to mom by displaying a scatter plot of these two variables. If we suspect that young adults' personality might affect this relationship, then we could consider the potential personality (cluster type) in the plot. The cluster labels associated with each participant are printed in different positions relative to each pair of observations, `(livewithmom, momint)`.	
 
 ```{r}
-require(ggplot2)	
-ggplot(divorce, aes(livewithmom, momint),
-       main="Scatterplot Live with mom vs feel close to mom") +	
-  geom_point(aes(colour = factor(clusters),
-                 shape=factor(clusters), stroke = 8), alpha=1) + 
-  theme_bw(base_size=25) +	
-  geom_text(aes(label=ifelse(clusters%in%1, as.character(clusters), ''),
-                hjust=2, vjust=2, colour = factor(clusters)))+	
-  geom_text(aes(label=ifelse(clusters%in%2, as.character(clusters), ''),
-                hjust=-2, vjust=2, colour = factor(clusters)))+	
-  geom_text(aes(label=ifelse(clusters%in%3, as.character(clusters), ''),
-                hjust=2, vjust=-1, colour = factor(clusters))) + 	
-  guides(colour = guide_legend(override.aes = list(size=8))) +
-  theme(legend.position="top")
+# require(ggplot2)	
+# ggplot(divorce, aes(livewithmom, momint), main="Scatterplot Live with mom vs feel close to mom") +	
+#   geom_point(aes(colour = factor(clusters), shape=factor(clusters), stroke = 8), alpha=1) + 	
+#   theme_bw(base_size=25) +	
+#   geom_text(aes(label=ifelse(clusters%in%1, as.character(clusters), ''), hjust=2, vjust=2, colour = factor(clusters)))+	
+#   geom_text(aes(label=ifelse(clusters%in%2, as.character(clusters), ''), hjust=-2, vjust=2, colour = factor(clusters)))+	
+#   geom_text(aes(label=ifelse(clusters%in%3, as.character(clusters), ''), hjust=2, vjust=-1, colour = factor(clusters))) + 	
+#   guides(colour = guide_legend(override.aes = list(size=8))) +	
+# theme(legend.position="top")	
+	
+clusterNames <- paste0("Cluster ", divorce$clusters)	
+plot_ly(data = divorce, x = ~livewithmom, y = ~momint, type="scatter", mode="markers",	
+        color = ~clusters, marker = list(size = 30), name=clusterNames) %>%	
+  hide_colorbar()
 ```
 
-We used `ggplot()` function in `ggplot2` package to label points with cluster types. `ggplot(divorce, aes(livewithmom, momint))+geom_point()` gives us the scatterplot and the three `geom_text()` functions help us label the points with the corresponding cluster identifiers.	
- 	
-This picture shows that live with mom does not necessarily mean young adults will feel close to mom. For "emotional" (cluster 1) young adults, they felt close to their mom whether they live with their mom or not. "Naive" (cluster 2) young adults feel closer to mom if they live with mom. However, they tend to be estranged from their mother. "Independent" (cluster 3) young adults are opposite to cluster 1. They felt closer to mom if they don't live with her. 	
- 	
+We can either use `plot_ly()`, as we showed above, or use the `ggplot2::ggplot()` function to label points with cluster types. In `plot_ly`, we use name and color to stratify the clusters, whereas using `ggplot(divorce, aes(livewithmom, momint))+geom_point()` uses *aesthetics* (`aes`) to draw the scatterplot where the `geom_text()` function help us label the points with their corresponding cluster identifiers.
+
+This plot shows that live with mom does not necessarily mean young adults will feel close to mom. For "emotional" (cluster 1) young adults, they felt close to their mom whether they live with their mom or not. "Naive" (cluster 2) young adults feel closer to mom if they live with mom. However, they tend to be estranged from their mother. "Independent" (cluster 3) young adults are opposite to cluster 1. They felt closer to mom if they don't live with her.
+
 # Model improvement	
 Let's still use the divorce data to illustrate a model improvement using **k-means++**.	
  	
@@ -355,10 +493,16 @@ for (i in 2:n_rows){
   mat[i] = mean(as.matrix(sil)[,3])	
 }	
 colnames(mat) <- c("Avg_Silhouette_Value")	
-mat	
-ggplot(data.frame(k=2:n_rows,sil=mat[2:n_rows]),aes(x=k,y=sil))+	
-  geom_line()+	
-  scale_x_continuous(breaks = 2:n_rows)
+mat
+```
+```{r}
+# ggplot(data.frame(k=2:n_rows,sil=mat[2:n_rows]),aes(x=k,y=sil))+	
+#   geom_line()+	
+#   scale_x_continuous(breaks = 2:n_rows)	
+	
+df <- data.frame(k=2:n_rows,sil=mat[2:n_rows])	
+plot_ly(df, x = ~k, y = ~sil, type = 'scatter', mode = 'lines', name='Silhouette') %>%	
+  layout(title="Average Silhouette Graph")
 ```
 
 This suggests that $k\sim 3$ may be an appropriate number of clusters to use in this case.	
@@ -371,7 +515,9 @@ set.seed(31)
 clust_kpp = kmeans(di_z, kpp_init(di_z, k), iter.max=200, algorithm="MacQueen")	
 sil3 = silhouette(clust_kpp$cluster, dis)	
 summary(sil3)	
-plot(sil3)
+```
+```{r}
+plot(sil3, col=1:length(clust_kpp$size))
 ```
 
 Note that we now see 3 cases of group 1 that have negative silhouette values (previously we had only 2), albeit the overall average silhouette remains $0.2$.	
@@ -439,14 +585,25 @@ Here we use *k=5* in the hope that we have similar 5 clusters that match the 5 t
 To assess the clustering model results, we can examine the resulting clusters.
 
 ```{r}
-trauma_clusters$centers	
+trauma_clusters$centers
+```
+```{r}
+# myColors <- c("darkblue", "red", "green", "brown", "pink", "purple", "lightblue", "orange", "grey", "yellow")	
 	
-myColors <- c("darkblue", "red", "green", "brown", "pink",
-              "purple", "lightblue", "orange", "grey", "yellow")	
-barplot(t(trauma_clusters$centers), beside = TRUE, 
-        xlab="cluster", ylab="value", col = myColors)	
-legend("topleft", ncol=4, legend = c("sex", "age", "ses", "ptsd", "dissoc",
-                                     "service", "black", "hispanic", "other", "white"), fill = myColors)
+# barplot(t(trauma_clusters$centers), beside = TRUE, xlab="cluster", 	
+# ylab="value", col = myColors)	
+# legend("topleft", ncol=4, legend = c("sex", "age", "ses", "ptsd", "dissoc", "service", "black", "hispanic", "other", "white"), fill = myColors)	
+	
+df <- as.data.frame(t(trauma_clusters$centers))	
+rowNames <- rownames(df)	
+colnames(df) <- paste0("Cluster",c(1:dim(trauma_clusters$centers)[1]))	
+plot_ly(df, x = rownames(df), y = ~Cluster1, type = 'bar', name = 'Cluster1') %>% 	
+  add_trace(y = ~Cluster2, name = 'Cluster2') %>% 	
+  add_trace(y = ~Cluster3, name = 'Cluster3') %>% 	
+  add_trace(y = ~Cluster4, name = 'Cluster4') %>% 	
+  add_trace(y = ~Cluster5, name = 'Cluster5') %>% 	
+  layout(title="Explicating Derived Cluster Labels",	
+         yaxis = list(title = 'Cluster Centers'), barmode = 'group')
 ```
 
 On this barplot, the bars in each cluster represents `sex, age, ses, ptsd, dissoc, service, black, hispanic, other,` and `white`, respectively. It is quite obvious that each cluster has some unique features.	
@@ -466,10 +623,14 @@ Let's review the output Silhouette value summary. It works well as only a small 
 dis_tra = dist(tr_z)	
 sil_tra = silhouette(trauma_clusters$cluster, dis_tra)	
 summary(sil_tra)	
-#plot(sil_tra)	
+	
+# windows(width=7, height=7)	
+plot(sil_tra, col=1:length(trauma_clusters$centers[ ,1]), border=NA)
+```
+```{r}
 # report the overall mean silhouette value	
 mean(sil_tra[,"sil_width"])	
-# The sil object colnames  are ("cluster", "neighbor", "sil_width")	
+# The sil object colnames  are ("cluster", "neighbor", "sil_width")
 ```
 
 Next, let's try to tune $k$ with **k-means++** and see if $k=5$ appears to be optimal. 	
@@ -483,10 +644,13 @@ for (i in 2:11){
   mat[i] = mean(as.matrix(sil)[,3])	
 }	
 mat	
-ggplot(data.frame(k=2:11, sil=mat[2:11]), aes(x=k, y=sil)) + 
-  geom_line() + 
-  scale_x_continuous(breaks = 2:11)	
-
+```
+```{r}
+# ggplot(data.frame(k=2:11,sil=mat[2:11]),aes(x=k,y=sil))+geom_line()+scale_x_continuous(breaks = 2:11)	
+	
+df <- data.frame(data.frame(k=2:11,sil=mat[2:11]))	
+plot_ly(df, x = ~k, y = ~sil, type = 'scatter', mode = 'lines', name='Silhouette') %>%	
+  layout(title="Average Silhouette Graph")
 ```
 
 Finally, let's use **k-means++** with $k=6$ and set the algorithm's maximal iteration before rerunning the experiment:	
@@ -495,10 +659,12 @@ Finally, let's use **k-means++** with $k=6$ and set the algorithm's maximal iter
 set.seed(1234)	
 clust_kpp = kmeans(tr_z, kpp_init(tr_z, 6), iter.max=100, algorithm='Lloyd')	
 sil = silhouette(clust_kpp$cluster, dis_tra)	
-summary(sil)	
+summary(sil)
+```
+```{r}
 # plot(sil)	
 # report the overall mean silhouette value	
-mean(sil[,"sil_width"])
+mean(sil[,"sil_width"])	
 ```
 As we showed earlier, we can interpret the resulting `kmeans` clusters in the context of this pediatric trauma study, by examining `clust_kpp$centers`.	
  	
@@ -533,19 +699,24 @@ boystown_sub <- boystown[, -c(1, 2)]
 Next, we need to standardize and clustering the data with `k=3`. You may have the following centers (numbers could be a little different).	
 
 ```{r}
-boystown_z <- as.data.frame(lapply(boystown_sub, scale))	
+boystown_z<-as.data.frame(lapply(boystown_sub, scale))	
 set.seed(1234)	
-bt_cluster <- kmeans(boystown_z, 3)	
+bt_cluster<-kmeans(boystown_z, 3)	
 bt_cluster$centers	
 	
-myColors <- c("darkblue", "red", "green", "brown", "pink",
-              "purple", "lightblue", "orange", "grey")	
-barplot(t(bt_cluster$centers), beside = TRUE,
-        xlab="cluster", ylab="value", col = myColors)	
-legend("topleft", ncol=4, legend = c("gpa","Alcoholuse","alcatt",
-                                     "dadjob","momjob","dadclose",
-                                     "momclose", "larceny","vandalism"),
-       fill = myColors)	
+# myColors <- c("darkblue", "red", "green", "brown", "pink", "purple", "lightblue", "orange", "grey")	
+# barplot(t(bt_cluster$centers), beside = TRUE, xlab="cluster", 	
+# ylab="value", col = myColors)	
+# legend("topleft", ncol=4, legend = c("gpa","Alcoholuse","alcatt",  "dadjob","momjob","dadclose", "momclose", "larceny","vandalism"), fill = myColors)	
+	
+df <- as.data.frame(t(bt_cluster$centers))	
+rowNames <- rownames(df)	
+colnames(df) <- paste0("Cluster",c(1:dim(bt_cluster$centers)[1]))	
+plot_ly(df, x = rownames(df), y = ~Cluster1, type = 'bar', name = 'Cluster1') %>% 	
+  add_trace(y = ~Cluster2, name = 'Cluster2') %>% 	
+  add_trace(y = ~Cluster3, name = 'Cluster3') %>% 	
+  layout(title="Explicating Derived Cluster Labels",	
+         yaxis = list(title = 'Cluster Centers'), barmode = 'group')
 ```
 
 Add *k-means* cluster labels as a new (last) column back in the original dataset.	
@@ -585,13 +756,13 @@ We will demonstrate hierarchical clustering using case-study 1 ([Divorce and Con
 
 ```{r}
 library(cluster)	
-pitch_sing = agnes(di_z, diss=FALSE, method='single')	
-pitch_comp = agnes(di_z, diss=FALSE, method='complete')	
-pitch_ward = agnes(di_z, diss=FALSE, method='ward')	
-sil_sing = silhouette(cutree(pitch_sing, k=3), dis)	
-sil_comp = silhouette(cutree(pitch_comp, k=3), dis)	
+divorce_sing = agnes(di_z, diss=FALSE, method='single')	
+divorce_comp = agnes(di_z, diss=FALSE, method='complete')	
+divorce_ward = agnes(di_z, diss=FALSE, method='ward')	
+sil_sing = silhouette(cutree(divorce_sing, k=3), dis)	
+sil_comp = silhouette(cutree(divorce_comp, k=3), dis)	
 # try 10 clusters, see plot above	
-sil_ward = silhouette(cutree(pitch_ward, k=10), dis)
+sil_ward = silhouette(cutree(divorce_ward, k=10), dis)	
 ```
 
 You can generate the hierarchical plot by `ggdendrogram` in the package `ggdendro`.
@@ -599,17 +770,52 @@ You can generate the hierarchical plot by `ggdendrogram` in the package `ggdendr
 ```{r}
 # install.packages("ggdendro")	
 library(ggdendro)	
-ggdendrogram(as.dendrogram(pitch_ward), leaf_labels=FALSE, labels=FALSE)	
-	
-mean(sil_ward[,"sil_width"])	
-ggdendrogram(as.dendrogram(pitch_ward), leaf_labels=TRUE, labels=T, size=10)
+ggdendrogram(as.dendrogram(divorce_ward), leaf_labels=FALSE, labels=FALSE)
 ```
+```{r}
+mean(sil_ward[,"sil_width"])	
+ggdendrogram(as.dendrogram(divorce_ward), leaf_labels=TRUE, labels=T, size=10)
+```
+
+```{r}
+library(data.tree)	
+DD_hcclust <- as.hclust(divorce_ward)	
+DD <- as.dendrogram(divorce_ward)	
+	
+# Dendogram --> Graph(Nodes)	
+DD_Node <- data.tree::as.Node(DD)	
+	
+DD_Node$attributesAll	
+DD_Node$totalCount	
+DD_Node$leafCount	
+DD_Node$height	
+	
+# Get nodes, labels, values, IDs	
+IDs <- DD_Node$Get("name")	
+labels = DD_Node$Get("name")	
+parents = DD_Node$Get(function(x) x$parent$name)	
+values = as.numeric(DD_Node$Get("name"))	
+	
+df <- as.data.frame(cbind(labels=labels, parents=parents, values=values))	
+	
+# remove node self-loops	
+df1 <- subset(df, as.character(labels) != as.character(parents))	
+	
+# remove duplicates	
+df2 <- distinct(df1, labels, .keep_all= TRUE)	
+	
+plot_ly(df2, labels=~labels, parents=~parents, values=~values, type='sunburst')
+```
+```{r}
+plot_ly(df2, labels=~labels, parents=~parents, values=~values, type='treemap')
+```
+
 
 Generally speaking, the best result should come from **wald** linkage, but you should also try complete linkage (method='complete'). We can see that the hierarchical clustering result (average silhouette value $\sim 0.24$) mostly agrees with the prior *k-means* ($0.2$) and *k-means++* ($0.2$) results.	
 
 ```{r}
 summary(sil_ward)	
-plot(sil_ward)
+plot(sil_ward, col=1:length(unique(sil_ward[,1])))
 ```
 
 # Spectral Clustering	
@@ -653,19 +859,25 @@ img_url <- "https://umich.instructure.com/files/1627149/download?download_frd=1"
 img_file <- tempfile(); download.file(img_url, img_file, mode="wb")		
 img <- readJPEG(img_file)		
 	
-# To expedite the calculaitons, reduce the size of 2D image	
+# To expedite the calculations, reduce the size of 2D image	
 # install.packages("BiocManager")	
 # BiocManager::install("EBImage")	
 library("EBImage")	
 img <- t(apply(img[ , , 1], 2, rev)) # take the first RGB-color channel; transpose to get it anatomically correct Viz	
 # width and height of the original image	
-dim(img)[1:2]	
+dim(img)[1:2]
+```
+```{r}
 olddim <- c(dim(img)[1], dim(img)[2])	
 newdim <- c(64, 64)  # new smaller image dimensions	
 img1 <- resize(img, w = newdim[1], h = newdim[2])	
-image(img, main="Original (high) resolution", xaxt = "n", yaxt = "n", asp=1)	
-image(img1, main="Downsample (low) resolution)", xaxt = "n", yaxt = "n", asp=1)	
 	
+# image(img, main="Original (high) resolution", xaxt = "n", yaxt = "n", asp=1)	
+# image(img1, main="Downsample (low) resolution)", xaxt = "n", yaxt = "n", asp=1)	
+	
+plot_ly(z = ~img, type="surface")
+```
+```{r}
 # Convert image matrix to long vector (i,j, value)	
 imgvec <- matrix(NA, prod(dim(img1)),3)	
 counter <- 1	
@@ -714,18 +926,38 @@ kmU <- kmeans(evU$vectors[,(ncol(simmatrix)-1):(ncol(simmatrix)-0)],
               centers=2,nstart=5)	
 segmatU <- matrix(kmU$cluster-1, newdim[1], newdim[2], byrow=T)	
 	
-# Plot the pair of spectral clusters (hematoma and normal brain areas)	
-image(segmatL, col=grey((0:15)/15), 
-      main="Normalized Laplacian", xaxt = "n", yaxt = "n", asp=1)	
-image(segmatU, col=grey((0:15)/15),
-      main="Unnormalized Laplacian", xaxt = "n", yaxt = "n", asp=1)	
+colorL <- rep(1, length(img))	
+dim(colorL) <- dim(img)	
 	
-# Overlay the outline of the ROI-segmentaiton region on top of original image	
+plot_ly(x=~seq(0, 4, length.out=olddim[1]), 	
+            y=~seq(0, 4, length.out=olddim[2]), z=~segmatL, 	
+        surfacecolor=colorL, cauto=F, cmax=1, cmin=0,	
+        name="L = Normalized graph Laplacian", type="surface") %>%	
+  add_trace(x=~seq(0, 4, length.out=olddim[1]), 	
+            y=~seq(0, 4, length.out=olddim[2]), z=~segmatU*(1), 	
+            colorscale = list(c(0, 1), c("tan", "red")),	
+            name="U = Unnormalized graph Laplacian", type="surface")  %>%	
+  add_trace(x = ~seq(0, 1, length.out=olddim[1]), 	
+            y = ~seq(0, 1, length.out=olddim[2]),	
+            z = ~img/2, type="surface", name="Original Image", opacity=0.5) %>%	
+  layout(xaxis=list(name="X"), xaxis=list(name="X"), title="Spectral Laplacian Classification")  %>%	
+  hide_colorbar()
+```
+```{r}
+# Plot the pair of spectral clusters (hematoma and normal brain areas)	
+image(segmatL, col=grey((0:15)/15), main="Normalized Laplacian", xaxt = "n", yaxt = "n", asp=1)	
+```
+```{r}
+image(segmatU, col=grey((0:15)/15), main="Unnormalized Laplacian", xaxt = "n", yaxt = "n", asp=1)
+```
+
+```{r}
+# Overlay the outline of the ROI-segmentation region on top of original image	
 image(seq(0, 1, length.out=olddim[1]), seq(0, 1, length.out=olddim[2]),	
       img, col = grey((0:15)/15), xlab="",ylab="", asp=1, xaxt = "n", yaxt = "n",	
       main="Original MRI with Overlay of the Boundaries of the \n Unnormalized (red) and Normalized (green) Laplacian Labels")	
 	
-# Compute the outline of the spectral segmentation and plot it as piecewise polygon - line segments	
+# Compute the outline of the spectral segmentation and plot it as piece-wise polygon - line segments	
 segmat <- segmatU	
 linecol <- "red"	
 linew <- 3	
@@ -768,6 +1000,8 @@ for(r in 2:newdim[1]) {
 }
 ```
 
+`
+
 Let's try spectral clustering on the [Knee Pain Dataset](https://wiki.socr.umich.edu/index.php/SOCR_Data_KneePainData_041409) using the `kernlab::specc()` method.	
 
 ```{r}
@@ -782,8 +1016,9 @@ normalize<-function(x){
   return((x-min(x))/(max(x)-min(x)))	
 }	
 kneeRawData_df <- as.data.frame(cbind(normalize(kneeRawData$x), normalize(kneeRawData$Y), as.factor(kneeRawData$View)))	
-colnames(kneeRawData_df) <- c("X", "Y", "Label")	
-	
+colnames(kneeRawData_df) <- c("X", "Y", "Label")
+```
+```{r}
 # randomize the rows of the DF as RF, RB, LF and LB labels of classes	
 # which are by default sequentially ordered	
 set.seed(1234)	
@@ -791,19 +1026,31 @@ kneeRawData_df <- kneeRawData_df[sample(nrow(kneeRawData_df)), ]
 # summary(kneeRawData_df)	
 # View(kneeRawData_df)	
 	
-# Artificially reduce the size of hte data from 8K to 1K to get results faster 	
+# Artificially reduce the size of the data from 8K to 1K to get results faster 	
 kneeDF <- data.frame(x=kneeRawData_df[1:1000, 1], 	
                      y=kneeRawData_df[1:1000, 2], 	
                      class=as.factor(kneeRawData_df[1:1000, 3]))	
-head(kneeDF)  	
-	
+head(kneeDF)
+```
+```{r}
 # Do the spectral clustering	
 library(kernlab)	
 knee_data <- cbind(kneeDF$x, kneeDF$y); dim(knee_data)	
-spectral_knee <- specc(knee_data, iterations=10, centers=4)	
-plot(knee_data, col=spectral_knee, pch=1)    # estimated clusters	
-# points(knee_data, col=kneeDF$class, pch=0)
+spectral_knee <- specc(knee_data, iterations=10, centers=4)
 ```
+```{r}
+# plot(knee_data, col=spectral_knee, pch=1)    # estimated clusters	
+# points(knee_data, col=kneeDF$class, pch=0)	
+	
+plot_ly(x = ~knee_data[,1], y = ~knee_data[,2], type = 'scatter',	
+  mode = 'markers', symbol = ~unlist(spectral_knee@.Data), 	
+  symbols = c('circle','x','o', 'diamond'),	
+  color = ~unlist(spectral_knee@.Data), marker = list(size = 10)) %>%	
+  layout("Knee-pain data (L+R & F+B) with derived Spectal Color/Symbol Clustering Labels", 	
+         xaxis=list(title="X"), yaxis=list(title="Y")) %>%	
+  hide_colorbar()
+```
+
 
 # Gaussian mixture models	
  	
@@ -842,18 +1089,29 @@ Thus, the optimal model, `VEI`, has 3 components.
 
 ```{r}
 plot(gmm_clust$BIC, legendArgs = list(x = "bottom", ncol = 2, cex = 1))	
-plot(gmm_clust, what = "density")	
-plot(gmm_clust, what = "classification")	
-plot(gmm_clust, what = "uncertainty", dimens = c(6,7), main = "livewithmom vs. gethitched")	
-	
-# Mclust Dimention Reduction clustering	
+```
+```{r}
+plot(gmm_clust, what = "density")
+```
+```{r}
+plot(gmm_clust, what = "classification")
+```
+```{r}
+plot(gmm_clust, what = "uncertainty", dimens = c(6,7), main = "livewithmom vs. gethitched")
+```
+```{r}
+# Mclust Dimension Reduction clustering	
 gmm_clustDR <- MclustDR(gmm_clust, lambda=1)	
-summary(gmm_clustDR)	
-	
-plot(gmm_clustDR, what = "boundaries", ngrid = 200)	
-plot(gmm_clustDR, what = "pairs")	
+summary(gmm_clustDR)
+```
+```{r}
+plot(gmm_clustDR, what = "boundaries", ngrid = 200)
+```
+```{r}
+plot(gmm_clustDR, what = "pairs")
 plot(gmm_clustDR, what = "scatterplot")	
-	
+```
+```{r}
 # Plot the Silhouette plot to assess the quality of	
 # the clustering based on the Mixture of 3 Gaussians	
 silGauss = silhouette(as.numeric(gmm_clustDR$classification), dis)	
