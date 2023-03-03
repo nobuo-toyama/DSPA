@@ -82,7 +82,7 @@ In this case, using `str(m)` to summarize the object `m` may report out too much
  	
 3. Candidate models with different parameters that have been evaluated: by default, `caret` uses 3 different choices for each parameter, but for binary parameters, it only takes 2 choices `TRUE` and `FALSE`). As KNN has only one parameter *k*, we have 3 candidate models reported in the output above. 	
  	
-4. Optimal model: the model with largest accuracy is the one corresponding to `k=9`.	
+4. Optimal model: the model with largest accuracy is the one corresponding to `k=7`.	
  	
 Let's see how accurate this "optimal model" is in terms of the re-substitution error. Again, we will use the `predict()` function specifying the object `m` and the dataset `boystown_n`. Then, we can report the contingency table showing the agreement between the predictions and real class labels.
 
@@ -100,7 +100,7 @@ head(predict(kNN_mod, boystown_n, type = "prob"))
 
 # Customizing the tuning process	
  	
-The default setting of `train()` might not meet the specific needs for every study. In our case, the optimal *k* might be smaller than $9$. The `caret` package allows us to customize the settings for `train()`. Specifically, `caret::trainControl()` can help us to customize re-sampling methods. There are 6 popular re-sampling methods that we might want to use, which are summarized in the following table.	
+The default setting of `train()` might not meet the specific needs for every study. In our case, the optimal *k* might be smaller than $7$. The `caret` package allows us to customize the settings for `train()`. Specifically, `caret::trainControl()` can help us to customize re-sampling methods. There are 6 popular re-sampling methods that we might want to use, which are summarized in the following table.	
  	
 **Resampling method** |	**Method name**	| **Additional options and default values**	
 ----------------------|-----------------|-------------------------------------	
@@ -217,14 +217,6 @@ The SVM bag `fit` relies on the `kernlab::ksvm()` function. The other two method
  	
 This `svmBag` object could be used as an optional setting in the `train()` function. However, this option requires that all features are linearly independent, which may be rare in real world data. 	
 
-```{r}
-bagctrl <- bagControl(fit=svmBag$fit, predict = svmBag$pred, aggregate=svmBag$aggregate)	
-qol.rand <- qol[order(runif(2328)), ]	
-set.seed(123)	
-svmbag <- train(grade ~ ., data=boystown_n, "bag", trControl=ctrl, bagControl=bagctrl)	
-svmbag
-```
-
 ## Boosting	
  	
 *Bagging* uses equal weights for all learners we include in the model. *Boosting* is different as it employs non-uniform weights. Suppose we have the first learner correctly classifying 60% of the observations. This 60% of data may be less likely to be included in the training dataset for the next learner. So, we have more learners working on the remaining "hard-to-classify" observations.	
@@ -331,7 +323,7 @@ mean(qol_boost$class==qol$cd)
 set.seed(123)	
 #qol_boost <- boosting(QOL_Q_01 ~ ., data=qol, mfinal = 100, coeflearn = 'Breiman')	
 #mean(qol_boost$class==qol$QOL_Q_01)	
-qol_boost <- boosting(cd ~ . , data=qol[, -37], mfinal = 100, coeflearn = 'Breiman')	
+qol_boost <- boosting(cd ~ . , data=qol[, -37], mfinal = 100, coeflearn = 'Freund')	
 mean(qol_boost$class==qol$cd)
 ```
 ```{r}
@@ -339,53 +331,10 @@ set.seed(1234)
 #qol_boost <- boosting(QOL_Q_01 ~ ., data=qol, mfinal = 100, coeflearn = 'Zhu')	
 #mean(qol_boost$class==qol$QOL_Q_01)	
 qol_boost <- boosting(cd ~ . , data=qol[, -37], mfinal = 100, coeflearn = 'Zhu')	
-mean(qol_boost$class==qol$QOL_Q_01)
+mean(qol_boost$class==qol$cd)
 ```
 
 We observe that `Zhu` approach achieves the best results, average $accuracy=0.78$. Notice that the default method is M1 `Breiman` and `mfinal` is the number of boosting iterations.	
-
-```{r}
-# install.packages("kernlab")	
-# install.packages("party")	
-library(kernlab)	
-library(party)	
-	
-qol_n <- as.data.frame(lapply(qol[, -41], normalize))	
-qol_n <- cbind(qol_n, qol$cd)	
-colnames(qol_n)[41] <- "cd"	
-ctrl <- trainControl(method="boot632", number = 25)	
-bagctrl <- bagControl(fit = ctreeBag$fit, predict = ctreeBag$pred,
-                      aggregate = ctreeBag$aggregate)	
-svmbag <- train(as.factor(cd) ~ ., data = as.data.frame(qol_n),
-                method="bag", trControl = ctrl, bagControl = bagctrl)	
-svmbag
-```
-
-See naiveBayes() hn_med data in Chapter 7
-
-```{r}
-hn_med<-read.csv("https://umich.instructure.com/files/1614350/download?download_frd=1", stringsAsFactors = FALSE)	
-hn_med$seer_stage <- factor(hn_med$seer_stage)	
-hn_med_corpus <- Corpus(VectorSource(hn_med$MEDICATION_SUMMARY))	
-corpus_clean <- tm_map(hn_med_corpus, tolower)	
-corpus_clean <- tm_map(corpus_clean, removePunctuation)	
-corpus_clean <- tm_map(corpus_clean, stripWhitespace)	
-corpus_clean <- tm_map(corpus_clean, removeNumbers)	
-corpus_clean <- tm_map(corpus_clean, PlainTextDocument)	
-hn_med_dtm <- DocumentTermMatrix(corpus_clean)	
-hn_med$stage <- hn_med$seer_stage %in% c(4, 5, 7)	
-hn_med$stage <- factor(hn_med$stage, levels=c(F, T),
-                       labels = c("early_stage", "later_stage"))	
-hn_med_dict <- as.character(findFreqTerms(hn_med_dtm, 5))	
-hn_dtm <- DocumentTermMatrix(corpus_clean,
-                             list(dictionary=hn_med_dict))	
-convert_counts <- function(x) {	
-x <- ifelse(x > 0, 1, 0)	
-x <- factor(x, levels = c(0, 1), labels = c("No", "Yes"))	
-return(x)	
-}	
-hn_dtm <- apply(hn_dtm, MARGIN = 2, convert_counts)
-```
 
 # Comparing the performance of several alternative models	
  	
@@ -393,7 +342,7 @@ Earlier in [Chapter 8 (Decision Trees)](https://www.socr.umich.edu/people/dinov/
 
 ```{r}
 # install.packages(fastAdaboost)	
-library(fastAdaboost)	
+# library(fastAdaboost)	
 library(caret)    # for modeling	
 library(lattice)  # for plotting	
 control <- trainControl(method="repeatedcv", number=10, repeats=3)	
