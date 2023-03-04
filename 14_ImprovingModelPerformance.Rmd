@@ -349,19 +349,19 @@ control <- trainControl(method="repeatedcv", number=10, repeats=3)
 	
 ## Run all subsequent models in parallel	
 library(doParallel)	
-cl <- makePSOCKcluster(5)	
+cl <- makePSOCKcluster(4)	
 registerDoParallel(cl)	
 system.time({	
   rf.fit        <- train(cd~., data=qol[, -37], method="rf", trControl=control);	
   knn.fit       <- train(cd~., data=qol[, -37], method="knn", trControl=control);	
   svm.fit       <- train(cd~., data=qol[, -37], method="svmRadialWeights", trControl=control);	
   adabag.fit    <- train(cd~., data=qol[, -37], method="AdaBag", trControl=control);	
-  adaboost.fit  <- train(cd~., data=qol[, -37], method="adaboost", trControl=control)	
+  # adaboost.fit  <- train(cd~., data=qol[, -37], method="adaboost", trControl=control)	
 })	
 stopCluster(cl) # close multi-core cluster	
 rm(cl)	
 	
-results <- resamples(list(RF=rf.fit, kNN=knn.fit, SVM=svm.fit, Bag=adabag.fit, Boost=adaboost.fit))	
+results <- resamples(list(RF=rf.fit, kNN=knn.fit, SVM=svm.fit, Bag=adabag.fit))	
 	
 # summary of model differences	
 summary(results)	
@@ -372,6 +372,84 @@ bwplot(results, scales=scales)                 # Box plots of accuracy
 densityplot(results, scales=scales, pch = "|") # Density plots of accuracy	
 dotplot(results, scales=scales)                # Dot plots of Accuracy & Kappa	
 splom(results)      # contrast pair-wise model scatterplots of prediction accuracy (Trellis Scatterplot matrices)	
+```
+```{r}
+# Convert (results) data-frame from wide to long format	
+# The arguments to gather():	
+# - data: Data object	
+# - key: Name of new key column (made from names of data columns)	
+# - value: Name of new value column	
+# - ...: Names of source columns that contain values	
+# - factor_key: Treat the new key column as a factor (instead of character vector)	
+library(tidyr)	
+results_long <- gather(results$values[, -1], method, measurement, factor_key=TRUE) %>%	
+  separate(method, c("Technique", "Metric"), sep = "~")	
+	
+# Compare original wide format to transformed long format	
+results$values[, -1]	
+head(results_long)
+```
+
+```{r}
+library(plotly)	
+plot_ly(results_long, x=~Technique, y = ~measurement, color = ~Metric, type = "box")
+```
+```{r}
+#densityplot(results, scales=scales, pch = "|") # Density plots of accuracy	
+	
+densityModels <- with(results_long[which(results_long$Metric=='Accuracy'), ],	
+                      tapply(measurement, INDEX = Technique, density))	
+df <- data.frame(	
+  x = unlist(lapply(densityModels, "[[", "x")),	
+  y = unlist(lapply(densityModels, "[[", "y")),	
+  method = rep(names(densityModels), each = length(densityModels[[1]]$x))	
+)	
+	
+plot_ly(df, x = ~x, y = ~y, color = ~method) %>% add_lines() %>%	
+  layout(title="Performance Density Plots (Accuracy)", legend = list(orientation='h'),	
+         xaxis=list(title="Accuracy"), yaxis=list(title="Density"))
+```
+```{r}
+densityModels <- with(results_long[which(results_long$Metric=='Kappa'), ],	
+                      tapply(measurement, INDEX = Technique, density))	
+df <- data.frame(	
+  x = unlist(lapply(densityModels, "[[", "x")),	
+  y = unlist(lapply(densityModels, "[[", "y")),	
+  method = rep(names(densityModels), each = length(densityModels[[1]]$x))	
+)	
+	
+plot_ly(df, x = ~x, y = ~y, color = ~method) %>% add_lines() %>%	
+  layout(title="Performance Density Plots (Kappa)", legend = list(orientation='h'),	
+         xaxis=list(title="Kappa"), yaxis=list(title="Density"))
+```
+```{r}
+# dotplot(results, scales=scales)                # Dot plots of Accuracy & Kappa	
+#splom(results)      # contrast pair-wise model scatterplots of prediction accuracy (Trellis Scatterplot matrices)	
+	
+# Pairs - Accuracy	
+results_wide <- results_long[which(results_long$Metric=='Accuracy'), -2] %>%	
+  pivot_wider(names_from = Technique, values_from = measurement)	
+	
+df = data.frame(cbind(RF=results_wide$RF[[1]], kNN=results_wide$kNN[[1]], SVM=results_wide$SVM[[1]], Bag=results_wide$Bag[[1]], Boost=results_wide$Boost[[1]]))	
+	
+dims <- dplyr::select_if(df, is.numeric)	
+dims <- purrr::map2(dims, names(dims), ~list(values=.x, label=.y))	
+plot_ly(type = "splom", dimensions = setNames(dims, NULL), 	
+        showupperhalf = FALSE, diagonal = list(visible = FALSE)) %>%	
+  layout(title="Performance Pairs Plot (Accuracy)")
+```
+```{r}
+# Pairs - Accuracy	
+results_wide <- results_long[which(results_long$Metric=='Kappa'), -2] %>%	
+  pivot_wider(names_from = Technique, values_from = measurement)	
+	
+df = data.frame(cbind(RF=results_wide$RF[[1]], kNN=results_wide$kNN[[1]], SVM=results_wide$SVM[[1]], Bag=results_wide$Bag[[1]], Boost=results_wide$Boost[[1]]))	
+	
+dims <- dplyr::select_if(df, is.numeric)	
+dims <- purrr::map2(dims, names(dims), ~list(values=.x, label=.y))	
+plot_ly(type = "splom", dimensions = setNames(dims, NULL), 	
+        showupperhalf = FALSE, diagonal = list(visible = FALSE)) %>%	
+  layout(title="Performance Pairs Plot (Kappa)")
 ```
 
 Try applying model improvement techniques using [other data from the list of our Case-Studies](https://umich.instructure.com/courses/38100/files/).	
