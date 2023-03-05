@@ -926,15 +926,17 @@ kneeDF <- data.frame(x=kneeRawData_df[,1], y=kneeRawData_df[,2],
   class=as.factor(kneeRawData_df[,3]))	
 head(kneeDF)  	
 	
-streamKnee <- DSD_Memory(kneeDF[,c("x", "y")], class=kneeDF[,"class"], loop=T)	
-streamKnee	
-	
+streamKnee <- DSD_Memory(kneeDF, loop=T)	
+streamKnee
+```
+```{r}
 # Each time we get a point from *streamKnee*, the stream pointer moves to the next position (row) in the data.	
-get_points(streamKnee, n=10)	
-streamKnee	
-	
-# Stream pointer is in position 11 now	
-	
+get_points(streamKnee, n=10)
+streamKnee
+# Stream pointer is in position 11 now
+```
+
+```{r}
 # We can redirect the current position of the stream pointer by:	
 reset_stream(streamKnee,  pos  =  200)	
 get_points(streamKnee, n=10)	
@@ -1006,14 +1008,14 @@ Just like we noticed in previous chapters, e.g., [Chapter 14](https://www.socr.u
  	
 ## Generalizing tabular data structures with `dplyr`	
  	
-We have also seen long execution times when running processes that ingest, store or manipulate huge `data.frame` objects. The `dplyr` package, created by Hadley Wickham and Romain Francoi, provides a faster route to manage such large datasets in R. It creates an object called `tbl`, similar to `data.frame`, which has an in-memory column-like structure. R reads these objects a lot faster than data frames.	
+We have also seen long execution times when running processes that ingest, store or manipulate huge `data.frame` objects. The `tibble` package, created by Hadley Wickham and Romain Francoi, provides a faster route to manage such large datasets in R. It creates an object called `tibble`, similar to `data.frame`, which has an in-memory column-like structure. R reads these objects a lot faster than data frames.	
  	
-To make a `tbl` object we can either convert an existing data frame to `tbl` or connect to an external database. Converting from data frame to `tbl` is quite easy. All we need to do is call the function `as.tbl()`.	
+To make a `tibble` object we can either convert an existing data frame to `tbl` or connect to an external database. Converting from data frame to `tbl` is quite easy. All we need to do is call the function `as.tbl()`.	
 
 ```{r}
 #install.packages("dplyr")	
-library(dplyr)	
-nof1_tbl <- as.tbl(nof1)	
+#library(dplyr)	
+nof1_tbl <- tibble::as_tibble(nof1_lite)	
 nof1_tbl
 ```
 
@@ -1097,7 +1099,7 @@ library(parallel)
 detectCores()
 ```
 
-So, there are eight (8) cores in my computer. I am able to run up to 6-8 parallel jobs on this computer.	
+So, there are eight (12) cores in my computer. I am able to run up to 6-8 parallel jobs on this computer.	
  	
 The `multicore` package simply uses the multitasking capabilities of the *kernel*, the computer's operating system, to "fork" additional R sessions that share the same memory. Imagine that we open several R sessions in parallel and let each of them does part of the work. Now, let's examine how this can save time when running complex protocols or dealing with large datasets. To start with, we can use the `mclapply()` function, which is similar to `lapply()`, which applies functions to a vector and returns a vector of lists. Instead of applying functions to vectors `mcapply()` divides the complete computational task and delegates portions of it to each available core. We will apply a simple, yet time consuming, task-generating random numbers for demonstrating this procedure. Also, we can use the `system.time()` to track the time differences.	
 
@@ -1258,11 +1260,13 @@ We need to load the (pre-installed) *reticulate* package and point the specific 
 ```{r}
 # install.packages("reticulate")	
 library(reticulate)	
+library(plotly)	
 # specify the path of the Python version that you want to use	
-py_path = "C:/Users/nobuo/Anaconda3/"  # manual	
-# py_path = Sys.which("python3")       # automated	
-use_python(py_path, required = T) 	
+#py_path = "C:/Users/nobuo/Anaconda3/"  # manual	
+py_path = Sys.which("python3")       # automated	
+# use_python(py_path, required = T)	
 Sys.setenv(RETICULATE_PYTHON = "C:/Users/nobuo/Anaconda3/")	
+sys <- import("sys", convert = TRUE)
 ```
 
 ## Installing and importing `Python` Modules	
@@ -1325,6 +1329,8 @@ To begin with, we will pull the `Python` pandas dataset into an `R` object.
 
 ```{r}
 # Store python pandas object as R tibble and identify correct and incorrect predicted labels	
+library(kableExtra)	
+library(tibble)	
 foo <- py$test %>%	
   as_tibble() %>%	
   rename(truth = Species) %>%	
@@ -1342,30 +1348,39 @@ Finally, we can plot in `R` the testing-data results and compare the *real* iris
 
 ```{r}
 # R	
-p1 <- py$test %>%	
-  ggplot(aes(py$test$Petal.Length, py$test$Petal.Width, color = py$test$Species)) + # Species == py$y	
-  geom_point(size = 4) +	
-  labs(x = "Petal Length", y = "Petal Width") +	
-  theme_bw() +	
-  theme(legend.position = "none") +	
-  ggtitle("Raw Testing Data Iris Differences",	
-          subtitle = str_c("Petal Length and Width vary",	
-                           "\n", "significantly between species"))	
+# p1 <- py$test %>%	
+#   ggplot(aes(py$test$Petal.Length, py$test$Petal.Width, color = py$test$Species)) + # Species == py$y	
+#   geom_point(size = 4) +	
+#   labs(x = "Petal Length", y = "Petal Width") +	
+#   theme_bw() +	
+#   theme(legend.position = "none") +	
+#   ggtitle("Raw Testing Data Iris Differences",	
+#           subtitle = str_c("Petal Length and Width vary",	
+#                            "\n", "significantly between species"))	
+# 	
+# p2 <- py$test %>%	
+#   ggplot(aes(py$test$Petal.Length, py$test$Petal.Width, 	
+#              color = py$test$Species), shape=as.factor(py$pred)) +	
+#   geom_point(size = 4, aes(shape=as.factor(py$pred), color = py$test$Species)) +	
+#   labs(x = "Petal Length", y = "Petal Width") +	
+#   #theme_bw() +	
+#   theme(legend.position = "right") +	
+#   #scale_shape_manual(name="Species", 	
+#   #                     values=as.factor(py$pred), labels=as.factor(py$pred)) +	
+#   ggtitle("Raw (Colors) vs. Predicted (Shape)\n Iris Differences",	
+#           subtitle = str_c("Petal Length and Width between species"))	
+# 	
+# grid.arrange(p1, p2, layout_matrix = rbind(c(1,3)))	
 	
-p2 <- py$test %>%	
-  ggplot(aes(py$test$Petal.Length, py$test$Petal.Width, 	
-             color = py$test$Species), shape=as.factor(py$pred)) +	
-  geom_point(size = 4, aes(shape=as.factor(py$pred), color = py$test$Species)) +	
-  labs(x = "Petal Length", y = "Petal Width") +	
-  #theme_bw() +	
-  theme(legend.position = "right") +	
-  #scale_shape_manual(name="Species", 	
-  #                     values=as.factor(py$pred), labels=as.factor(py$pred)) +	
-  ggtitle("Raw (Colors) vs. Predicted (Shape)\n Iris Differences",	
-          subtitle = str_c("Petal Length and Width between species"))	
+library(plotly)	
 	
-grid.arrange(p1, p2, layout_matrix = rbind(c(1,3)))
+plot_ly(py$test, x=~py$test$Petal.Length, y=~py$test$Petal.Width, color = ~py$test$Species, 	
+        symbol = ~as.factor(py$pred), type="scatter", marker = list(size = 20), mode="markers") %>%	
+  layout(title="Python Iris Taxa Prediction: Raw (Colors) vs. Predicted (Shape) Species",	
+         xaxis=list(title="Petal Length"), xaxis=list(title="Petal Width"), 	
+         legend = list(orientation='h'))
 ```
+
 
 ## R integration with C/C++	
  	
