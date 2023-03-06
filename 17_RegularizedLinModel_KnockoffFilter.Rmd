@@ -1,5 +1,5 @@
 ---
-title: "17 Regularized Linear Modeling"
+title: "17 Regularized Linear Modeling and Controlled Variable Selection"
 author: "nobuo"
 date: "2021/4/29"
 output: html_document
@@ -77,44 +77,96 @@ Let's show an example using the MLB dataset [01a_data.txt](https://umich.instruc
 
 ```{r}
 # install.packages("doParallel")	
-library("doParallel")
+library("doParallel")	
+library(plotly)	
+library(tidyr)	
 	
 # Data: https://umich.instructure.com/courses/38100/files/folder/data   (01a_data.txt)	
 data <- read.table('https://umich.instructure.com/files/330381/download?download_frd=1', as.is=T, header=T)    	
 attach(data); str(data)	
-	
-# Training Data	
-# Full Model: x <- model.matrix(Weight ~ ., data = data[1:900, ])	
-# Reduced Model	
-x <- model.matrix(Weight ~ Age + Height, data = data[1:900, ])	
-# creates a design (or model) matrix, and adds 1 column for outcome according to the formula.	
-y <- data[1:900, ]$Weight	
-	
-# Testing Data	
-x.test <- model.matrix(Weight ~ Age + Height, data = data[901:1034, ])	
-y.test <- data[901:1034, ]$Weight	
-	
-# install.packages("glmnet")	
-library("glmnet")	
-library(doParallel)	
-cl <- makePSOCKcluster(6)	
-registerDoParallel(cl); getDoParWorkers()	
+```
+```{r}
+# Training Data
+# Full Model: x <- model.matrix(Weight ~ ., data = data[1:900, ])
+# Reduced Model
+x <- model.matrix(Weight ~ Age + Height, data = data[1:900, ])
+# creates a design (or model) matrix, and adds 1 column for outcome according to the formula.
+y <- data[1:900, ]$Weight
+
+# Testing Data
+x.test <- model.matrix(Weight ~ Age + Height, data = data[901:1034, ])
+y.test <- data[901:1034, ]$Weight
+
+# install.packages("glmnet")
+library("glmnet")
+library(doParallel)
+cl <- makePSOCKcluster(6)
+registerDoParallel(cl); getDoParWorkers()
+```
+```{r}
 # getDoParName(); getDoParVersion()	
 cv.ridge <-  cv.glmnet(x, y, type.measure="mse", alpha=0, parallel=T)	
 ## alpha =1 for lasso only, alpha = 0 for ridge only, and 0<alpha<1 to blend ridge & lasso penalty !!!!	
-plot(cv.ridge)	
-coef(cv.ridge)	
-sqrt(cv.ridge$cvm[cv.ridge$lambda == cv.ridge$lambda.1se])	
 	
+# # getDoParName(); getDoParVersion()	
+cv.ridge <-  cv.glmnet(x, y, type.measure="mse", alpha=0, parallel=T)	
+## alpha =1 for lasso only, alpha = 0 for ridge only, and 0<alpha<1 to blend ridge & lasso penalty !!!!	
+	
+# plot(cv.ridge)	
+	
+plotCV.glmnet <- function(cv.glmnet.object, name="") {	
+  df <- as.data.frame(cbind(x=log(cv.glmnet.object$lambda), y=cv.glmnet.object$cvm, 	
+                           errorBar=cv.glmnet.object$cvsd), nzero=cv.glmnet.object$nzero)	
+	
+  featureNum <- cv.glmnet.object$nzero	
+  xFeature <- log(cv.glmnet.object$lambda)	
+  yFeature <- max(cv.glmnet.object$cvm)+max(cv.glmnet.object$cvsd)	
+  dataFeature <- data.frame(featureNum, xFeature, yFeature)	
+	
+  plot_ly(data = df) %>%	
+    # add error bars for each CV-mean at log(lambda)	
+    add_trace(x = ~x, y = ~y, type = 'scatter', mode = 'markers',	
+        name = 'CV MSE', error_y = ~list(array = errorBar)) %>% 	
+    # add the lambda-min and lambda 1SD vertical dash lines	
+    add_lines(data=df, x=c(log(cv.glmnet.object$lambda.min), log(cv.glmnet.object$lambda.min)), 	
+              y=c(min(cv.glmnet.object$cvm)-max(df$errorBar), max(cv.glmnet.object$cvm)+max(df$errorBar)),	
+              showlegend=F, line=list(dash="dash"), name="lambda.min", mode = 'lines+markers') %>%	
+    add_lines(data=df, x=c(log(cv.glmnet.object$lambda.1se), log(cv.glmnet.object$lambda.1se)), 	
+              y=c(min(cv.glmnet.object$cvm)-max(df$errorBar), max(cv.glmnet.object$cvm)+max(df$errorBar)), 	
+              showlegend=F, line=list(dash="dash"), name="lambda.1se") %>%	
+    # Add Number of Features Annotations on Top	
+    add_trace(dataFeature, x = ~xFeature, y = ~yFeature, type = 'scatter', name="Number of Features",	
+        mode = 'text', text = ~featureNum, textposition = 'middle right',	
+        textfont = list(color = '#000000', size = 9)) %>%	
+    # Add top x-axis (non-zero features)	
+    # add_trace(data=df, x=~c(min(cv.glmnet.object$nzero),max(cv.glmnet.object$nzero)),	
+    #           y=~c(max(y)+max(errorBar),max(y)+max(errorBar)), showlegend=F, 	
+    #           name = "Non-Zero Features", yaxis = "ax", mode = "lines+markers", type = "scatter") %>%	
+    layout(title = paste0("Cross-Validation MSE (", name, ")"),	
+							xaxis = list(title=paste0("log(",TeX("\\lambda"),")"),	side="bottom", showgrid=TRUE), # type="log"	
+							hovermode = "x unified", legend = list(orientation='h'),  # xaxis2 = ax,  	
+							yaxis = list(title = cv.glmnet.object$name,	side="left", showgrid = TRUE))	
+}	
+	
+plotCV.glmnet(cv.ridge, "Ridge")
+```
+```{r}
+coef(cv.ridge)	
+sqrt(cv.ridge$cvm[cv.ridge$lambda == cv.ridge$lambda.1se])
+```
+```{r}
 #plot variable feature coefficients against the shrinkage parameter lambda.	
 glmmod <-glmnet(x, y, alpha = 0)	
 plot(glmmod, xvar="lambda")	
-grid()	
-	
+grid()
+```
+```{r}
 # for plot_glmnet with ridge/lasso coefficient path labels	
 # install.packages("plotmo")	
 library(plotmo) 	
-plot_glmnet(glmmod, lwd=4)        #default colors	
+plot_glmnet(glmmod, lwd=4)        #default colors
+```
+```{r}
 # More elaborate plots can be generated using:	
 # plot_glmnet(glmmod,label=2,lwd=4) #label the 2 biggest final coefs	
 # specify color of each line	
@@ -123,18 +175,24 @@ plot_glmnet(glmmod, lwd=4)        #default colors
 	
 	
 # report the model coefficient estimates	
-coef(glmmod)[, 1]	
-	
+coef(glmmod)[, 1]
+```
+```{r}
 cv.glmmod <- cv.glmnet(x, y, alpha=0)	
 	
 mod.ridge <-  cv.glmnet(x, y, alpha = 0, thresh = 1e-12, parallel = T)	
 lambda.best <-  mod.ridge$lambda.min	
-lambda.best	
+lambda.best
+```
+```{r}
 ridge.pred <-  predict(mod.ridge, newx = x.test, s = lambda.best)	
 ridge.RMS <- mean((y.test - ridge.pred)^2); ridge.RMS	
-ridge.test.r2 <-  1 - mean((y.test - ridge.pred)^2)/mean((y.test - mean(y.test))^2)	
+ridge.test.r2 <-  1 - mean((y.test - ridge.pred)^2)/mean((y.test - mean(y.test))^2)
 	
-plot(cv.glmmod)	
+#plot(cv.glmmod)	
+plotCV.glmnet(cv.glmmod, "Ridge")
+```
+```{r}
 best_lambda <- cv.glmmod$lambda.min	
 best_lambda
 ```
@@ -185,7 +243,11 @@ lm.pred <-  predict(lm.fit, newx = x.test)
 LM.RMS <- mean((y - lm.pred)^2); LM.RMS	
 lm.test.r2 <-  1 - mean((y - lm.pred)^2) / mean((y.test - mean(y.test))^2)	
   	
-barplot(c(lm.test.r2, lasso.test.r2, ridge.test.r2), col = "red", names.arg = c("OLS", "LASSO", "Ridge"), main = "Testing Data Derived R-squared")
+# barplot(c(lm.test.r2, lasso.test.r2, ridge.test.r2), col = "red", names.arg = c("OLS", "LASSO", "Ridge"), main = "Testing Data Derived R-squared")	
+	
+plot_ly(x = c("OLS", "LASSO", "Ridge"),  y = c(lm.test.r2, lasso.test.r2, ridge.test.r2),  	
+        name = paste0("Model ", TeX("R^2") ," Performance"), type = "bar") %>%	
+  layout(title=paste0("Model ", TeX("R^2") ," Performance"))
 ```
 
 Compare the results of the three alternative models (LM, LASSO and Ridge) for these data and contrast the derived RSS results.	
@@ -197,7 +259,7 @@ RMS_Table = data.frame(LM=LM.RMS, LASSO=LASSO.RMS, Ridge=ridge.RMS)
 	
 # convert to markdown	
 kable(RMS_Table, format="pandoc", caption="Test Dataset RSS Results", align=c("c", "c", "c"))	
-stopCluster(cl)
+stopCluster(cl)	
 ```
 
 As both the *inputs* (features or predictors) and the *output* (response) are observed for the testing data, we can build a learner examining the relationship between the two types of features (controlled covariates and observable responses). Most often, we are interested in forecasting or predicting responses based on prospective (new, testing, or validation) data.	
@@ -416,7 +478,14 @@ Any p-value that falls on or below this line corresponds to a significant result
 
 ```{r}
 #generate the "relative-indices" (i/n) that will be plotted on the x-axis	
-x.values <- (1:length(pvals))/length(pvals)	
+x.values<-(1:length(pvals))/length(pvals)	
+	
+#select observations that are less than threshold	
+for.test <- cbind(1:length(pvals), pvals)	
+pass.test <- for.test[pvals <= 0.05*x.values, ]	
+pass.test	
+#use largest k to color points that meet Benjamini-Hochberg FDR test	
+last<-ifelse(is.vector(pass.test), pass.test[1], pass.test[nrow(pass.test), 1])	
 	
 #widen right margin to make room for labels	
 par(mar=c(4.1, 4.1, 1.1, 4.1))	
@@ -424,28 +493,33 @@ par(mar=c(4.1, 4.1, 1.1, 4.1))
 #plot the points (relative-index vs. probability-values)	
 # we can also plot the y-axis on a log-scale to spread out the values	
 # plot(x.values, pvals, xlab=expression(i/n), ylab="log(p-value)", log = 'y')	
-plot(x.values, pvals, xlab=expression(i/n), ylab="p-value")	
 	
-#add FDR line	
-abline(a=0, b=0.05, col=2, lwd=2)	
-    	
-#add naive threshold line	
-abline(h=.05, col=4, lty=2)	
-    	
-#add Bonferroni-corrected threshold line	
-abline(h=.05/length(pvals), col=4, lty=2)	
-    	
-#label lines	
-mtext(c('naive', 'Bonferroni'), side=4, at=c(.05, .05/length(pvals)), las=1, line=0.2)	
-    	
-#select observations that are less than threshold	
-for.test <- cbind(1:length(pvals), pvals)	
-pass.test <- for.test[pvals <= 0.05*x.values, ]	
-pass.test	
+# plot(x.values, pvals, xlab=expression(i/n), ylab="p-value")	
+# #add FDR line	
+# abline(a=0, b=0.05, col=2, lwd=2)	
+# #add naive threshold line	
+# abline(h=.05, col=4, lty=2)	
+# #add Bonferroni-corrected threshold line	
+# abline(h=.05/length(pvals), col=4, lty=2)	
+# #label lines	
+# mtext(c('naive', 'Bonferroni'), side=4, at=c(.05, .05/length(pvals)), las=1, line=0.2)	
+# #use largest k to color points that meet Benjamini-Hochberg FDR test	
+# points(x.values[1:last], pvals[1:last], pch=19, cex=1.5)	
 	
-#use largest k to color points that meet Benjamini-Hochberg FDR test	
-last<-ifelse(is.vector(pass.test), pass.test[1], pass.test[nrow(pass.test), 1])	
-points(x.values[1:last], pvals[1:last], pch=19, cex=1.5)
+plot_ly(x=~x.values, y=~pvals, type="scatter", mode="markers", marker=list(size=15), 	
+        name="observed p-values", symbols='o') %>%	
+  # add bounding horizontal lines	
+  # add naive threshold line	
+  add_lines(x=~c(0,1), y=~c(0.05, 0.05), mode="lines", line=list(dash='dash'), name="p=0.05") %>%	
+  # add conservative Bonferonni line	
+  add_lines(x=~c(0,1), y=~c(0.05/length(pvals), 0.05/length(pvals)), mode="lines", 	
+            line=list(dash='dash'), name="Bonferonni (p=0.05/n)") %>%	
+  # add FDR line	
+  add_lines(x=~c(0,1), y=~c(0, 0.05), mode="lines", line=list(dash='dash'), name="FDR Line") %>%	
+  # highlight the largest k to color points meeting the Benjamini-Hochberg FDR test	
+  add_trace(x=~x.values[1:last], y=~pvals[1:last], mode="markers",symbols='0', name="FDR Test Points") %>%	
+  layout (title="Benjamini-Hochberg FDR Test", legend = list(orientation='h'),	
+          xaxis=list(title=expression(i/n)), yaxis=list(title="p-value"))
 ```
 
 ### FDR adjusting the p-values	
@@ -485,7 +559,11 @@ where y and x represent probability and quantitative-predictor values, respectiv
 library("ggplot2")	
 k=7	
 x <- seq(-10, 10, 1)	
-plot(x, k/(1+exp(-x)), xlab="X-axis (Covariate)", ylab="Outcome k/(1+exp(-x)), k=7", type="l")	
+# plot(x, k/(1+exp(-x)), xlab="X-axis (Covariate)", ylab="Outcome k/(1+exp(-x)), k=7", type="l")	
+
+plot_ly(x=~x, y=~k/(1+exp(-x)), type="scatter", mode="line", name="Logistic model") %>%	
+  layout (title="Logistic Model Y=k/(1+exp(-x)), k=7",	
+          xaxis=list(title="x"), yaxis=list(title="Y=k/(1+exp(-x))"))
 ```
 
 The point of this logistic transformation is that:	
@@ -515,9 +593,10 @@ mydata <- read.csv("https://umich.instructure.com/files/405273/download?download
 # mydata$rank <- factor(mydata$SE)	
 mylogit <- glm(CO ~ SE, data = mydata, family = "binomial")	
 	
-# library(ggplot2)	
-ggplot(mydata, aes(x=SE, y=CO)) + geom_point() + 	
-  	stat_smooth(method="glm", method.args=list(family = "binomial"), se=FALSE)
+plot_ly(data=mydata, x=~SE, y=~CO, type="scatter", mode="markers", name="Data", marker=list(size=15)) %>%	
+  add_trace(x=~SE, y=~mylogit$fitted.values, type="scatter", mode="lines", name="Logit Model") %>%	
+  layout (title="Logistic Model Clinical Outcome ~ Surgeon's Experience",	
+          xaxis=list(title="SE"), yaxis=list(title="CO"), hovermode = "x unified")
 ```
 
 Graph of a logistic regression curve showing probability of surviving the surgery versus surgeon's experience.	
