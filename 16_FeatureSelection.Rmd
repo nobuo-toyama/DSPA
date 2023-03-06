@@ -1,5 +1,5 @@
 ---
-title: "16 Feature Selection"
+title: "16 Variable/Feature Selection"
 author: "nobuo"
 date: "2021/4/29"
 output: html_document
@@ -70,7 +70,7 @@ ALS.train <- read.csv("https://umich.instructure.com/files/1789624/download?down
 summary(ALS.train)
 ```
 
-There are 131 features and some of variables represent statistics like *max*, *min* and *median* values of the same clinical measurements.	
+There are 101 features and some of variables represent statistics like *max*, *min* and *median* values of the same clinical measurements.	
  	
 ## Step 3 - training a model on the data	
  	
@@ -98,7 +98,7 @@ The resulting `vs` object is of class `Boruta` and contains two important compon
 # install.packages("Boruta")	
 library(Boruta)	
 set.seed(123)	
-als <- Boruta(ALSFRS_slope ~ . - ID, data=ALS.train, doTrace=0)	
+als <- Boruta(ALSFRS_slope ~ . - ID, data=ALS.train, doTrace=2)	
 print(als)	
 als$ImpHistory[1:6, 1:10]
 ```
@@ -110,12 +110,21 @@ The importance scores for all features at every iteration are stored in the data
 *Note*: Again, running this code will take several minutes to complete.
 
 ```{r}
-plot(als, xlab="", xaxt="n")	
-lz <- lapply(1:ncol(als$ImpHistory), function(i)	
-als$ImpHistory[is.finite(als$ImpHistory[, i]), i])	
-names(lz) <- colnames(als$ImpHistory)	
-lb <- sort(sapply(lz, median))	
-axis(side=1, las=2, labels=names(lb), at=1:ncol(als$ImpHistory), cex.axis=0.5, font = 4)	
+library(plotly)	
+# plot(als, xlab="", xaxt="n")	
+# lz<-lapply(1:ncol(als$ImpHistory), function(i)	
+# als$ImpHistory[is.finite(als$ImpHistory[, i]), i])	
+# names(lz)<-colnames(als$ImpHistory)	
+# lb<-sort(sapply(lz, median))	
+# axis(side=1, las=2, labels=names(lb), at=1:ncol(als$ImpHistory), cex.axis=0.5, font = 4)	
+	
+df_long <- tidyr::gather(as.data.frame(als$ImpHistory), feature, measurement)	
+	
+plot_ly(df_long, y = ~measurement, color = ~feature, type = "box") %>%	
+  layout(title="Box-and-whisker Plots across all 102 Features (ALS Data)",	
+           xaxis = list(title="Features"),	
+           yaxis = list(title="Importance"),	
+           showlegend=F)
 ```
 
 We can see that plotting the graph is easy but extracting matched feature names may require more work. The basic plot is done by this call `plot(als, xlab="", xaxt="n")`, where `xaxt="n"` suppresses labeling the x-axis, but the following lines in the script reconstruct the correct x-axis labels, and `lz` is a list created by the `lapply()` function. Each element in `lz` contains all the important scores for a single feature in the original dataset. Also, we excluded all rejected features with infinite importance. Then, we sorted these non-rejected features according to their median importance and print them on the x-axis by using `axis()`. 	
@@ -125,15 +134,21 @@ We have already seen similar groups of boxplots back in [Chapter 2](https://www.
 It may be desirable to get rid of tentative features. Notice that this function should be used only when strict decision is highly desired, because this test is much weaker than Boruta and can lower the confidence of the final result.	
 
 ```{r}
-final.als <- TentativeRoughFix(als)	
-print(final.als)	
-final.als$finalDecision	
-getConfirmedFormula(final.als)	
-	
+final.als<-TentativeRoughFix(als)	
+print(final.als)
+```
+```{r}
+final.als$finalDecision
+```
+```{r}
+getConfirmedFormula(final.als)
+```
+
+```{r}
 # report the Boruta "Confirmed" & "Tentative" features, removing the "Rejected" ones	
 print(final.als$finalDecision[final.als$finalDecision %in% c("Confirmed", "Tentative")])	
 # how many are actually "confirmed" as important/salient?	
-impBoruta <- final.als$finalDecision[final.als$finalDecision %in% c("Confirmed")]; length(impBoruta)	
+impBoruta <- final.als$finalDecision[final.als$finalDecision %in% c("Confirmed")]; length(impBoruta)
 ```
 
 This shows the final features selection result.	
@@ -161,7 +176,7 @@ rf.train
 
 This calculation may take a long time to complete. The RFE invocation is different from `Boruta`. Here we have to specify the feature data frame and the class labels separately. Also, the `sizes=` option allows us to specify the number of features we want to include in the model. Let's try `sizes=c(10, 20, 30, 40)` to compare the model performance for alternative numbers of features.	
  	
-To visualize the results, we can plot the 5 different feature size combinations listed in the summary. The one with 30 features has the lowest RMSE measure. This result is similar to the `Boruta` output, which selected around 30 features.	
+To visualize the results, we can plot the 5 different feature size combinations listed in the summary. The one with 20 features has the lowest RMSE measure. This result is similar to the `Boruta` output, which selected around 30 features.	
 
 ```{r}
 plot(rf.train, type=c("g", "o"), cex=1, col=1:5)
@@ -180,7 +195,7 @@ The results are almost identical:
 intersect(predBoruta, predRFE)
 ```
 
-There are 26 common variables chosen by the two techniques, which suggests that both the `Boruta` and RFE methods are robust. Also, notice that the `Boruta` method can give similar results without utilizing the *size* option. If we want to consider 10 or more different sizes, the procedure will be quite time consuming. Thus, `Boruta` method is effective when dealing with complex real world problems.	
+There are 20 common variables chosen by the two techniques, which suggests that both the `Boruta` and RFE methods are robust. Also, notice that the `Boruta` method can give similar results without utilizing the *size* option. If we want to consider 10 or more different sizes, the procedure will be quite time consuming. Thus, `Boruta` method is effective when dealing with complex real world problems.	
  	
 ### Comparing with stepwise feature selection	
  	
@@ -194,7 +209,7 @@ base.mod <- lm(ALSFRS_slope ~ 1 , data= data2)
 all.mod <- lm(ALSFRS_slope ~ . , data= data2)	
 # ols_step <- lm(ALSFRS_slope ~ ., data=data2)	
 ols_step <- step(base.mod, scope = list(lower = base.mod, upper = all.mod), direction = 'both', k=2, trace = F)	
-summary(ols_step); # ols_step
+summary(ols_step) # ols_step
 ```
 
 We can report the stepwise "Confirmed" (important) features:
@@ -245,9 +260,9 @@ summary(alzh)
 The data summary shows that we have several factor variables. After converting their type to numeric we find some missing data. We can manage this issue by selecting only the complete observation of the original dataset or by using multivariate imputation, see [Chapter 2](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/02_ManagingData.html). 	
 
 ```{r}
-chrtofactor　<-　c(3, 5, 8, 10, 21:22, 51:54)	
+chrtofactor<-c(3, 5, 8, 10, 21:22, 51:54)	
 alzh[alzh=="."] <- NA  # replace all missing "." values with "NA"	
-alzh[chrtofactor] <- data.frame(apply(alzh[chrtofactor], 2, as.numeric))	
+alzh[chrtofactor]<-data.frame(apply(alzh[chrtofactor], 2, as.numeric))	
 alzh<-alzh[complete.cases(alzh), ]
 ```
 
