@@ -732,7 +732,6 @@ The *goal* of this demonstration is to use `OLS`, `ridge regression`, and `LASSO
 We can utilize the `glmnet` package in R for most calculations.	
 
 ```{r}
-#### Initial Stuff ####	
 # clean up	
 rm(list=ls())	
 # load required packages	
@@ -749,24 +748,30 @@ seed = 1234
 # (05_PPMI_top_UPDRS_Integrated_LongFormat1.csv)	
 data1 <- read.table('https://umich.instructure.com/files/330397/download?download_frd=1', sep=",", header=T)    	
 # we will deal with missing values using multiple imputation later. For now, let's just ignore incomplete cases	
-data1.completeRowIndexes <- complete.cases(data1); table(data1.completeRowIndexes)	
-prop.table(table(data1.completeRowIndexes))	
+data1.completeRowIndexes <- complete.cases(data1); table(data1.completeRowIndexes)
+prop.table(table(data1.completeRowIndexes))
+```
+```{r}
 attach(data1)	
 # View(data1[data1.completeRowIndexes, ])	
 	
 # define response and predictors	
 y <- data1$UPDRS_part_I + data1$UPDRS_part_II + data1$UPDRS_part_III	
-table(y)   # Show Clinically relevant classification	
+table(y)   # Show Clinically relevant classification
+```
+```{r}
 y <- y[data1.completeRowIndexes]	
 	
 # X = scale(data1[,])  # Explicit Scaling is not needed, as glmnet auto standardizes predictors	
 # X = as.matrix(data1[, c("R_caudate_Volume", "R_putamen_Volume", "Weight", "Age", "chr17_rs12185268_GT")])  # X needs to be a matrix, not a data frame	
-drop_features <- c("FID_IID", "ResearchGroup", "PDRS_part_I", "UPDRS_part_II", "UPDRS_part_III")	
+drop_features <- c("FID_IID", "ResearchGroup", "UPDRS_part_I", "UPDRS_part_II", 	
+                   "UPDRS_part_III", "time_visit")	
 X <- data1[ , !(names(data1) %in% drop_features)]	
 X = as.matrix(X)   # remove columns: index, ResearchGroup, and y=(PDRS_part_I + UPDRS_part_II + UPDRS_part_III)	
 X <- X[data1.completeRowIndexes, ]	
-summary(X)	
-	
+summary(X)
+```
+```{r}
 # randomly split data into training (80%) and test (20%) sets	
 set.seed(seed)	
 train = sample(1 : nrow(X), round((4/5) * nrow(X)))	
@@ -808,11 +813,32 @@ We will show how to visualize the relations between the regularization parameter
 The plot for the *LASSO* results can be obtained via:	
 
 ```{r}
+library(RColorBrewer)	
 ### Plot Solution Path ###	
 # LASSO	
-plot(fitLASSO, xvar="lambda", label="TRUE")	
-# add label to upper x-axis	
-mtext("LASSO regularizer: Number of Nonzero (Active) Coefficients", side=3, line=2.5)
+# plot(fitLASSO, xvar="lambda", label="TRUE")	
+# # add label to upper x-axis	
+# mtext("LASSO regularizer: Number of Nonzero (Active) Coefficients", side=3, line=2.5)	
+	
+plot.glmnet <- function(glmnet.object, name="") {	
+  df <- as.data.frame(t(as.matrix(glmnet.object$beta)))	
+  df$loglambda <- log(glmnet.object$lambda)	
+  df <- as.data.frame(df)	
+  data_long <- gather(df, Variable, coefficient, 1:(dim(df)[2]-1), factor_key=TRUE)	
+  	
+  plot_ly(data = data_long) %>%	
+    # add error bars for each CV-mean at log(lambda)	
+    add_trace(x = ~loglambda, y = ~coefficient, color=~Variable, 	
+              colors=colorRampPalette(brewer.pal(10,"Spectral"))(dim(df)[2]),  # "Dark2", 	
+              type = 'scatter', mode = 'lines',	
+              name = ~Variable) %>%	
+    layout(title = paste0(name, " Model Coefficient Values"),	
+							xaxis = list(title = paste0("log(",TeX("\\lambda"),")"),	side="bottom",  showgrid = TRUE),	
+						  hovermode = "x unified", legend = list(orientation='h'),	
+							yaxis = list(title = ' Model Coefficient Values',	side="left", showgrid = TRUE))	
+}	
+	
+plot.glmnet(fitLASSO, name="LASSO")
 ```
 
 Similarly, the plot for the *Ridge* regularization can be obtained by:
@@ -820,9 +846,11 @@ Similarly, the plot for the *Ridge* regularization can be obtained by:
 ```{r}
 ### Plot Solution Path ###	
 # Ridge	
-plot(fitRidge, xvar="lambda", label="TRUE")	
-# add label to upper x-axis	
-mtext("Ridge regularizer: Number of Nonzero (Active) Coefficients", side=3, line=2.5)
+# plot(fitRidge, xvar="lambda", label="TRUE")	
+# # add label to upper x-axis	
+# mtext("Ridge regularizer: Number of Nonzero (Active) Coefficients", side=3, line=2.5)	
+	
+plot.glmnet(fitRidge, name="Ridge")
 ```
 
 ## Regression Solution Paths - Ridge vs. LASSO	
@@ -849,7 +877,7 @@ The effect of the penalty term on the objective function is separate from the *f
 Below is a hands-on demonstration of that process using the following simple quadratic equation solver.	
 
 ```{r}
-require(needs)	
+library(needs)	
 	
 # Constructing Quadratic Formula	
 quadraticEquSolver <- function(a,b,c){	
@@ -868,7 +896,7 @@ quadraticEquSolver <- function(a,b,c){
 # Constructing delta	
 delta<-function(a,b,c){	
   b^2-4*a*c	
-}
+}	
 ```
 
 To make this realistic, we will use the [MLB dataset](https://umich.instructure.com/files/330381/download?download_frd=1) to first fit an OLS model. The dataset contains $1,034$ records of *heights and weights* for some current and recent Major League Baseball (MLB) Players. 	
@@ -889,22 +917,24 @@ library("ggplot2")
 mlb<- read.table('https://umich.instructure.com/files/330381/download?download_frd=1', as.is=T, header=T)	
 str(mlb)	
 fit<-lm(Height~Weight+Age-1, data = as.data.frame(scale(mlb[,4:6])))	
-points = data.frame(x=c(0,fit$coefficients[1]),y=c(0,fit$coefficients[2]),z=c("(0,0)","OLS Coef"))	
-	
-Y = scale(mlb$Height)	
+points = data.frame(x=c(0,fit$coefficients[1]),y=c(0,fit$coefficients[2]),z=c("(0,0)","OLS Coef"))
+```
+```{r}
+Y=scale(mlb$Height)	
 X = scale(mlb[,c(5,6)])	
-beta1 = seq(-0.556, 1.556, length.out = 100)	
-beta2 = seq(-0.661, 0.3386, length.out = 100)	
+beta1=seq(-0.556, 1.556, length.out = 100)	
+beta2=seq(-0.661, 0.3386, length.out = 100)	
 df <- expand.grid(beta1 = beta1, beta2 = beta2)	
 b = as.matrix(df)	
 df$sse <- rep(t(Y)%*%Y,100*100) - 2*b%*%t(X)%*%Y + diag(b%*%t(X)%*%X%*%t(b))
 ```
 
+
 ```{r}
 base <- ggplot(df) + 	
   stat_contour(aes(beta1, beta2, z = sse),
                breaks = round(quantile(df$sse, seq(0, 0.2, 0.03)), 0), 	
-               size = 0.5,color="darkorchid2",alpha=0.8)+ 	
+               linewidth = 0.5,color="darkorchid2",alpha=0.8)+ 	
   scale_x_continuous(limits = c(-0.4,1))+	
   scale_y_continuous(limits = c(-0.55,0.4))+	
   coord_fixed(ratio=1)+	
@@ -1053,6 +1083,40 @@ Common choices of $n$ are 5, 10, and $n$ (which corresponds to `leave-one-out` C
 Now, let's apply an internal statistical cross-validation to assess the quality of the LASSO and Ridge models, based on our Parkinson's disease case-study. Recall our split of the PD data into training (yTrain, XTrain) and testing (yTest, XTest) sets.	
 
 ```{r}
+plotCV.glmnet <- function(cv.glmnet.object, name="") {	
+  df <- as.data.frame(cbind(x=log(cv.glmnet.object$lambda), y=cv.glmnet.object$cvm, 	
+                           errorBar=cv.glmnet.object$cvsd), nzero=cv.glmnet.object$nzero)	
+	
+  featureNum <- cv.glmnet.object$nzero	
+  xFeature <- log(cv.glmnet.object$lambda)	
+  yFeature <- max(cv.glmnet.object$cvm)+max(cv.glmnet.object$cvsd)	
+  dataFeature <- data.frame(featureNum, xFeature, yFeature)	
+	
+  plot_ly(data = df) %>%	
+    # add error bars for each CV-mean at log(lambda)	
+    add_trace(x = ~x, y = ~y, type = 'scatter', mode = 'markers',	
+        name = 'CV MSE', error_y = ~list(array = errorBar)) %>% 	
+    # add the lambda-min and lambda 1SD vertical dash lines	
+    add_lines(data=df, x=c(log(cv.glmnet.object$lambda.min), log(cv.glmnet.object$lambda.min)), 	
+              y=c(min(cv.glmnet.object$cvm)-max(df$errorBar), max(cv.glmnet.object$cvm)+max(df$errorBar)),	
+              showlegend=F, line=list(dash="dash"), name="lambda.min", mode = 'lines+markers') %>%	
+    add_lines(data=df, x=c(log(cv.glmnet.object$lambda.1se), log(cv.glmnet.object$lambda.1se)), 	
+              y=c(min(cv.glmnet.object$cvm)-max(df$errorBar), max(cv.glmnet.object$cvm)+max(df$errorBar)), 	
+              showlegend=F, line=list(dash="dash"), name="lambda.1se") %>%	
+    # Add Number of Features Annotations on Top	
+    add_trace(dataFeature, x = ~xFeature, y = ~yFeature, type = 'scatter', name="Number of Features",	
+        mode = 'text', text = ~featureNum, textposition = 'middle right',	
+        textfont = list(color = '#000000', size = 9)) %>%	
+    # Add top x-axis (non-zero features)	
+    # add_trace(data=df, x=~c(min(cv.glmnet.object$nzero),max(cv.glmnet.object$nzero)),	
+    #           y=~c(max(y)+max(errorBar),max(y)+max(errorBar)), showlegend=F, 	
+    #           name = "Non-Zero Features", yaxis = "ax", mode = "lines+markers", type = "scatter") %>%	
+    layout(title = paste0("Cross-Validation MSE (", name, ")"),	
+							xaxis = list(title=paste0("log(",TeX("\\lambda"),")"),	side="bottom", showgrid=TRUE), # type="log"	
+							hovermode = "x unified", legend = list(orientation='h'),  # xaxis2 = ax,  	
+							yaxis = list(title = cv.glmnet.object$name,	side="left", showgrid = TRUE))	
+}	
+	
 #### 10-fold cross validation ####	
 # LASSO	
 library("glmnet")	
@@ -1062,29 +1126,35 @@ registerDoParallel(cl)
 set.seed(seed)  # set seed 	
 # (10-fold) cross validation for the LASSO	
 cvLASSO = cv.glmnet(XTrain, yTrain, alpha = 1, parallel=TRUE)	
-plot(cvLASSO)	
-mtext("CV LASSO: Number of Nonzero (Active) Coefficients", side=3, line=2.5)	
 	
+# plot(cvLASSO)	
+# mtext("CV LASSO: Number of Nonzero (Active) Coefficients", side=3, line=2.5)	
+	
+plotCV.glmnet(cvLASSO, "LASSO")	
+```
+```{r}
 # Report MSE LASSO	
 predLASSO <-  predict(cvLASSO, s = cvLASSO$lambda.1se, newx = XTest)	
 testMSE_LASSO <- mean((predLASSO - yTest)^2); testMSE_LASSO
 ```
-
 ```{r}
 #### 10-fold cross validation ####	
 # Ridge Regression	
 set.seed(seed)  # set seed 	
 # (10-fold) cross validation for Ridge Regression	
 cvRidge = cv.glmnet(XTrain, yTrain, alpha = 0, parallel=TRUE)	
-plot(cvRidge)	
-mtext("CV Ridge: Number of Nonzero (Active) Coefficients", side=3, line=2.5)	
 	
+# plot(cvRidge)	
+# mtext("CV Ridge: Number of Nonzero (Active) Coefficients", side=3, line=2.5)	
+	
+plotCV.glmnet(cvRidge, "Ridge")	
+```
+```{r}
 # Report MSE Ridge	
 predRidge <-  predict(cvRidge, s = cvRidge$lambda.1se, newx = XTest)	
 testMSE_Ridge <- mean((predRidge - yTest)^2); testMSE_Ridge	
 stopCluster(cl)
 ```
-
 Note that the `predict()` method applied to `cv.gmlnet` or `glmnet` forecasting models is effectively a function wrapper to `predict.gmlnet()`. According to what you would like to get as a **prediction output**, you can use `type="..."` to specify one of the following types of prediction outputs:	
 	
 * `type="link"`, reports the linear predictors for "binomial", "multinomial", "poisson" or "cox" models; for "gaussian" models it gives the fitted values. 	
@@ -1169,6 +1239,28 @@ coefplot(betaHatLASSO[2:27], sd = rep(0, 26), pch=1, add = TRUE, col.pts = "red"
 coefplot(betaHatRidge[2:27], sd = rep(0, 26), pch=2, add = TRUE, col.pts = "blue", cex.pts = 3)	
 legend("bottomright", c("OLS", "LASSO", "Ridge"), col = c("black", "red", "blue"), pch = c(0, 1 , 2), bty = "o", cex = 2)	
 # par()
+```
+```{r}
+# # Graph 27 regression coefficients (exclude intercept [1], betaHat indices 2:27)	
+# coefplot(betaHatOLS[2:27], sd = rep(0, 26), pch=0, cex.pts = 3, main = "Regression Coefficient Estimates", varnames = varNames)	
+# coefplot(betaHatLASSO[2:27], sd = rep(0, 26), pch=1, add = TRUE, col.pts = "red", cex.pts = 3)	
+# coefplot(betaHatRidge[2:27], sd = rep(0, 26), pch=2, add = TRUE, col.pts = "blue", cex.pts = 3)	
+# legend("bottomright", c("OLS", "LASSO", "Ridge"), col = c("black", "red", "blue"), pch = c(0, 1 , 2), bty = "o", cex = 2)	
+	
+df <- as.data.frame(cbind(Feature=attributes(betaHatOLS)$names[2:26], OLS=betaHatOLS[2:26],	
+                          LASSO=betaHatLASSO[2:26], Ridge=betaHatRidge[2:26]))	
+	
+data_long <- gather(df, Method, value, OLS:Ridge, factor_key=TRUE)	
+data_long$value <- as.numeric(data_long$value)	
+	
+# Note that Plotly will automatically order your axes by the order that is present in the data	
+# When using character vectors - order is alphabetic; in case of factors the order is by levels. 	
+# To override this behavior, specify categoryorder and categoryarray for the appropriate axis in the layout	
+formY <- list(categoryorder = "array", categoryarray = df$Feature)	
+	
+plot_ly(data_long, x=~value, y=~Feature, type="scatter", mode="markers", 	
+        marker=list(size=20), color=~Method, symbol=~Method, symbols=c('circle-open','x-open','hexagon-open')) %>%	
+  layout(yaxis = formY)	
 ```
 
 ## Model Performance	
@@ -1262,7 +1354,9 @@ fdp(result$selected)
 ```
 
 This yields an approximate FDR of $0.10$.	
- 	
+
+The `knockoff` package includes several other test statistics, with appropriate names prefixed by *knockoff.stat*. For instance, we can use a statistic based on forward selection ($fs$) and a lower target FDR of $0.10$.
+
 The default settings of the knockoff filter uses a test statistic based on LASSO -- `knockoff.stat.lasso_signed_max`, which computes the $W_j$ statistics that quantify the discrepancy between a real ($X_j$) and a decoy, knockoff ($\tilde{X}_j$), feature coefficient estimates:	
 	
 $$W_j=\max(X_j, \tilde{X}_j) \times sgn(X_j - \tilde{X}_j). $$	
@@ -1330,8 +1424,10 @@ First, we download the data and read it into data frames.
 data1 <- read.table('https://umich.instructure.com/files/330397/download?download_frd=1', sep=",", header=T)    	
 # we will deal with missing values using multiple imputation later. For now, let's just ignore incomplete cases	
 data1.completeRowIndexes <- complete.cases(data1) # table(data1.completeRowIndexes)	
-prop.table(table(data1.completeRowIndexes))	
-	
+prop.table(table(data1.completeRowIndexes))
+```
+
+```{r}
 # attach(data1)	
 # View(data1[data1.completeRowIndexes, ])	
 data2 <- data1[data1.completeRowIndexes, ]	
@@ -1347,15 +1443,19 @@ We now construct the design matrix $X$ and the response vector $Y$. The features
 # define response and predictors	
 Y <- data1$UPDRS_part_I + data1$UPDRS_part_II + data1$UPDRS_part_III	
 table(Y)   # Show Clinically relevant classification	
-Y <- Y[data1.completeRowIndexes]	
-	
+Y <- Y[data1.completeRowIndexes]
+```
+```{r}
 # X = scale(ncaaData[, -20])  # Explicit Scaling is not needed, as glmnet auto standardizes predictors	
 # X = as.matrix(data1[, c("R_caudate_Volume", "R_putamen_Volume", "Weight", "Age", "chr17_rs12185268_GT")])  # X needs to be a matrix, not a data frame	
 drop_features <- c("FID_IID", "ResearchGroup", "UPDRS_part_I", "UPDRS_part_II", "UPDRS_part_III")	
 X <- data1[ , !(names(data1) %in% drop_features)]	
 X = as.matrix(X)   # remove columns: index, ResearchGroup, and y=(PDRS_part_I + UPDRS_part_II + UPDRS_part_III)	
 X <- X[data1.completeRowIndexes, ]; dim(X)	
-summary(X)	
+summary(X)
+```
+
+```{r}
 mode(X) <- 'numeric'	
 	
 Dx_label <- Dx_label[data1.completeRowIndexes]; length(Dx_label)
@@ -1366,13 +1466,18 @@ Dx_label <- Dx_label[data1.completeRowIndexes]; length(Dx_label)
 The knockoff filter is designed to control the FDR under Gaussian noise. A quick inspection of the response vector shows that it is highly non-Gaussian.	
 
 ```{r}
-hist(Y, breaks='FD')
+h <- hist(Y, breaks='FD', plot = F)	
+plot_ly(x = h$mids, y = h$density, type = "bar") %>%	
+   layout(bargap=0.1, title="Histogram of Computed Variable Y = (UPDRS) part_I + part_II + part_III")
 ```
 
 A `log-transform` may help to stabilize the clinical response measurements:
 
 ```{r}
-hist(log(Y), breaks='FD')
+# hist(log(Y), breaks='FD')	
+h <- hist(log(Y), breaks='FD', plot = F)	
+plot_ly(x = h$mids, y = h$density, type = "bar") %>%	
+   layout(bargap=0.1, title="Histogram of log(Y)")
 ```
 
 For **binary outcome variables**, or **ordinal categorical variables**, we can employ the `logistic curve` to transform the polytomous outcomes into real values.	
@@ -1393,7 +1498,8 @@ Y <- data1$UPDRS_part_I + data1$UPDRS_part_II + data1$UPDRS_part_III
 table(Y)   # Show Clinically relevant classification	
 Y <- as.matrix(Y[data1.completeRowIndexes]); colnames(Y) <- "y"	
 mode(Y)	
-	
+```
+```{r}
 # X = scale(ncaaData[,-20])  # Explicit Scaling is not needed, as glmnet auto standardizes predictors	
 # X = as.matrix(data1[,c("R_caudate_Volume", "R_putamen_Volume","Weight", "Age", "chr17_rs12185268_GT")])  # X needs to be a matrix, not a data frame	
 drop_features <- c("FID_IID", "ResearchGroup", "UPDRS_part_I", "UPDRS_part_II", "UPDRS_part_III")	
@@ -1401,12 +1507,15 @@ X <- data1[ , !(names(data1) %in% drop_features)]
 X = as.matrix(X)   # remove columns: index, ResearchGroup, and y=(PDRS_part_I + UPDRS_part_II + UPDRS_part_III)	
 X <- X[data1.completeRowIndexes,]; dim(X); mode(X)	
 	
-View(cbind(X,Y))	
-	
+# View(cbind(X,Y))	
+```
+```{r}
 # Direct call to knockoff filtering looks like this:	
 fdr <- 0.4	
 set.seed(1234)	
 result = knockoff.filter(X, Y, fdr=fdr, knockoffs=create.second_order); print(result$selected) # Old: knockoffs='equicorrelated')	
+```
+```{r}
 # knockoff::create.fixed		Fixed-X knockoffs	
 #knockoff::create.gaussian		Model-X Gaussian knockoffs	
 #knockoff::create.second_order		Second-order Gaussian knockoffs	
@@ -1418,6 +1527,8 @@ result = knockoff.filter(X, Y, fdr=fdr, knockoffs=create.second_order); print(re
 #knockoff::create.vectorize_matrix		Vectorize a matrix into the SCS format	
 	
 names(result$selected)	
+```
+```{r}
 knockoff_selected <- names(result$selected)	
   	
 # Run BH (Benjamini-Hochberg)	
@@ -1427,16 +1538,18 @@ p.values = coef(summary(lm.fit))[,4]
 cutoff = max(c(0, which(sort(p.values) <= fdr * (1:k) / k)))	
 BH_selected = names(which(p.values <= fdr * cutoff / k))	
 	
-knockoff_selected; BH_selected	
-	
-list(Knockoff = knockoff_selected, BHq = BH_selected)	
-	
+# knockoff_selected; BH_selected
+list(Knockoff = knockoff_selected, BHq = BH_selected)
+```
+```{r}
 # Alternatively, for more flexible Knockoff invocation	
 set.seed(1234)	
 knockoffs = function(X) create.gaussian(X, 0, Sigma=diag(dim(X)[2])) # identify var-covar matrx Sigma of rank equal to the number of features	
 stats = function(X, Xk, y) stat.glmnet_coefdiff(X, Xk, y, nfolds=10) # The Output X_k is an n-by-p matrix of knockoff features	
-result = knockoff.filter(X, Y, fdr=fdr, knockoffs=knockoffs, statistic=stats); print(result$selected)	
-	
+result = knockoff.filter(X, Y, fdr=fdr, knockoffs=knockoffs, statistic=stats); print(result$selected)
+```
+
+```{r}
 # Housekeeping: remove the "X" prefixes in the BH_selected list of features	
 for(i in 1:length(BH_selected)){	
   BH_selected[i] <- substring(BH_selected[i], 2)	
