@@ -67,9 +67,10 @@ beijing.pm25[is.na(beijing.pm25$Value), 9] <- floor(mean(beijing.pm25$Value, na.
 Now, let's observe the trend of hourly average PM2.5 across one day. You can see a significant pattern: The PM2.5 level peeks in the afternoons and is the lowest in the early mornings and exhibits approximate periodic boundary conditions (these patterns oscillate daily). 	
 
 ```{r}
-require(ggplot2)	
+library(plotly)	
+library(ggplot2)	
 id = 1:nrow(beijing.pm25)	
-mat = matrix(0, nrow=24, ncol=3)	
+mat = matrix(0,nrow=24,ncol=3)	
 stat = function(x){	
   c(mean(beijing.pm25[iid,"Value"]),quantile(beijing.pm25[iid,"Value"],c(0.2,0.8)))	
 }	
@@ -80,13 +81,18 @@ for (i in 1:24){
 	
 mat <- as.data.frame(mat)	
 colnames(mat) <- c("mean","20%","80%")	
-mat$time = c(15:23,0:14)	
+#mat$time = c(15:23,0:14)	
+mat$time = c(1:24)	
 require(reshape2)	
 dt <- melt(mat,id="time")	
-colnames(dt)	
-ggplot(data = dt,mapping = aes(x=time,y=value,color = variable))+geom_line()+	
-  scale_x_continuous(breaks = 0:23)+ggtitle("Beijing hour average PM2.5 from 2008-2016")
+# colnames(dt)	
+# ggplot(data = dt,mapping = aes(x=time,y=value,color = variable))+geom_line()+	
+#   scale_x_continuous(breaks = 0:23)+ggtitle("Beijing hour average PM2.5 from 2008-2016")	
+	
+plot_ly(data = dt, x=~time, y=~value, color = ~variable, type="scatter", mode="markers+lines") %>%	
+  layout(title="Beijing daily 24-hour average PM2.5 (2008-2016)")
 ```
+
 
 Are there any daily or monthly trends? We can start the data interrogation by building an ARIMA model and examining detailed patterns in the data.	
 	
@@ -97,7 +103,17 @@ To begin with, we can visualize the overall trend by plotting PM2.5 values again
 ```{r}
 library(plyr)	
 ts <- ts(beijing.pm25$Value, start=1, end=69335, frequency=1)	
-ts.plot(ts)
+# ts.plot(ts)	
+	
+dateTime <- readr::parse_datetime(beijing.pm25$Date..LST., "%m/%d/%Y %h:%M")	
+tsValue <- ifelse(beijing.pm25$Value>=0, beijing.pm25$Value, -100)	
+df <- as.data.frame(cbind(dateTime=dateTime, tsValue=tsValue))	
+	
+plot_ly(x=~dateTime, y=~tsValue, type="scatter", mode="lines") %>%	
+  layout(	
+    title = "Time Series - Beijing daily 24-hour average PM2.5 (2008-2016)",	
+    xaxis = list(title = "date"), yaxis=list(title="PM2.5 Measurement"))	
+    # '2008-04-08 15:00:00 UTC', '2016-04-30 23:00:00 UTC')
 ```
 
 The dataset is recorded hourly and the eight-year time interval includes about $69,335$ hours of records. Therefore, we start at the first hour and end with $69,335^{th}$ hour. Each hour has a univariate [PM2.5 AQI value measurement](https://airnow.gov/index.cfm?action=resources.conc_aqi_calc), so `frequency=1`.	
@@ -111,15 +127,28 @@ To do this we need to install `TTR` package.
 ```{r}
 # install.packages("TTR")	
 library(TTR)	
-bj.month <- SMA(ts, n=720)	
-plot.ts(bj.month, main="Monthly PM2.5 Level SMA", ylab="PM2.5 AQI")
+bj.month <- SMA(tsValue, n=720)	
+	
+# plot.ts(bj.month, main="Monthly PM2.5 Level SMA", ylab="PM2.5 AQI")	
+	
+plot_ly(x=~dateTime, y=~bj.month, type="scatter", mode="lines") %>%	
+  layout(	
+    title = "Beijing Simple Moving Average Monthly PM2.5 Levels",	
+    xaxis = list(title = "date"), yaxis=list(title="Montly PM2.5 SMA"))	
 ```
 
 Here we chose `n` to be $24*30=720$ and we can see some pattern. It seems that for the first 4 years (or approximately 35,040 hours) the AQI fluctuates less than the last 5 years. Let's see what happens if we use *exponentially-weighted mean*, instead of *arithmetic mean*.	
 
 ```{r}
-bj.month<-EMA(ts, n=1, ratio = 2/(720+1))	
-plot.ts(bj.month, main="Monthly PM2.5 Level EMA", ylab="PM2.5 AQI")	
+bj.month <- EMA(tsValue, n=1, ratio = 2/(720+1))	
+# plot.ts(bj.month, main="Monthly PM2.5 Level EMA", ylab="PM2.5 AQI")	
+	
+plot_ly(x=~dateTime, y=~tsValue, type="scatter", mode="lines", opacity=0.2, name="Observed") %>%	
+  add_trace(x=~dateTime, y=~SMA(tsValue, n=720), type="scatter", mode="lines", opacity=1.0, name="SMA") %>%	
+  add_trace(x=~dateTime, y=~bj.month, type="scatter", mode="lines", name="EMA") %>%  # line = list(dash = 'dot')	
+  layout(	
+    title = "Beijing PM2.5 Levels with EMA and SMA Smoothing",	
+    xaxis = list(title = "date"), yaxis=list(title="PM2.5 Values"))
 ```
 
 The pattern seems less obvious in this graph. Here we uses exponential smoothing ratio of $2/(n+1)$.	
@@ -139,21 +168,34 @@ $$y_t^*=y_t'-y_{t-1}'=y_t-2y_{t-1}+y_{t-2}.$$
 Let's see which differencing method is proper for the Beijing PM2.5 dataset. Function `diff()` in R base can be used to calculate differencing. We can plot the differences by `plot.ts()`.	
 
 ```{r}
-par(mfrow= c(2, 1))	
-bj.diff2<-diff(ts, differences=2)	
-plot.ts(bj.diff2, main="2nd differencing")	
-bj.diff<-diff(ts, differences=1)	
-plot.ts(bj.diff, main="1st differencing")
+#par(mfrow= c(2, 1))	
+bj.diff2<-diff(tsValue, differences=2)	
+#plot.ts(bj.diff2, main="2nd differencing")	
+bj.diff<-diff(tsValue, differences=1)	
+# plot.ts(bj.diff, main="1st differencing")	
+	
+plot_ly(x=~dateTime[2:length(dateTime)], y=~bj.diff, type="scatter", mode="lines", name="1st diff", opacity=0.5) %>%	
+  add_trace(x=~dateTime[3:length(dateTime)], y=~bj.diff2, type="scatter", mode="lines", 	
+            name="2nd diff", opacity=0.5)  %>%	
+  layout(title = "Beijing PM2.5 Levels - First & Second Differencing", legend = list(orientation='h'),	
+    xaxis = list(title = "date"), yaxis=list(title="PM2.5"))
 ```
 
 Neither of them appears quite stationary. In this case, we can consider using some smoothing techniques on the data like we just did above (`bj.month<-SMA(ts, n=720)`). Let's see if smoothing by exponentially-weighted mean (EMA) can help making the data approximately stationary.	
 
 ```{r}
-par(mfrow=c(2, 1))	
+bj.diff  <- diff(bj.month, differences=1)	
 bj.diff2 <- diff(bj.month, differences=2)	
-plot.ts(bj.diff2, main="2nd differencing")	
-bj.diff <- diff(bj.month, differences=1)	
-plot.ts(bj.diff, main="1st differencing")
+	
+# par(mfrow=c(2, 1))	
+# plot.ts(bj.diff2, main="2nd differencing")	
+# plot.ts(bj.diff, main="1st differencing")	
+	
+plot_ly(x=~dateTime[2:length(dateTime)], y=~bj.diff, type="scatter", mode="lines", name="1st diff", opacity=0.5) %>%	
+  add_trace(x=~dateTime[3:length(dateTime)], y=~bj.diff2, type="scatter", mode="lines", 	
+            name="2nd diff", opacity=0.5)  %>%	
+  layout(title = "Beijing EMA PM2.5 Levels - First & Second Differencing", legend = list(orientation='h'),	
+    xaxis = list(title = "date"), yaxis=list(title="EMA PM2.5"))
 ```
 
 Both of these EMA-filtered graphs have tempered variance and appear pretty stationary with respect to the first two moments, mean and variance.	
@@ -163,9 +205,30 @@ Both of these EMA-filtered graphs have tempered variance and appear pretty stati
 To decide the auto-regressive (AR) and moving average (MA) parameters in the model we need to create **autocorrelation factor (ACF)** and **partial autocorrelation factor (PACF) plots**. PACF may suggest a value for the AR-term parameter $p$, and ACF may help us determine the MA-term parameter $q$. We plot the ACF and PACF, we use approximately stationary time series `bj.diff` objects.	
 
 ```{r}
-par(mfrow=c(1, 2))	
-acf(ts(bj.diff), lag.max = 20, main="ACF")	
-pacf(ts(bj.diff), lag.max = 20, main="PACF")
+# par(mfrow=c(1, 2))	
+acf1 <- acf(bj.diff, lag.max = 20, main="ACF", plot=F)	
+# 95% CI: https://github.com/SurajGupta/r-source/blob/master/src/library/stats/R/acf.R	
+ci <- qnorm((1 + 0.95)/2)/sqrt(length(bj.diff))	
+	
+plot_ly(x = ~acf1$lag[,1,1], y = ~acf1$acf[,1,1], type = "bar", name="ACF") %>%	
+  # add CI lines	
+  add_lines(x=~c(acf1$lag[1,1,1], acf1$lag[length(acf1$lag),1,1]), y=~c(ci, ci), 	
+            mode="lines", name="Upper CI)", line=list(dash='dash')) %>%	
+  add_lines(x=~c(acf1$lag[1,1,1], acf1$lag[length(acf1$lag),1,1]), y=~c(-ci, -ci), 	
+            mode="lines", name="Lower CI)", line=list(dash='dash')) %>%	
+  layout(bargap=0.8, title="ACF Plot Beijing EMA PM2.5 Levels - First Differencing",	
+         xaxis=list(title="lag"), yaxis=list(title="ACF"))	
+```
+```{r}
+pacf1 <- pacf(ts(bj.diff), lag.max = 20, main="PACF", plot=F)	
+plot_ly(x = ~pacf1$lag[,1,1], y = ~pacf1$acf[,1,1], type = "bar", name="PACF") %>%	
+   # add CI lines	
+  add_lines(x=~c(pacf1$lag[1,1,1], acf1$lag[length(pacf1$lag),1,1]), y=~c(ci, ci), 	
+            mode="lines", name="Upper CI)", line=list(dash='dash')) %>%	
+  add_lines(x=~c(acf1$lag[1,1,1], acf1$lag[length(acf1$lag),1,1]), y=~c(-ci, -ci), 	
+            mode="lines", name="Lower CI)", line=list(dash='dash')) %>%	
+  layout(bargap=0.8, title="PACF Plot Beijing EMA PM2.5 Levels - First Differencing",	
+         xaxis=list(title="lag"), yaxis=list(title="Partial ACF"))
 ```
 
 * Pure AR model, ($p=0$), will have a cut off at lag $q$ in the PACF. 	
@@ -180,7 +243,22 @@ We can examine for seasonal effects in the data using `stats::stl()`, a flexible
 count_ma = ts(bj.month, frequency=30*24)	
 decomp = stl(count_ma, s.window="periodic")	
 deseasonal_count <- forecast::seasadj(decomp)	
-plot(decomp)
+# plot(decomp)	
+	
+plot_ly(x=~dateTime, y=~tsValue, type="scatter", mode="lines") %>%	
+  layout(	
+    title = "Time Series - Beijing daily 24-hour average PM2.5 (2008-2016)",	
+    xaxis = list(title = "date"), yaxis=list(title="PM2.5 Measurement"))
+```
+```{r}
+figTS_Data    <- plot_ly(x=~dateTime, y=~tsValue, type="scatter", mode="lines", name="TS Data")	
+figSeasonal   <- plot_ly(x=~dateTime, y=~decomp$time.series[,1], type='scatter', mode='lines', name="seasonal")	
+figTrend      <- plot_ly(x=~dateTime, y=~decomp$time.series[,2], type='scatter', mode='lines', name="trend")	
+figRemainder  <- plot_ly(x=~dateTime, y=~decomp$time.series[,3], type='scatter', mode='lines', name="remainder")	
+fig <- subplot(figTS_Data, figSeasonal, figTrend, figRemainder, nrows = 4) %>% 	
+  layout(title = list(text = "Decomposition of Beijing PM2.5 Time-Series Data (2008-2016)"),	
+         hovermode = "x unified", legend = list(orientation='h'))	
+fig	
 ```
 
 The augmented Dickey-Fuller (ADF) test, `tseries::adf.test` can be used to examine the time series stationarity. The *null hypothesis is that the series is non-stationary*. The ADF test quantifies if the change in the series can be explained by a lagged value and a linear trend. Non-stationary series can be *corrected* by differencing to remove trends or cycles. 	
@@ -201,7 +279,25 @@ As we have some evidence suggesting *d=1*, the `auto.arima()` function in the `f
 library(forecast)	
 fit <- auto.arima(bj.month, approx=F, trace = F)	
 fit	
-Acf(residuals(fit))
+```
+```{r}
+acf1 <- Acf(residuals(fit), plot = F)	
+# 95% CI: https://github.com/SurajGupta/r-source/blob/master/src/library/stats/R/acf.R	
+ci <- qnorm((1 + 0.95)/2)/sqrt(length(bj.diff))	
+pacf1 <- Pacf(residuals(fit), plot = F)	
+	
+	
+plot_ly(x = ~acf1$lag[-1,1,1], y = ~acf1$acf[-1,1,1], type = "bar", name="ACF") %>%  # ACF	
+  # PACF	
+  add_trace(x = ~pacf1$lag[-1,1,1], y = ~pacf1$acf[-1,1,1], type = "bar", name="PACF") %>%	
+  # add CI lines	
+  add_lines(x=~c(acf1$lag[2,1,1], acf1$lag[length(acf1$lag),1,1]), y=~c(ci, ci), 	
+            mode="lines", name="Upper CI)", line=list(dash='dash')) %>%	
+  add_lines(x=~c(acf1$lag[2,1,1], acf1$lag[length(acf1$lag),1,1]), y=~c(-ci, -ci), 	
+            mode="lines", name="Lower CI)", line=list(dash='dash')) %>%	
+  layout(bargap=0.8, title="ACF & PACF Plot - ARIMA Model Residuals",	
+         xaxis=list(title="lag"), yaxis=list(title="ACF/PACF (Residuals)"),	
+         hovermode = "x unified", legend = list(orientation='h'))
 ```
 
 Finally, the optimal model determined by the step-wise selection is `ARIMA(1, 1, 4)`.	
@@ -210,7 +306,10 @@ We can also use external information to fit ARIMA models. For example, if we wan
 
 ```{r}
 fit1<-auto.arima(bj.month, xreg=beijing.pm25$Month, approx=F, trace = F)	
-fit1	
+fit1
+```
+
+```{r}
 fit3<-arima(bj.month, order = c(2, 1, 0))	
 fit3
 ```
@@ -220,15 +319,74 @@ We want the model AIC and BIC to be as small as possible. This model is actually
 We can examine further the ACF and the PACF plots and the residuals to determine the model quality.  When the model order parameters and structure are correctly specified, we expect no significant autocorrelations present in the model residual plots. 	
 
 ```{r}
-tsdisplay(residuals(fit), lag.max=45, main='(1,1,4) Model Residuals')
+# resFitModel <- tsdisplay(residuals(fit), lag.max=45, main='(1,1,4) Model Residuals')	
+	
+plot_ly(x=~dateTime, y=~residuals(fit), type="scatter", mode="lines") %>%	
+  # add CI lines	
+  add_lines(x=~c(dateTime[1], dateTime[length(dateTime)]), y=~c(1.96, 1.96), 	
+            mode="lines", name="Upper CI)", line=list(dash='dash')) %>%	
+  add_lines(x=~c(dateTime[1], dateTime[length(dateTime)]), y=~c(-1.96, -1.96), 	
+            mode="lines", name="Lower CI)", line=list(dash='dash')) %>%	
+  layout(title = "Beijing PM2.5: ARIMA(2, 1, 0) Model Residuals",	
+    xaxis = list(title = "date"), yaxis=list(title="Residuals"), hovermode = "x unified")
+```
+```{r}
+acf1 <- Acf(residuals(fit), plot = F)	
+# 95% CI: https://github.com/SurajGupta/r-source/blob/master/src/library/stats/R/acf.R	
+ci <- qnorm((1 + 0.95)/2)/sqrt(length(bj.diff))	
+pacf1 <- Pacf(residuals(fit), plot = F)	
+	
+	
+plot_ly(x = ~acf1$lag[-1,1,1], y = ~acf1$acf[-1,1,1], type = "bar", name="ACF") %>%  # ACF	
+  # PACF	
+  add_trace(x = ~pacf1$lag[-1,1,1], y = ~pacf1$acf[-1,1,1], type = "bar", name="PACF") %>%	
+  # add CI lines	
+  add_lines(x=~c(acf1$lag[2,1,1], acf1$lag[length(acf1$lag),1,1]), y=~c(ci, ci), 	
+            mode="lines", name="Upper CI)", line=list(dash='dash')) %>%	
+  add_lines(x=~c(acf1$lag[2,1,1], acf1$lag[length(acf1$lag),1,1]), y=~c(-ci, -ci), 	
+            mode="lines", name="Lower CI)", line=list(dash='dash')) %>%	
+  layout(bargap=0.8, title="ACF & PACF Plot - ARIMA Model Residuals",	
+         xaxis=list(title="lag"), yaxis=list(title="ACF/PACF (Residuals)"),	
+         hovermode = "x unified", legend = list(orientation='h'))
 ```
 
 There is a clear pattern present in ACF/PACF plots suggesting that the model residuals repeat with an approximate lag of 12 or 24 months. We may try a modified model with a different parameters, e.g., $p = 24$ or $q = 24$. We can define a new `displayForecastErrors()` function to show a histogram of the forecasted errors.	
 
 ```{r}
-fit24 <- arima(deseasonal_count, order=c(1,1,24)); fit24	
-tsdisplay(residuals(fit24), lag.max=36, main='Seasonal Model Residuals')	
+fit24 <- arima(deseasonal_count, order=c(1,1,24)); fit24
+```
+```{r}
+# tsdisplay(residuals(fit24), lag.max=36, main='Seasonal Model Residuals')	
 	
+plot_ly(x=~dateTime, y=~residuals(fit24), type="scatter", mode="lines") %>%	
+  # add CI lines	
+  add_lines(x=~c(dateTime[1], dateTime[length(dateTime)]), y=~c(1.96, 1.96), 	
+            mode="lines", name="Upper CI)", line=list(dash='dash')) %>%	
+  add_lines(x=~c(dateTime[1], dateTime[length(dateTime)]), y=~c(-1.96, -1.96), 	
+            mode="lines", name="Lower CI)", line=list(dash='dash')) %>%	
+  layout(title = "Beijing PM2.5: ARIMA(1,1,24) Model Residuals",	
+    xaxis = list(title = "date"), yaxis=list(title="Residuals"), hovermode = "x unified")
+```
+```{r}
+acf1 <- Acf(residuals(fit24), plot = F)	
+# 95% CI: https://github.com/SurajGupta/r-source/blob/master/src/library/stats/R/acf.R	
+ci <- qnorm((1 + 0.95)/2)/sqrt(length(bj.diff))	
+pacf1 <- Pacf(residuals(fit24), plot = F)	
+	
+	
+plot_ly(x = ~acf1$lag[-1,1,1], y = ~acf1$acf[-1,1,1], type = "bar", name="ACF") %>%  # ACF	
+  # PACF	
+  add_trace(x = ~pacf1$lag[-1,1,1], y = ~pacf1$acf[-1,1,1], type = "bar", name="PACF") %>%	
+  # add CI lines	
+  add_lines(x=~c(acf1$lag[2,1,1], acf1$lag[length(acf1$lag),1,1]), y=~c(ci, ci), 	
+            mode="lines", name="Upper CI)", line=list(dash='dash')) %>%	
+  add_lines(x=~c(acf1$lag[2,1,1], acf1$lag[length(acf1$lag),1,1]), y=~c(-ci, -ci), 	
+            mode="lines", name="Lower CI)", line=list(dash='dash')) %>%	
+  layout(bargap=0.8, title="ACF & PACF Plot - ARIMA(1,1,24) Model Residuals",	
+         xaxis=list(title="lag"), yaxis=list(title="ACF/PACF (Residuals)"),	
+         hovermode = "x unified", legend = list(orientation='h'))
+```
+```{r}
 displayForecastErrors <- function(forecastErrors)	
   {	
      # Generate a histogram of the Forecast Errors	
@@ -246,15 +404,23 @@ displayForecastErrors <- function(forecastErrors)
      	
      # Plot red histogram of the forecast errors	
      bins <- seq(min, max, binsize)	
-     hist(forecastErrors, col="red", freq=FALSE, breaks=bins)	
+     # hist(forecastErrors, col="red", freq=FALSE, breaks=bins)	
+     # 	
+     # myHist <- hist(norm, plot=FALSE, breaks=bins)	
+     # 	
+     # # Overlay the Blue normal curve on top of forecastErrors histogram	
+     # points(myHist$mids, myHist$density, type="l", col="blue", lwd=2)	
      	
-     myHist <- hist(norm, plot=FALSE, breaks=bins)	
-     	
-     # Overlay the Blue normal curve on top of forecastErrors histogram	
-     points(myHist$mids, myHist$density, type="l", col="blue", lwd=2)	
+     histForecast <- hist(forecastErrors, breaks=bins, plot = F)	
+     histNormal <- hist(norm, plot=FALSE, breaks=bins)	
+     plot_ly(x = histForecast$mids, y = histForecast$density, type = "bar", name="Forecast-Errors Histogram") %>%	
+        add_lines(x=histNormal$mids, y=dnorm(histNormal$mids, 0, sd), type="scatter", mode="lines", 	
+                  name="(Theoretical) Normal Density") %>%	
+        layout(bargap=0.1, title="Histogram ARIMA(1,1,24) Model Residuals",	
+               legend = list(orientation = 'h'))	
 }	
 	
-displayForecastErrors(residuals(fit24))
+displayForecastErrors(residuals(fit24))	
 ```
 
 ## Step 4: Forecasting with ARIMA model	
@@ -262,9 +428,23 @@ displayForecastErrors(residuals(fit24))
 Now, we can use our models to make predictions for future PM2.5 AQI. We will use the function `forecast()` to make predictions. In this function, we have to specify the number of periods we want to forecast. Note that the data has been smoothed. Let's make predictions for the next month or July 2016. Then there are $24\times30=720$ hours, so we specify a horizon `h=720`. 	
 
 ```{r}
-par(mfrow=c(1, 1))	
 ts.forecasts<-forecast(fit, h=720)	
-plot(ts.forecasts, include = 2880)
+	
+# par(mfrow=c(1, 1))	
+# plot(ts.forecasts, include = 2880)	
+	
+# extend time for 30 days (hourly predictions), k=720 hours	
+forecastDates <- seq(as.POSIXct("2016-05-01 00:00:00 UTC"), as.POSIXct("2016-05-30 23:00:00 UTC"), by = "hour")	
+	
+plot_ly(x=~dateTime, y=~ts.forecasts$model$fitted, type="scatter", mode="lines", name="Observed") %>%	
+  # add CI lines	
+  add_lines(x=~forecastDates, y=~ts.forecasts$mean, mode="lines", name="Mean Forecast", line=list(size=5)) %>%	
+  add_lines(x=~forecastDates, y=~ts.forecasts$lower[,1], mode="lines", name="Lower 80%", line=list(dash='dash')) %>%	
+  add_lines(x=~forecastDates, y=~ts.forecasts$lower[,2], mode="lines", name="Lower 95%", line=list(dash='dot')) %>%	
+  add_lines(x=~forecastDates, y=~ts.forecasts$upper[,1], mode="lines", name="Upper 80%", line=list(dash='dash')) %>%	
+  add_lines(x=~forecastDates, y=~ts.forecasts$upper[,2], mode="lines", name="Upper 95%", line=list(dash='dot')) %>%	
+  layout(title = paste0("Beijing PM2.5: Forecast using ", ts.forecasts$method, " Model"),	
+    xaxis = list(title = "date"), yaxis=list(title="PM2.5"), hovermode = "x unified", legend = list(orientation='h'))
 ```
 
 When plotting the forecasted values with the original smoothed data, we include only the last 3 months in the original smoothed data to see the predicted values clearer. The shaded regions indicate ranges of expected errors. The darker (inner) region represents by *80% confidence range* and the lighter (outer) region bounds by the *95% interval*. Obviously near-term forecasts have tighter ranges of expected errors, compared to longer-term forecasts where the variability naturally expands. 	
@@ -318,6 +498,87 @@ To estimate the ARIMA errors when dealing with non-stationary data, we can repla
 There are alternative R functions to implement ARIMAX models, e.g., `forecast::arima()`, `forecast::Arima()`, and `forecast::auto.arima()` fit extended ARIMA models with multiple covariates and error terms. Remember that there are differences in the signs of the moving average coefficients between the alternative model parameterization formulations. Also, the `TSA::arimax()` function fits the *transfer function model*, not the ARIMAX model.	
 	
 Let's look at one ARIMAX simulated example.	
+
+```{r}
+library(forecast)	
+	
+# create the 4D synthetic data, t=700 days, 100 weeks, 	
+# Y=eventArrivals, X=(weekday, NewYearsHoliday, day)	
+weeks <- 100	
+days <- 7*weeks	
+	
+# define holiday effect (e.g., more customers go to stores to shop)	
+holidayShopping <- rep(0, days)	
+y <- rep(0, days)	
+for (i in 1:days) {	
+  # Binary feature: Holiday	
+  if (i %% 28 == 0) holidayShopping[i] = 1	
+  else holidayShopping[i] = 0	
+  # Outcome (Y)	
+  if (i %% 56 == 0) y[i] = rpois(n=1, lambda=1500)	
+  else y[i] = rpois(n=1, lambda=1000)	
+  if (i>2) y[i] = (y[i-2] + y[i-1])/2 + rnorm(n=1, mean=0, sd=3)	
+  if (i %% 56 == 0) y[i] = rpois(n=1, lambda=1050)	
+}	
+	
+# plot(y)	
+# extend time for "days", k=700 days	
+forecastDates <- seq(as.POSIXct("2016-05-01 00:00:00 UTC"), length.out = days, by = "day")	
+	
+plot_ly(x=~forecastDates, y=~y, type="scatter", mode="lines", name="Y=eventArrivals", line=list(size=5)) %>%	
+  layout(title = paste0("Simulated TS Data"),	
+    xaxis = list(title = "date"), yaxis=list(title="Y"), hovermode = "x unified")
+```
+
+```{r}
+synthData <- data.frame(eventArrivals = y, # expected number of arrivals=1000	
+                         weekday = rep(1:7, weeks),     # weekday indicator variable	
+                         NewYearsHoliday = holidayShopping, # Binary feature: Holiday	
+                         day=1:days)  # day indicator	
+	
+# Create matrix of numeric predictors	
+covariatesX <- cbind(weekday = model.matrix(~as.factor(synthData$weekday)), 	
+                     Day = synthData$day,	
+                     Holiday=synthData$NewYearsHoliday)	
+# Generate prospective covariates for external validation/prediction	
+pred_length <- 56	
+newCovX <- cbind(weekday = model.matrix(~as.factor(synthData$weekday[1:pred_length])), 	
+                     Day = synthData$day[1:pred_length],	
+                     Holiday=synthData$NewYearsHoliday[1:pred_length])	
+# Remove the intercept	
+synthX_Data <- covariatesX[,-1]	
+	
+# Rename columns	
+colnames(synthX_Data) <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Day", "Holiday")	
+colnames(newCovX) <- c("Intercept", colnames(synthX_Data)); colnames(newCovX[,-1])
+```
+
+```{r}
+# Response (Y) to be modeled as a time-series, weekly oscillations (7-days)	
+observedArrivals <- ts(synthData$eventArrivals, frequency=7) 	
+	
+# Estimate the ARIMAX model	
+fitArimaX <- auto.arima(observedArrivals, xreg=synthX_Data); fitArimaX
+```
+
+```{r}
+# Predict prospective arrivals (e.g., volumes of customers)	
+predArrivals <- predict(fitArimaX, n.ahead = pred_length, newxreg = newCovX[,-1])	
+	
+# plot(predArrivals$pred, main="Forward time-series predictions (fitArimaX)")	
+  	
+forecastDates <- seq(as.POSIXct("2016-03-30 EDT"), length.out = pred_length, by = "day")	
+# forecastDates <- seq(as.POSIXct("2016-05-01 00:00:00 UTC"), length.out = pred_length, by = "day")	
+df <- as.data.frame(cbind(x=forecastDates, y=predArrivals$pred, errorBar=predArrivals$pred))	
+plot_ly(data = df) %>%	
+    # add error bars for each CV-mean at log(lambda)	
+    add_trace(x = ~forecastDates, y = ~y, type = 'scatter', mode = 'markers+lines',	
+        name = 'CV MSE', error_y = ~list(array = errorBar/300, color="green", opacity=0.5)) %>% 	
+    layout(title = "ARIMA Forecasting using Simulated Data",	
+							hovermode = "x unified",  # xaxis2 = ax, 	
+							yaxis = list(title = 'Y',	side="left", showgrid = TRUE))
+```
+
 
 ```{r}
 library(forecast)	
