@@ -579,62 +579,24 @@ plot_ly(data = df) %>%
 							yaxis = list(title = 'Y',	side="left", showgrid = TRUE))
 ```
 
-
 ```{r}
-library(forecast)	
+# plot(forecast(fitArimaX, xreg = newCovX[,-1]))	
+  	
+trainingDates <- seq(as.POSIXct("2014-04-30 00:00:00 UTC"), length.out = days, by = "day")	
+# extend time for 56 days of forward prediction	
+forecastDates <- seq(as.POSIXct("2016-03-30 EDT"), length.out = pred_length, by = "day")	
 	
-# create the 4D synthetic data, t=700 days, 100 weeks, 	
-# Y=eventArrivals, X=(weekday, NewYearsHoliday, day)	
-weeks <- 100	
-days <- 7*weeks	
+ts.forecasts <- forecast(fitArimaX, xreg = newCovX[,-1])	
 	
-# define holiday effect (e.g., more customers go to stores to shop)	
-holidayShopping <- rep(0, days)	
-y <- rep(0, days)	
-for (i in 1:days) {	
-  # Binary feature: Holiday	
-  if (i %% 28 == 0) holidayShopping[i] = 1	
-  else holidayShopping[i] = 0	
-  # Outcome (Y)	
-  if (i %% 56 == 0) y[i] = rpois(n=1, lambda=1500)	
-  else y[i] = rpois(n=1, lambda=1000)	
-  if (i>2) y[i] = (y[i-2] + y[i-1])/2 + rnorm(n=1, mean=0, sd=3)	
-  if (i %% 56 == 0) y[i] = rpois(n=1, lambda=1050)	
-}	
-	
-plot(y)	
-	
-synthData <- data.frame(eventArrivals = y, # expected number of arrivals=1000	
-                         weekday = rep(1:7, weeks),     # weekday idicator variable	
-                         NewYearsHoliday = holidayShopping, # Binary feature: Holiday	
-                         day=1:days)  # day indicator	
-	
-# Create matrix of numeric predictors	
-covariatesX <- cbind(weekday = model.matrix(~as.factor(synthData$weekday)), 	
-                     Day = synthData$day,	
-                     Holiday=synthData$NewYearsHoliday)	
-# Generate prospective covariates for external validation/prediction	
-pred_length <- 56	
-newCovX <- cbind(weekday = model.matrix(~as.factor(synthData$weekday[1:pred_length])), 	
-                     Day = synthData$day[1:pred_length],	
-                     Holiday=synthData$NewYearsHoliday[1:pred_length])	
-# Remove the intercept	
-synthX_Data <- covariatesX[,-1]	
-	
-# Rename columns	
-colnames(synthX_Data) <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Day", "Holiday")	
-colnames(newCovX) <- c("Intercept", colnames(synthX_Data)); colnames(newCovX[,-1])	
-	
-# Response (Y) to be modeled as a time-series, weekly oscillations (7-days)	
-observedArrivals <- ts(synthData$eventArrivals, frequency=7) 	
-	
-# Estimate the ARIMAX model	
-fitArimaX <- auto.arima(observedArrivals, xreg=synthX_Data); fitArimaX	
-	
-# Predict prospective arrivals (e.g., volumes of customers)	
-predArrivals <- predict(fitArimaX, n.ahead = pred_length, newxreg = newCovX[,-1])	
-plot(predArrivals$pred, main="Forward time-series predictions (fitArimaX)")	
-plot(forecast(fitArimaX, xreg = newCovX[,-1]))
+plot_ly(x=~trainingDates, y=~ts.forecasts$model$fitted, type="scatter", mode="lines", name="Observed") %>%	
+  # add CI lines	
+  add_lines(x=~forecastDates, y=~ts.forecasts$mean, mode="lines", name="Mean Forecast", line=list(size=5)) %>%	
+  add_lines(x=~forecastDates, y=~ts.forecasts$lower[,1], mode="lines", name="Lower 80%", line=list(dash='dash')) %>%	
+  add_lines(x=~forecastDates, y=~ts.forecasts$lower[,2], mode="lines", name="Lower 95%", line=list(dash='dot')) %>%	
+  add_lines(x=~forecastDates, y=~ts.forecasts$upper[,1], mode="lines", name="Upper 80%", line=list(dash='dash')) %>%	
+  add_lines(x=~forecastDates, y=~ts.forecasts$upper[,2], mode="lines", name="Upper 95%", line=list(dash='dot')) %>%	
+  layout(title = paste0("Simulated Data: Forecast using ", ts.forecasts$method, " Model"),	
+    xaxis = list(title = "date"), yaxis=list(title="PM2.5"), hovermode = "x unified", legend = list(orientation='h'))
 ```
 
 There are also [Vector Autoregressive Moving-Average Time Series (VARMA)](http://faculty.chicagobooth.edu/ruey.tsay/teaching/mtsbk/) models that can be used to fit multivariate linear time series for stationary processes.	
@@ -647,7 +609,7 @@ We can use dynamic Google Trends data to retrieve information, identify temporal
 # install.packages("prophet")	
 # install.packages("devtools")	
 # install.packages("ps"); install.packages("pkgbuild")	
-# devtools::install_github("PMassicotte/gtrendsR")	
+# install.packages("gtrendsR")	
 	
 library(gtrendsR)	
 library(ggplot2)	
@@ -671,16 +633,20 @@ library(prophet)
 DSPA_trends_US <- gtrends(c("Big Data", "data science", "predictive analytics", 	
                             "Artificial Intelligence"), 	
                           geo = c("US"), gprop = "web", 	
-                          time = "2010-01-01 2020-01-01")[[1]]	
+                          time = "2010-01-01 2021-08-01")[[1]]	
 	
-ggplot(data = DSPA_trends_US, aes(x = date, y = hits, group = keyword)) +	
-  geom_line(size = 1.5, alpha = 0.8, aes(color = keyword)) +	
-  geom_point(size = 1.6) +	
-  ylim(0, NA) +	
-  theme(legend.title=element_blank(), axis.title.x = element_blank()) +	
-  theme(legend.position="bottom") +	
-  ylab("Phrase Search Freq") + 	
-  ggtitle("USA: Google Trends (Big Data, Data Science, Predictive Analytics): 2010-2020")	
+# ggplot(data = DSPA_trends_US, aes(x = date, y = hits, group = keyword)) +	
+#   geom_line(size = 1.5, alpha = 0.8, aes(color = keyword)) +	
+#   geom_point(size = 1.6) +	
+#   ylim(0, NA) +	
+#   theme(legend.title=element_blank(), axis.title.x = element_blank()) +	
+#   theme(legend.position="bottom") +	
+#   ylab("Phrase Search Freq") + 	
+#   ggtitle("USA: Google Trends (Big Data, Data Science, Predictive Analytics): 2010-2021")	
+	
+plot_ly(data = DSPA_trends_US, x=~date, y=~hits, type="scatter", mode="lines", color=~keyword, name=~keyword) %>%	
+  layout(title = "USA: Google Trends (Big Data, Data Science, Predictive Analytics): 2010-2021",	
+    xaxis = list(title = "date"), yaxis=list(title="Phrase Search Frequency"), hovermode = "x unified", legend = list(orientation='h'))
 ```
 
 And similarly, we can contrast the *Google Trends* for `Big Data`, `data science` and `predictive analytics` global (worldwide) searches over the past ten years.	
@@ -688,37 +654,47 @@ And similarly, we can contrast the *Google Trends* for `Big Data`, `data science
 ```{r}
 DSPA_trends_World <- gtrends(c("Big Data", "data science", "predictive analytics",	
                                "Artificial Intelligence"), 	
-                          gprop = "web", time = "2010-01-01 2020-01-01")[[1]]	
+                          gprop = "web", time = "2010-01-01 2021-08-01")[[1]]	
 	
-ggplot(data = DSPA_trends_World, aes(x = date, y = hits, group = keyword)) +	
-  geom_line(size = 1.5, alpha = 0.8, aes(color = keyword)) +	
-  geom_point(size = 1.6) +	
-  ylim(0, NA) +	
-  theme(legend.title=element_blank(), axis.title.x = element_blank()) +	
-  theme(legend.position="bottom") +	
-  ylab("Phrase Search Freq") + 	
-  ggtitle("World: Google Trends (Big Data, Data Science, Predictive Analytics): 2010-2020")	
+# ggplot(data = DSPA_trends_World, aes(x = date, y = hits, group = keyword)) +	
+#   geom_line(size = 1.5, alpha = 0.8, aes(color = keyword)) +	
+#   geom_point(size = 1.6) +	
+#   ylim(0, NA) +	
+#   theme(legend.title=element_blank(), axis.title.x = element_blank()) +	
+#   theme(legend.position="bottom") +	
+#   ylab("Phrase Search Freq") + 	
+#   ggtitle("World: Google Trends (Big Data, Data Science, Predictive Analytics): 2010-2020")	
+	
+plot_ly(data = DSPA_trends_World, x=~date, y=~hits, type="scatter", mode="lines", color=~keyword, name=~keyword) %>%	
+  layout(title = "World: Google Trends (Big Data, Data Science, Predictive Analytics): 2010-2021",	
+    xaxis = list(title = "date"), yaxis=list(title="Phrase Search Frequency"), hovermode = "x unified", legend = list(orientation='h'))	
 ```
+
 
 We can also examine global geographic trends in searches for "data science", e.g., US, China, UK.	
 
 ```{r}
 DSPA_trends_Global <- gtrends(c("data science"), 	
                           geo = c("US","CN","GB"), gprop = "web", 	
-                          time = "2010-01-01 2020-01-01")[[1]]	
+                          time = "2010-01-01 2021-08-01")[[1]]	
 DSPA_trends_Global$hits[is.na(DSPA_trends_Global$hits)] <- "0"	
-DSPA_trends_Global$hits	
+# DSPA_trends_Global$hits	
 	
-ggplot(data = DSPA_trends_Global, aes(x = date, 	
-                     y = as.numeric(hits), group = geo)) +	
-  geom_line(size = 1.5, alpha = 0.8, aes(color = geo)) +	
-  geom_point(size = 1.6) +	
-  ylim(0, NA) +	
-  theme(legend.title=element_blank(), axis.title.x = element_blank()) +	
-  theme(legend.position="bottom") +	
-  ylab("Data Science Search Freq'") + 	
-  ggtitle("Global 'Data Science' Google Trends (US, CN, GB): 2010-2020")
+# ggplot(data = DSPA_trends_Global, aes(x = date, 	
+#                      y = as.numeric(hits), group = geo)) +	
+#   geom_line(size = 1.5, alpha = 0.8, aes(color = geo)) +	
+#   geom_point(size = 1.6) +	
+#   ylim(0, NA) +	
+#   theme(legend.title=element_blank(), axis.title.x = element_blank()) +	
+#   theme(legend.position="bottom") +	
+#   ylab("Data Science Search Freq'") + 	
+#   ggtitle("Global 'Data Science' Google Trends (US, CN, GB): 2010-2020")	
+	
+plot_ly(data = DSPA_trends_Global, x=~date, y=~hits, type="scatter", mode="lines", color=~geo, name=~geo) %>%	
+  layout(title = "Global 'Data Science' Google Trends (US, CN, GB): 2010-2021",	
+    xaxis = list(title = "date"), yaxis=list(title="Phrase Search Frequency"), hovermode = "x unified", legend = list(orientation='h'))
 ```
+
 
 What interesting patterns, trends and behavior is evident in the plot above?	
 	
@@ -738,13 +714,34 @@ To generate forward looking predictions, we will use the method `predict()`.
 ```{r}
 future_df <- make_future_dataframe(US_ts_prophet, periods = 730)	
 US_ts_prophet_pred <- predict(US_ts_prophet, future_df)	
-plot(US_ts_prophet, US_ts_prophet_pred)
+	
+# plot(US_ts_prophet, US_ts_prophet_pred)	
+	
+plot_ly(x=~US_ts_prophet_pred$ds, y=~US_ts_prophet_pred$yhat, type="scatter", mode="markers+lines", name="Prophet Model") %>%	
+  add_trace(x=~US_ts_prophet_pred$ds, y=~US_ts_prophet_pred$yhat_lower, type="scatter", mode="lines", name="Lower Limit") %>%	
+  add_trace(x=~US_ts_prophet_pred$ds, y=~US_ts_prophet_pred$yhat_upper, type="scatter", mode="lines", name="Upper Limit") %>%	
+  layout(title = "Prophet Additive TS Model",	
+    xaxis = list(title = "date"), yaxis=list(title="TS Value"), hovermode = "x unified", legend = list(orientation='h'))
 ```
 
 Finally, we can extract daily, monthly, quarterly, and yearly patterns.
 
 ```{r}
 prophet_plot_components(US_ts_prophet, US_ts_prophet_pred)
+```
+```{r}
+plot_ly(x=~US_ts_prophet_pred$ds, y=~US_ts_prophet_pred$trend, type="scatter", mode="markers+lines", name="Prophet Model") %>%	
+  add_trace(x=~US_ts_prophet_pred$ds, y=~US_ts_prophet_pred$trend_lower, type="scatter", mode="lines", name="Lower Limit") %>%	
+  add_trace(x=~US_ts_prophet_pred$ds, y=~US_ts_prophet_pred$trend_upper, type="scatter", mode="lines", name="Upper Limit") %>%	
+  layout(title = "Prophet  Model Trend",	
+    xaxis = list(title = "date"), yaxis=list(title="TS Value"), hovermode = "x unified", legend = list(orientation='h'))
+```
+```{r}
+plot_ly(x=~US_ts_prophet_pred$ds, y=~US_ts_prophet_pred$yearly, type="scatter", mode="markers+lines", name="Prophet Model") %>%	
+  # add_trace(x=~US_ts_prophet_pred$ds, y=~US_ts_prophet_pred$yearly_lower, type="scatter", mode="lines", name="Lower Limit") %>%	
+  # add_trace(x=~US_ts_prophet_pred$ds, y=~US_ts_prophet_pred$yearly_upper, type="scatter", mode="lines", name="Upper Limit") %>%	
+  layout(title = "De-trended Prophet  Model",	
+    xaxis = list(title = "date"), yaxis=list(title="TS Value"), hovermode = "x unified", legend = list(orientation='h'))
 ```
 
 Try to fit an ARIMA time-series model to the US data.
@@ -753,11 +750,81 @@ Try to fit an ARIMA time-series model to the US data.
 library(forecast)	
 fit_US_ts <- auto.arima(US_ts$y, approx=F, trace = F)	
 fit_US_ts	
-Acf(residuals(fit_US_ts))	
-tsdisplay(residuals(fit_US_ts), lag.max=45, main='(0,1,0) Model Residuals')	
+```
+```{r}
+# Acf(residuals(fit_US_ts))	
 	
+acf1 <- Acf(residuals(fit_US_ts), plot = F)	
+# 95% CI: https://github.com/SurajGupta/r-source/blob/master/src/library/stats/R/acf.R	
+ci <- qnorm((1 + 0.95)/2)/sqrt(length(bj.diff))	
+pacf1 <- Pacf(residuals(fit_US_ts), plot = F)	
+	
+	
+plot_ly(x = ~acf1$lag[-1,1,1], y = ~acf1$acf[-1,1,1], type = "bar", name="ACF") %>%  # ACF	
+  # PACF	
+  add_trace(x = ~pacf1$lag[-1,1,1], y = ~pacf1$acf[-1,1,1], type = "bar", name="PACF") %>%	
+  # add CI lines	
+  add_lines(x=~c(acf1$lag[2,1,1], acf1$lag[length(acf1$lag),1,1]), y=~c(ci, ci), 	
+            mode="lines", name="Upper CI)", line=list(dash='dash')) %>%	
+  add_lines(x=~c(acf1$lag[2,1,1], acf1$lag[length(acf1$lag),1,1]), y=~c(-ci, -ci), 	
+            mode="lines", name="Lower CI)", line=list(dash='dash')) %>%	
+  layout(bargap=0.8, title="ACF & PACF Plot - ARIMA(1,1,24) Model Residuals",	
+         xaxis=list(title="lag"), yaxis=list(title="ACF/PACF (Residuals)"),	
+         hovermode = "x unified", legend = list(orientation='h'))
+```
+```{r}
+displayForecastErrors <- function(forecastErrors)	
+  {	
+     # Generate a histogram of the Forecast Errors	
+     binsize <- IQR(forecastErrors)/4	
+     sd   <- sd(forecastErrors)	
+     min  <- min(forecastErrors) - sd	
+     max  <- max(forecastErrors) + sd	
+     	
+     # Generate 5K normal(0,sd) RVs 	
+     norm <- rnorm(5000, mean=0, sd=sd)	
+     min2 <- min(norm)	
+     max2 <- max(norm)	
+     if (min2 < min) { min <- min2 }	
+     if (max2 > max) { max <- max2 }	
+     	
+     # Plot red histogram of the forecast errors	
+     bins <- seq(min, max, binsize)	
+     # hist(forecastErrors, col="red", freq=FALSE, breaks=bins)	
+     # 	
+     # myHist <- hist(norm, plot=FALSE, breaks=bins)	
+     # 	
+     # # Overlay the Blue normal curve on top of forecastErrors histogram	
+     # points(myHist$mids, myHist$density, type="l", col="blue", lwd=2)	
+     	
+     histForecast <- hist(forecastErrors, breaks=bins, plot = F)	
+     histNormal <- hist(norm, plot=FALSE, breaks=bins)	
+     plot_ly(x = histForecast$mids, y = histForecast$density, type = "bar", name="Forecast-Errors Histogram") %>%	
+        add_lines(x=histNormal$mids, y=dnorm(histNormal$mids, 0, sd), type="scatter", mode="lines", 	
+                  name="(Theoretical) Normal Density") %>%	
+        layout(bargap=0.1, title="Histogram ARIMA(1,1,24) Model Residuals",	
+               legend = list(orientation = 'h'))	
+}	
+	
+# tsdisplay(residuals(fit_US_ts), lag.max=45, main='(0,1,0) Model Residuals')	
+	
+displayForecastErrors(residuals(fit_US_ts))
+```
+```{r}
 fit_US_ts_forecasts <- forecast(fit_US_ts, h=10, level=20)	
-plot(fit_US_ts_forecasts, include = 100)
+# plot(fit_US_ts_forecasts, include = 100)	
+	
+forecastDates <- seq(as.POSIXct("2021-08-01 GMT"), length.out=10, by = "month")	
+	
+plot_ly(x=~US_ts$ds, y=~fit_US_ts_forecasts$fitted, type="scatter", mode="lines", name="Observed") %>%	
+  # add CI lines	
+  add_lines(x=~forecastDates, y=~fit_US_ts_forecasts$mean, mode="lines", name="Mean Forecast", line=list(size=5)) %>%	
+  add_lines(x=~forecastDates, y=~fit_US_ts_forecasts$lower[,1], mode="lines", name="Lower 80%", line=list(dash='dash')) %>%	
+  add_lines(x=~forecastDates, y=~fit_US_ts_forecasts$lower[,1], mode="lines", name="Lower 95%", line=list(dash='dot')) %>%	
+  add_lines(x=~forecastDates, y=~fit_US_ts_forecasts$upper[,1], mode="lines", name="Upper 80%", line=list(dash='dash')) %>%	
+  add_lines(x=~forecastDates, y=~fit_US_ts_forecasts$upper[,1], mode="lines", name="Upper 95%", line=list(dash='dot')) %>%	
+  layout(title = paste0("US TS Forecast using ", fit_US_ts_forecasts$method, " Model"),	
+    xaxis = list(title = "date"), yaxis=list(title="PM2.5"), hovermode = "x unified", legend = list(orientation='h'))
 ```
 
 You can try to apply some of the time-series methods to the Google-Trends "hits" for some specific queries you are interested.	
@@ -871,10 +938,12 @@ Now, we can import the dataset into R and recode the `ResearchGroup` variable in
 
 ```{r}
 par(mfrow=c(1, 1))	
-PPMI <- read.csv("https://umich.instructure.com/files/330397/download?download_frd=1")	
-summary(PPMI)	
-PPMI$ResearchGroup <- ifelse(PPMI$ResearchGroup=="Control", "1", "0")	
-# PPMI <- PPMI[ , !(names(PPMI) %in% c("FID_IID", "time_visit"))] # remove Subject ID/time
+PPMI<-read.csv("https://umich.instructure.com/files/330397/download?download_frd=1")	
+summary(PPMI)
+```
+```{r}
+PPMI$ResearchGroup<-ifelse(PPMI$ResearchGroup=="Control", "1", "0")	
+# PPMI <- PPMI[ , !(names(PPMI) %in% c("FID_IID", "time_visit"))] # remove Subject ID/tim
 ```
 
 This large dataset has 1,746 observations and 31 variables with missing data in some of them. A lot of the variables are highly correlated. You can inspect high correlation using *heat maps*, which reorders these covariates according to correlations to illustrate clusters of high-correlations.	
@@ -886,26 +955,29 @@ corr_mat = cor(pp_heat)
 corr_mat_lower = corr_mat	
 corr_mat_lower[upper.tri(corr_mat_lower)] = NA	
 # Melt correlation matrix and make sure order of factor variables is correct	
-corr_mat_melted = melt(corr_mat_lower)	
+corr_mat_melted = reshape::melt(corr_mat_lower)	
 colnames(corr_mat_melted) <- c("Var1", "Var2", "value")	
 corr_mat_melted$Var1 = factor(corr_mat_melted$Var1, levels=colnames(corr_mat))	
 corr_mat_melted$Var2 = factor(corr_mat_melted$Var2, levels=colnames(corr_mat))	
+	
 # Plot	
-corr_plot = ggplot(corr_mat_melted, aes(x=Var1, y=Var2, fill=value)) +	
-  geom_tile(color='white') +	
-  scale_fill_distiller(limits=c(-1, 1), palette='RdBu', na.value='white',	
-                       name='Correlation') +	
-  ggtitle('Correlations') +	
-  coord_fixed(ratio=1) +	
-  theme_minimal() +	
-  scale_y_discrete(position="right") +	
-  theme(axis.text.x=element_text(angle=90, vjust=1, hjust=1),	
-        axis.title.x=element_blank(),	
-        axis.title.y=element_blank(),	
-        panel.grid.major=element_blank(),	
-        legend.position=c(0.1,0.9),	
-        legend.justification=c(0,1))	
-corr_plot
+# corr_plot = ggplot(corr_mat_melted, aes(x=Var1, y=Var2, fill=value)) +	
+#   geom_tile(color='white') +	
+#   scale_fill_distiller(limits=c(-1, 1), palette='RdBu', na.value='white',	
+#                        name='Correlation') +	
+#   ggtitle('Correlations') +	
+#   coord_fixed(ratio=1) +	
+#   theme_minimal() +	
+#   scale_y_discrete(position="right") +	
+#   theme(axis.text.x=element_text(angle=90, vjust=1, hjust=1),	
+#         axis.title.x=element_blank(),	
+#         axis.title.y=element_blank(),	
+#         panel.grid.major=element_blank(),	
+#         legend.position=c(0.1,0.9),	
+#         legend.justification=c(0,1))	
+# corr_plot	
+	
+plot_ly(x =~colnames(corr_mat_lower), y = ~rownames(corr_mat_lower), z = ~corr_mat_lower, type = "heatmap")
 ```
 
 And there are some specific correlations.
@@ -1012,26 +1084,57 @@ mydata$UPDRS<-mydata$UPDRS_part_I+1.890*mydata$UPDRS_part_II+2.345*mydata$UPDRS_
 mydata$Imaging<-mydata$L_cingulate_gyrus_ComputeArea  +0.994*mydata$L_cingulate_gyrus_Volume+0.961*mydata$R_cingulate_gyrus_ComputeArea+0.955*mydata$R_cingulate_gyrus_Volume+0.930*mydata$R_insular_cortex_ComputeArea+0.920*mydata$R_insular_cortex_Volume	
 ```
 
-The above chunk of code stored `UPDRS` and `Imaging` variables into `mydata`. By now, we are experienced with using the package `ggplot2` for data visualization. Now, we will use it to set the *x* and *y* axes as `time` and `UPDRS`, and then display the trend of the individual level `UPDRS`.	
-
+The above script stored `UPDRS` and `Imaging` variables into `mydata`. We can use `ggplot2` or `plotly` for data visualization, e.g., plot `UPDRS` or `Imaging` across time-visits, blocking for gender.
+	
 ```{r}
 require(ggplot2)	
-p<-ggplot(data=mydata, aes(x=time_visit, y=UPDRS, group=FID_IID))	
-# dev.off()	
-p+geom_point()+geom_line()
+# p<-ggplot(data=mydata, aes(x=time_visit, y=UPDRS, group=FID_IID))	
+# # dev.off()	
+# p+geom_point()+geom_line()	
+	
+sexCast <- as.factor(ifelse(mydata$Sex>0, "Male", "Female"))	
+# plot_ly(data=mydata, x=~time_visit, y=~UPDRS, group=~FID_IID)	
+mydata$time_visit <- factor(mydata$time_visit, levels = c("0", "3", "6", "9", "12", "18", "24", "30", "36", "42", "48", "54"))	
+plot_ly(data=mydata, x=~time_visit, y = ~UPDRS, color = ~sexCast, type = "box") %>% 	
+  layout(title="Parkinson's Disease UPDRS across Time", boxmode = "group")	
+```
+```{r}
+plot_ly(data=mydata, x=~time_visit, y = ~Imaging, color = ~sexCast, type = "box") %>% 	
+  layout(title="Parkinson's Disease Imaging Score across Time", boxmode = "group")
 ```
 
 This graph is not shown as it is uninformative without a clear pattern emerging. Let's see if group-level graphs may provide more intuition. We will use the `aggregate()` function to get the mean, minimum and maximum of `UPDRS` for each time point. Then, we will use separate color for the two research groups and examine their mean trends.	
 
 ```{r}
-ppmi.mean<-aggregate(UPDRS~time_visit+ResearchGroup, FUN = mean, data=mydata[, c(30, 31, 32)])	
-ppmi.min<-aggregate(UPDRS~time_visit+ResearchGroup, FUN = min, data=mydata[, c(30, 31, 32)])	
-ppmi.max<-aggregate(UPDRS~time_visit+ResearchGroup, FUN = max, data=mydata[, c(30, 31, 32)])	
-ppmi.boundary<-merge(ppmi.min, ppmi.max, by=c("time_visit", "ResearchGroup"))	
-ppmi.all<-merge(ppmi.mean, ppmi.boundary, by=c("time_visit", "ResearchGroup"))	
-pd <- position_dodge(0.1) 	
-p1<-ggplot(data=ppmi.all, aes(x=time_visit, y=UPDRS, group=ResearchGroup, colour=ResearchGroup))	
-p1+geom_errorbar(aes(ymin=UPDRS.x, ymax=UPDRS.y, width=0.1))+geom_point()+geom_line()	
+# ppmi.mean<-aggregate(UPDRS~time_visit+ResearchGroup, FUN = mean, data=mydata[, c(30, 31, 32)])	
+# ppmi.min<-aggregate(UPDRS~time_visit+ResearchGroup, FUN = min, data=mydata[, c(30, 31, 32)])	
+# ppmi.max<-aggregate(UPDRS~time_visit+ResearchGroup, FUN = max, data=mydata[, c(30, 31, 32)])	
+# ppmi.boundary<-merge(ppmi.min, ppmi.max, by=c("time_visit", "ResearchGroup"))	
+# ppmi.all<-merge(ppmi.mean, ppmi.boundary, by=c("time_visit", "ResearchGroup"))	
+# pd <- position_dodge(0.1) 	
+# p1<-ggplot(data=ppmi.all, aes(x=time_visit, y=UPDRS, group=ResearchGroup, color=ResearchGroup))	
+# p1+geom_errorbar(aes(ymin=UPDRS.x, ymax=UPDRS.y, width=0.1))+geom_point()+geom_line()	
+	
+# calculate all column means and SDs based on the time_visit column	
+means <- aggregate( . ~time_visit, data=mydata, mean)	
+errorBars <- aggregate( . ~time_visit, data=mydata, sd)	
+	
+# plot_ly() %>%	
+#     # add error bars for each CV-mean at log(lambda)	
+#     add_trace(x = ~means$time_visit, y = ~means$UPDRS, type = 'scatter', mode = 'markers', name=~ResearchGroup,	
+#         error_y = ~list(array = ~errorBars$UPDRS, color="green", opacity=0.5)) %>% 	
+#     layout(title = "ARIMA Forecasting using Simulated Data",	
+# 							hovermode = "x unified",  # xaxis2 = ax, 	
+# 							yaxis = list(title = 'Y',	side="left", showgrid = TRUE))	
+	
+plot_ly(x = ~means$time_visit, y = ~means$UPDRS, type = 'scatter', mode = 'markers', name = 'UPDRS',	
+        marker=list(size=20), error_y = ~list(array = errorBars$UPDRS, color = 'black')) %>%	
+  layout(xaxis=list(title="time_visit"), yaxis=list(title="UPDRS"))
+```
+```{r}
+plot_ly(x = ~means$time_visit, y = ~means$Imaging, type = 'scatter', mode = 'markers', name = 'Imaging',	
+        marker=list(size=20), error_y = ~list(array = errorBars$Imaging, color = 'gray')) %>%	
+  layout(xaxis=list(title="time_visit"), yaxis=list(title="Imaging"))	
 ```
 
 Despite slight overlaps in some lines, the resulting graph illustrates better the mean differences between the two cohorts. The control group (1) appears to have relative lower means and tighter ranges compared to the PD patient group (0). However, we need further data interrogation to determine if this visual (EDA) evidence translates into statistically significant group differences.	
@@ -1065,11 +1168,20 @@ library(lme4)
 library(arm)	
 #GLM	
 model.glm<-glm(UPDRS~Imaging+ResearchGroup*time_visit+Age+Sex+Weight, data=mydata)	
-summary(model.glm)	
+summary(model.glm)
+```
+```{r}
 #LMM	
 model.lmm<-lmer(UPDRS~Imaging+ResearchGroup*time_visit+Age+Sex+Weight+(1|FID_IID), data=mydata)	
 summary(model.lmm)	
-display(model.lmm)
+# display(model.lmm)
+```
+```{r}
+#install.packages('sjPlot')	
+library('sjPlot')	
+plot_model(model.lmm, vline = "black", sort.est = TRUE,	
+                   transform = NULL, show.values = TRUE,	
+                   value.offset = 0.5, dot.size = 2.5, value.size = 2.5)
 ```
 
 Note that we use the notation `ResearchGroup*time_visit` that is same as `ResearchGroup+time_visit+ResearchGroup*time_visit` where R will include both terms and their interaction into the model. According to the model outputs, the LMM model has a relatively smaller AIC. In terms of AIC, LMM may represent a better model fit than GLM.	
@@ -1213,10 +1325,18 @@ dataPD <-
 # dichotomize the "ResearchGroup" variable	
 dataPD$ResearchGroup <-	
   ifelse(dataPD$ResearchGroup == "Control", 1, 0)	
-head(dataPD)	
-hist(dataPD$time_visit)	
-	
-	
+head(dataPD)
+# hist(dataPD$time_visit)	
+```
+
+Next we can display the histogram of patients’ number of visits and plot the UPDRS_Part_I values across time for patients with different genotypes (chr17_rs11868035_GT).
+
+```{r}
+library(plotly)
+plot_ly(x=~dataPD$time_visit, type = "histogram", nbinsx=10) %>%
+  layout(title="PD - PPMI Data", bargap=0.1, xaxis=list(title="Number of Visits"), yaxis=list(title="Frequency"))
+```
+```{r}
 # factorize the categorical features	
 dataPD_new <- dataPD	
 dataPD_new$ResearchGroup <- factor(dataPD_new$ResearchGroup)	
@@ -1225,38 +1345,50 @@ dataPD_new$chr12_rs34637584_GT <- factor(dataPD_new$chr12_rs34637584_GT)
 dataPD_new$chr17_rs11868035_GT <- factor(dataPD_new$chr17_rs11868035_GT)	
 	
 # by chr17_rs11868035_GT genotype and ResearchGroup	
-ggplot(dataPD_new, aes(x=time_visit, y=UPDRS_part_I, group=FID_IID)) +	
-  ggtitle("PD/PPMI Data chr17_rs11868035_GT genotype and ResearchGroup") + 	
-  geom_line(aes(color=ResearchGroup)) +	
-  geom_point(aes(color=ResearchGroup)) + facet_wrap(~chr17_rs11868035_GT)	
-	
-# by chr17_rs11868035_GT genotype and subjectID	
-ggplot(dataPD_new, aes(x=time_visit, y=UPDRS_part_I, group=FID_IID)) +	
-  ggtitle("PD/PPMI Data chr17_rs11868035_GT genotype and SubjectID") + 	
-  geom_line(aes(color=FID_IID)) +	
-  geom_point(aes(color=FID_IID)) + 	
-  facet_wrap(~chr17_rs11868035_GT)	
-	
-# by ResearchGroup and chr17_rs11868035_GT genotype	
-ggplot(dataPD_new, aes(x=time_visit, y=UPDRS_part_I, group=FID_IID)) +	
-  ggtitle("PD/PPMI Data by Genotype (chr17_rs11868035_GT) & ResearchGroup") + 	
-  geom_line(aes(color=chr17_rs11868035_GT))+	
-  geom_point(aes(color=chr17_rs11868035_GT))+	
-  facet_wrap(~ResearchGroup)	
-	
-# by ResearchGroup + chr17_rs11868035_GT genotype subgroups	
-ggplot(dataPD_new, aes(x=time_visit, y=UPDRS_part_I, group=FID_IID)) +	
-  ggtitle("PD/PPMI Data chr17_rs11868035_GT genotype and SubjectID") + 	
-  geom_line(aes(color=FID_IID))+	
-  geom_point(aes(color=FID_IID))+	
-  facet_wrap(~ResearchGroup + chr17_rs11868035_GT)
+# ggplot(dataPD_new, aes(x=time_visit, y=UPDRS_part_I, group=FID_IID)) +	
+#   ggtitle("PD/PPMI Data chr17_rs11868035_GT genotype and ResearchGroup") + 	
+#   geom_line(aes(color=ResearchGroup)) +	
+#   geom_point(aes(color=ResearchGroup)) + facet_wrap(~chr17_rs11868035_GT)	
+# 	
+# plot_ly(data=dataPD_new, x=~time_visit, y=~UPDRS_part_I, color=~FID_IID, name=~FID_IID, type="scatter", mode="markers+lines")	
+# UPDRS by chr17_rs11868035_GT Genotype	
+dataPD_new%>%	
+    group_by(chr17_rs11868035_GT) %>%	
+    do(p=plot_ly(., x=~time_visit, y=~UPDRS_part_I, color=~FID_IID, name=~FID_IID, type="scatter", mode="markers+lines") %>% 	
+           layout(annotations = list(text = ~chr17_rs11868035_GT)) %>% hide_colorbar()) %>%	
+    subplot(nrows = 2, shareX = TRUE, shareY = TRUE)
+```
+```{r}
+# The previous graph can also be done using "ggplot"
+# by chr17_rs11868035_GT genotype and subjectID
+# ggplot(dataPD_new, aes(x=time_visit, y=UPDRS_part_I, group=FID_IID)) +
+#   ggtitle("PD/PPMI Data chr17_rs11868035_GT genotype and SubjectID") + 
+#   geom_line(aes(color=FID_IID)) +
+#   geom_point(aes(color=FID_IID)) + 
+#   facet_wrap(~chr17_rs11868035_GT)
+# 
+# # by ResearchGroup and chr17_rs11868035_GT genotype
+# ggplot(dataPD_new, aes(x=time_visit, y=UPDRS_part_I, group=FID_IID)) +
+#   ggtitle("PD/PPMI Data by Genotype (chr17_rs11868035_GT) & ResearchGroup") + 
+#   geom_line(aes(color=chr17_rs11868035_GT))+
+#   geom_point(aes(color=chr17_rs11868035_GT))+
+#   facet_wrap(~ResearchGroup)
+# 
+# # by ResearchGroup + chr17_rs11868035_GT genotype subgroups
+# ggplot(dataPD_new, aes(x=time_visit, y=UPDRS_part_I, group=FID_IID)) +
+#   ggtitle("PD/PPMI Data chr17_rs11868035_GT genotype and SubjectID") + 
+#   geom_line(aes(color=FID_IID))+
+#   geom_point(aes(color=FID_IID))+
+#   facet_wrap(~ResearchGroup + chr17_rs11868035_GT)
 ```
 
 ## SEM
 
+Let’s define a SEM model ('model1') with three latent variables (Imaging, DemoGeno, and UPDRS), a single regression relation, and use the 'lavaan::sem()' method to estimate the model.
+
 ```{r}
 # time_visit is incongruent between cases, we make it ordinal category	
-# conver the long-to-wide data format to unwind the time	
+# convert the long-to-wide data format to unwind the time	
 library(reshape2)	
 	
 # check this R-blog post for some common data aggregation, melting, casting and other operations ...	
@@ -1358,7 +1490,9 @@ ResearchGroup ~ Imaging + DemoGeno + UPDRS
 # a "reasonable worst-possible fitting model", against which the new fitted model is compared	
 # to calculate appropriate model-quality indices (e.g., CFA).	
 	
-summary(subsetPD_wide)	
+summary(subsetPD_wide)
+```
+```{r}
 # selective scale features (e.g., avoid scaling Subject ID's)	
 dataPD2 <-	
   as.data.frame(cbind(scale(subsetPD_wide[,!(	
@@ -1380,19 +1514,25 @@ dataPD2 <-
   )]))	
 	
 summary(dataPD2)	
-	
+```
+```{r}
 # fitSEM3 <- cfa(model3, data= dataPD2, missing='FIML') 		# deal with missing values (missing='FIML')	
 # summary(fitSEM3, fit.measures=TRUE)	
 	
 fitSEM1 <- sem(model1, data = dataPD2, estimator = "MLM")	
 # Check the SEM model covariances	
 fitSEM1@SampleStats@cov	
-summary(fitSEM1)	
+```
+```{r}
+summary(fitSEM1)
+```
+```{r}
 # report the standardized coefficients of the model	
 # standardizedSolution(fitSEM1)	
 # variation explained by model components (The R-square value for all endogenous variables)	
-inspect(fitSEM1, "r2")  # lavInspect()	
-	
+inspect(fitSEM1, "r2")  # lavInspect()
+```
+```{r}
 # install.packages("semPlot")	
 library(semPlot)	
 semPlot::semPaths(	
@@ -1404,13 +1544,12 @@ semPlot::semPaths(
   edge.label.cex = 1.0,	
   label.cex = 1.5,	
   sizeMan = 8	
-)
+)	
 ```
 
 ## GLMM
 
 ```{r}
-# scale some features	
 dataPD_new$L_cingulate_gyrus_ComputeArea <- scale(dataPD_new$L_cingulate_gyrus_ComputeArea)	
 dataPD_new$L_cingulate_gyrus_Volume <- scale(dataPD_new$L_cingulate_gyrus_Volume)	
 dataPD_new$R_cingulate_gyrus_ComputeArea <- scale(dataPD_new$R_cingulate_gyrus_ComputeArea)	
@@ -1423,7 +1562,9 @@ dataPD_new$UPDRS<-dataPD_new$UPDRS_part_I+1.890*dataPD_new$UPDRS_part_II+2.345*d
 dataPD_new$Imaging<-dataPD_new$L_cingulate_gyrus_ComputeArea  +0.994*dataPD_new$L_cingulate_gyrus_Volume+0.961*dataPD_new$R_cingulate_gyrus_ComputeArea+0.955*dataPD_new$R_cingulate_gyrus_Volume+0.930*dataPD_new$R_insular_cortex_ComputeArea+0.920*dataPD_new$R_insular_cortex_Volume	
 	
 model.glmm<-glmer(ResearchGroup~UPDRS+Imaging+Age+Sex+Weight+(1|FID_IID), data=dataPD_new, family="binomial")	
-arm::display(model.glmm)	
+arm::display(model.glmm)
+```
+```{r}
 dataPD_new$predictedGLMM <- predict(model.glmm, newdata=dataPD_new[1:1764, !(names(dataPD_new) %in% c("ResearchGroup", "UPDRS_part_II_T4"))], allow.new.levels=T, type="response")  # lme4::predict.merMod()	
 # factorize the predictions	
 dataPD_new$predictedGLMM <- factor(ifelse(dataPD_new$predictedGLMM<0.5, "0", "1"))	
@@ -1431,15 +1572,28 @@ dataPD_new$predictedGLMM <- factor(ifelse(dataPD_new$predictedGLMM<0.5, "0", "1"
 # compare overall the GLMM-predicted values against observed ResearchGroup labels values 	
 # install.packages("caret")	
 # library("caret")	
-caret::confusionMatrix(dataPD_new$predictedGLMM, dataPD_new$ResearchGroup)	
-	
-# compare predited and observed by Sex	
-ggplot(dataPD_new, aes(predictedGLMM, fill=ResearchGroup)) + 	
-   geom_bar() + facet_grid(. ~ Sex) 	
-	
-# compare predited and observed by Genotype (chr12_rs34637584_GT)	
-ggplot(dataPD_new, aes(predictedGLMM, fill=ResearchGroup)) + 	
-   geom_bar() + facet_grid(. ~ chr12_rs34637584_GT)	
+caret::confusionMatrix(dataPD_new$predictedGLMM, dataPD_new$ResearchGroup)
+# table(dataPD_new$predictedGLMM, dataPD_new$ResearchGroup)
+```
+```{r}
+# compare predicted and observed by Sex	
+# ggplot(dataPD_new, aes(predictedGLMM, fill=ResearchGroup)) + 	
+#    geom_bar() + facet_grid(. ~ Sex) 	
+# 	
+# dataPD_new%>%	
+#     group_by(Sex) %>%	
+#     do(p=plot_ly(., x=~ResearchGroup, y=~predictedGLMM, type = 'bar', name = ~Sex) %>% 	
+#            layout(annotations = list(text = ~Sex)) %>% hide_colorbar()) %>%	
+#     subplot(nrows = 1, shareX = TRUE, shareY = TRUE)	
+# 	
+# plot_ly(data = dataPD_new, x = ~ResearchGroup, y = ~momint, type="scatter", mode="markers",	
+#         color = ~clusters, marker = list(size = 30), name=clusterNames) %>%	
+#   hide_colorbar()	
+# 	
+# 	
+# # compare predicted and observed by Genotype (chr12_rs34637584_GT)	
+# ggplot(dataPD_new, aes(predictedGLMM, fill=ResearchGroup)) + 	
+#    geom_bar() + facet_grid(. ~ chr12_rs34637584_GT)
 ```
 
 ## GEE	
@@ -1453,11 +1607,16 @@ We can use several alternative R packages to fit and interpret GEE models, e.g.,
 	
 library(gee)	
 # Full GEE model	
-gee.fit <- gee(ResearchGroup~Imaging+Age+Sex+Weight+UPDRS_part_I, data=dataPD_new, family = "binomial", id = FID_IID, corstr = "exchangeable", scale.fix = TRUE)	
+gee.fit <- gee(ResearchGroup~Imaging+Age+Sex+Weight+UPDRS_part_I, data=dataPD_new, family = "binomial", id = FID_IID, corstr = "exchangeable", scale.fix = TRUE)
+```
+```{r}
 # reduced model (-UPDRS_part_I)	
-gee.fit2 <- gee(ResearchGroup~Imaging+Age+Sex+Weight, data=dataPD_new, family = "binomial", id = FID_IID, corstr = "exchangeable", scale.fix = TRUE)	
-summary(gee.fit)	
-	
+gee.fit2 <- gee(ResearchGroup~Imaging+Age+Sex+Weight, data=dataPD_new, family = "binomial", id = FID_IID, corstr = "exchangeable", scale.fix = TRUE)
+```
+```{r}
+summary(gee.fit)
+```
+```{r}
 # anova(gee.fit, gee.fit2) # compare two GEE models	
 # To test whether a categorical predictor with more than two levels should be retained in a GEE model we need to test the entire set of dummy variables simultaneously as a single construct. 	
 # The geepack package provides a method for the anova function for a multivariate Wald test	
@@ -1467,14 +1626,16 @@ summary(gee.fit)
 predictors <- coef(summary(gee.fit))	
 gee.fit.CI <- with(as.data.frame(predictors), cbind(lwr=Estimate-1.96*predictors[, 4], est=Estimate, upr=Estimate+1.96*predictors[, 4])) # predictors[, 4] == "Robust S.E."	
 rownames(gee.fit.CI) <- rownames(predictors)	
-gee.fit.CI	
-	
+gee.fit.CI
+```
+```{r}
 # exponentiate the interpret the results as "odds", instead of log-odds	
 UPSRS_est <- coef(gee.fit)["UPDRS_part_I"]	
 UPDRS_se <- summary(gee.fit)$coefficients["UPDRS_part_I", "Robust S.E."]	
 	
 exp(UPSRS_est + c(-1, 1) * UPDRS_se * qnorm(0.975))
 ```
+
 
 The results show that the estimated `UPDRS`-assessment effect of the clinical diagnosis (`ResearchGroup`) taken from the GEE model exchangeable structure (`summary(gee.fit)$working.correlation`) is $-0.458$. We can use the robust standard errors (`Robust S.E.`) to compute the associated 95% confidence interval, $[-0.65;\ -0.33972648]$. Finally, remember that in the binomial/logistic outcome modeling, these effect-size estimates are on a log-odds scale. Interpretation of the results is simpler if we exponentiate the values to get the effects in terms of (simple raw) odds. This	
 gives a UPDRS effect of $0.632$ and a corresponding 95% confidence interval of $[0.548;\ 0.729]$. This CI clearly excludes the origin and suggests a strong association between `UPDRS_part_I` (non-motor experiences of daily living) and `ResearchGroup` (clinical diagnosis).	
@@ -1509,3 +1670,70 @@ This Chapter is purposely divided in two separate sections to reduce the page lo
 * Simulated RNN case-study	
 * Climate Data Study	
 * Keras-based Multi-covariate LSTM Time-series Analysis and Forecasting.	
+
+# Recurrent Neural Networks (RNN)
+
+Earlier, in Chapter 10, we briefly outlined the ideas behind neural networks. Later, in Chapter 22, we will expand this to deep neural networks.
+
+Let’s now focus on one specific type of neural networks - recursive NN. RNN are a special kind of neural networks that can be applied to predicting the behavior of longitudinal sequence-data. An example is forecasting the trends of a periodic sequence. In general, RNN may be memory intensive as they try to keep all past events in memory. Long short-term memory (LSTM) blocks represent a basic building unit for the RNN layers.
+
+LSTM tends to yield better results and utilizes less computer resources, e.g., memory. A LSTM block consists of a cell, an input gate, an output gate and a forget gate. This allows each cell in the NN to “remember” values over specific time intervals, which explains the short-memory in LSTM. The 3 cell gates mimic the action of a classical artificial neuronal cell part of a multi-layer feed-forward network. The gates rely on an activation function that computes a weighted action-potential sum.
+
+Recurrent neural networks address the need to harvest prior knowledge into “learning” new patterns, which has traditionally been a challenge in machine learning. RNN’s utilize loops to allow knowledge persistence. Following the Gers-Schmidhuber-Cummins model, the expressions below illustrate the equations describing the LSTM block forward pass with a forget gate.
+
+$$
+\begin{align}
+f_t &= \sigma_g(W_{f} x_t + U_{f} h_{t-1} + b_f) \\
+i_t &= \sigma_g(W_{i} x_t + U_{i} h_{t-1} + b_i) \\
+o_t &= \sigma_g(W_{o} x_t + U_{o} h_{t-1} + b_o) \\
+c_t &= f_t \circ c_{t-1} + i_t \circ \sigma_c(W_{c} x_t + U_{c} h_{t-1} + b_c) \\
+h_t &= o_t \circ \sigma_h(c_t)
+\end{align}.
+$$
+In this model:
+
+* c0=0 and h0=0 are initial values,
+* the math operator '∘' denotes the matrix-based Hadamard product,
+* subscripts t denotes time (as an iteration step),
+* superscripts d and h refer to the number of input features and number of hidden units,
+* xt∈Rd is the input vector to the LSTM block
+* ft∈Rh  is the activation vector for the forget gate
+* it∈Rh is the activation vector for the input gate
+* ot∈Rh is the activation vector for the output gate
+* ht∈Rh is the output vector of the LSTM block
+* ct∈Rh is the cell state vector
+* W∈Rh×d, U∈Rh×h and b∈Rh represent the weight matrices and bias vector parameters that will be learned during the training phase.
+
+Cell states in LSTM networks, represented as horizontal lines running at the bottom of the LSTM node diagram, aggregates feedback from the entire chain via linear operations. LSTM nodes can add or remove information from the cell state according to the specifications of the gates regulating the structure of the information flow. Gates provide control for the information stream according to sigmoid neural net layers (σ
+) and a pointwise multiplication operation (×
+).
+
+Sigmoid layers ($$\sigma$$) output numbers in $$[0,1]$$ indicating the throughout proportion each component allows through the gate. At the extremes, output values of zero or one indicate “gate is shut” and “let everything through”, respectively. The three LSTM gates directly control the cell state at the given time.
+
+Various activation functions may be employed, e.g., sigmoid, hyperbolic tangent, rectified linear unit (ReLU), etc. During the network training phase, the LSTM’s total error is minimized on the training data via iterative gradient descent. Either using back-propagation through time, or utilizing the derivative of the error with respect to time, we can derive/change the weights at each iteration (epoch). Note that then the spectral radius of W<1 $$\lim_{n\rightarrow \infty} (W^n) = 0$$. Thus, when gradient descent optimization is used, the error gradients may quickly become trivial ($$0$$) with time. However, with LSTM blocks, the error values are back-propagated from the output, and the total error is kept in the LSTM memory. This continuous error feedback is transferred to each of the gates, which helps in the learning of the gate threshold level. Thus, back-propagation effectively allows the LSTM unit to remember values over long periods of time.
+
+There are also alternative strategies to train the LSTM network, e.g., combining artificial evolution for the weights to the hidden units and pseudo-inverse, or support vector machines, for weights to the output units. Reinforced LSTM nets may also be trained by policy gradient methods, evolution strategies, or genetic algorithms. Finally, stacks of LSTM networks may be trained by connectionist temporal classification (CTC). This involves finding RNN weight matrices that using the input sequences maximize the probability of the outcome labels in the corresponding training datasets, which yields joint alignment and recognition.
+
+## Tensor Format Representation
+
+The ability of LSTM RNN to recognize patterns and maintain the state over the length of the time series are useful for prediction tasks. Time series typically include correlation between consecutive versions of lagged segments of the time-series. The LSTM recurrent architecture models the persistence of the states by communicating updates between weight estimates across each epoch iteration. RNNs are enhanced by the LSTM cell architecture and facilitate long term persistence in addition to short term memory.
+
+n RNN models, the predictors (X
+) are represented as tensors, specifically, 3D-array with dimensions samples×timesteps×features
+.
+
+* Dimension 1: represents the number of samples,
+* Dimension 2: is the number of time steps (lags),
+* Dimension 3: is the number of predictors (1 if univariate or $$n$$ if multivariate predictors).
+
+The outcome (Y) is also a tensor, however it is univariate and is represented by a 2D-array of dimensions: samples×timesteps, where the two dimensions are (1) the number of samples (D1), and (2) the number of time steps in a lag (D2). Thus, the product D1×D2 is the total sample-size. The proportion of the training set length to the testing set length must be an integer.
+
+For example, suppose we have a total of 1,000 observations that are stacked in sets of 200 time-points, per lag, 5 time steps (5 lags), and two features (bivariate predictor-vector). Then, the RNN/LSTM input format will be a 3-tensor of dimensions (200, 5, 2).
+
+The batch size is the number of training examples in one forward/backward pass of a RNN before a weight update. The choice of batch size requires that these proportions are integral: $$\frac{training\ length}{batch\ size}\frac{testing\ length}{batch\ size}$$. A time step is the number of lags included in the training and testing datasets. The epochs are the total number of forward-backward pass iterations. Typically, a larger number of epochs improves model performance, unless overfitting occurs at which time the validation accuracy or loss may revert.
+
+For example, if we have daily data over 10 years, we can choose a prediction of window 3,650 days ($$365 days \times 10 years$$). Suppose we use the auto-correlation function (ACF) and determine that the best auto-correlation is seasonal, i.e., 91 (quarterly). We need to make sure that the autocorrelation period is evenly divisible by the forecasting range. If necessary, we may increase the forecasting period. We can select a batch size of 30 time points (days), which should evenly divide the number of testing and training observations. We may also select time steps = 1, to indicate we are only using one lag, and set epochs = 300, which we can adjust to balance the tradeoff between bias and precision.
+
+Let’s look at a couple of RNN examples.
+
+# Simulated RNN case-study
