@@ -1737,3 +1737,771 @@ For example, if we have daily data over 10 years, we can choose a prediction of 
 Let’s look at a couple of RNN examples.
 
 # Simulated RNN case-study
+
+In this example, we will try to predict a trigonometric function ($$X$$) from a noisy wave function ($$Y$$). The RNN model is expected to accurately estimate the phase shift of the oscillatory wave functions as well as generate an output ($$X$$) that represents a denoised version of the input ($$Y$$). The synthetic training dataset represents 25 oscillations each of which containing 50 point samples.
+
+For simplicity, all data are renormalized to the unit interval$$[0,1]$$. In general, all neural networks work best when the data are pre-normalized to ensure convergence and biased results. We can use any number of hidden layers, number of neurons, and epochs (learning iterations).
+
+```{r}
+# install.packages("rnn")
+library("rnn")
+
+set.seed(1234)
+
+# Set oscillatory wave frequency, period, and phase
+f <- 5
+w <- 2*pi*f
+phase <- -pi/8 # offset the real outcome signal
+# Note: period of sin(t*w+phase) is 1/10, thus, lag=50
+
+# Create input and output sequences, which are different in terms of 
+# phase (offset of -pi/3), quadratic amplitude tau=tau(t), and noise N(0,0.3)
+n=1000
+seq_step= 1.0/n
+t <- seq(seq_step, 1, by=seq_step)
+tau <- (-4) * (t) * (t-1); length(tau) # plot(t, tau)
+```
+```{r}
+# x <- sin(t*w+phase) + rnorm(1000, 0, 0.3)  # input
+x <- tau * (sin(t*w+phase) + rnorm(1000, 0, 0.3))  # input
+y <- sin(t*w)                             # output
+
+# Samples of repeated oscillations 20 time series (rows), each with 50 time-points (columns)
+# Putting data in the appropriate RNN format
+# Predictors (X) and Output (Y) are arrays, 
+# dim 1: samples (must be equal to dim 1 of X), 
+# dim 2: time (must be equal to dim 2 of X), 
+# dim 3: variables (could be 1 or more, if a matrix, will be coerced to array)
+
+# For example, suppose we have a total 1,000 observations that are stacked in samples of 200 time-points (per lag), 5 time steps (5 lags), and 1 feature (univariate predictor-vector). Then, the RNN/LSTM input format will be a 3-tensor of dimensions (100, 10, 1).
+
+X <- matrix(x, nrow = 200, ncol = 5)
+Y <- matrix(y, nrow = 200, ncol = 5)
+dim(X); dim(Y)
+```
+```{r}
+# Plot noisy waves
+# plot(as.vector(X), col='blue', type='l', ylab = "X,Y", main = "Noisy input (X), periodic output (Y)", lwd=2)
+# lines(as.vector(Y), col = "red", lty=2, lwd=2)
+# legend("topright", c("X", "Y"), col = c("blue","red"), lty = c(1, 2), lwd = c(2,2))
+library(plotly)
+plot_ly(x=~c(1:length(as.vector(X))), y=~as.vector(X), type="scatter", mode="lines", name="Noisy Signal") %>%
+  add_trace(x=~c(1:length(as.vector(X))), y=~as.vector(Y), name="Periodic Model (y=sin(t*w))") %>%
+  layout(title="Noisy input and periodic model",
+         xaxis=list(title="time"), yaxis=list(title="value"), legend = list(orientation='h'))
+```
+```{r}
+# The RNN/LSTM algorithm requires the input data to be normalized, centered and scaled
+# mean_x <- mean(X); mean_y <- mean(Y); sd_x <- sd(X); sd_y <- sd(Y) 
+# X = (X-mean_x)/sd_x; Y = (Y-mean_y)/sd_y 
+
+# RNN requires standardization in the interval 0 - 1
+min_x <- min(X); min_y <- min(Y); max_x <- max(X); max_y <- max(Y)
+
+# Generic transformation:
+# forward (scale), for raw data, and reverse (unscale), for predicted data
+my.scale <- function (x, forward=TRUE, input=TRUE) {
+  if (input && forward) {           # X=Input==predictors & Forward scaling
+    x <- (x - min_x) / (max_x - min_x)
+  } else if (input && !forward) {   # X=Input==predictors & Reverse scaling
+    x <- x * (max_x - min_x) + min_x
+  } else if (!input && forward) {   # X=Output==response & Forward scaling
+    x <- (x - min_y) / (max_y - min_y)
+  } else if (!input && !forward) {  # X=Output==response & Reverse scaling
+    x <- x * (max_y - min_y) + min_y
+  }
+  return (x)
+}
+
+# Save these transform parameters; center/scale, so we can invert the transforms
+# after we get the predicted values.
+X <- my.scale(X, forward=TRUE, input=TRUE)
+Y <- my.scale(Y, forward=TRUE, input=FALSE)
+# Check (forward o reversed)(X) ==X
+# plot(X, my.scale(X, forward=FALSE, input=TRUE))
+# plot(Y, my.scale(Y, forward=FALSE, input=FALSE)) 
+
+# random 80-20% training-testing split; 20-5 row (series) split, using all 40 features
+set.seed(1234)
+train_index <- sample(seq_len(nrow(X)), size = 0.8*nrow(X))
+```
+```{r}
+# Train the RNN model using only the training data
+set.seed(1234)
+model_rnn <- rnn::trainr(Y = Y[train_index,],
+                X = X[train_index,],
+                learningrate = 0.06,
+                hidden_dim = 200,
+                learningrate_decay =0.99,
+                numepochs = 100,
+                network_type = "rnn")
+
+
+# Predicted RNN values
+pred_Y <- predictr(model_rnn, X)
+```
+```{r}
+#hist(pred_Y)
+plot_ly(x=~pred_Y[,1], type="histogram", name="Lag 1") %>%
+  add_histogram(x=~pred_Y[,2], name="Lag 2") %>%
+  add_histogram(x=~pred_Y[,3], name="Lag 3") %>%
+  add_histogram(x=~pred_Y[,4], name="Lag 4") %>%
+  add_histogram(x=~pred_Y[,5], name="Lag 5") %>%
+  layout(title="Y Histograms",
+         xaxis=list(title="value"), yaxis=list(title="frequency"), legend = list(orientation='h'))
+```
+```{r}
+# pred_Y_unscale <- my.scale(pred_Y, forward=FALSE, input=FALSE); hist(pred_Y_unscale)
+ 
+# Plot predicted vs actual time-series using the complete data (training AND testing data)
+# plot(as.vector(Y), col = 'red', type = 'l', main = "All Data: Actual vs predicted", ylab = "Y, pred_Y", lwd=1)
+# lines(as.vector(pred_Y), type = 'l', lty=2, col = 'blue', lwd=2)
+# legend("topright", c("Predicted", "Real"), col = c("blue","red"), lty = c(1,1), lwd = c(2,2))
+
+plot_ly(x=~c(1:length(as.vector(Y))), y=~as.vector(Y), type="scatter", mode="lines", name="Noisy Signal") %>%
+  add_trace(x=~c(1:length(as.vector(pred_Y))), y=~as.vector(pred_Y), name="Model Prediction") %>%
+  layout(title="(Training range) raw data vs. RNN model prediction",
+         xaxis=list(title="time"), yaxis=list(title="value"), legend = list(orientation='h'))
+```
+```{r}
+# Plot predicted vs actual timeseries using only the testing data
+# plot(as.vector(Y[-train_index, ]), col = 'red', type='l', main = "Testing Data: Actual vs predicted", ylab = "Y, pred_Y", lwd=2)
+# lines(as.vector(pred_Y[-train_index, ]), type = 'l', lty=1, col = 'blue', lwd=2)
+# legend("topright", c("Predicted", "Real"), col = c("blue","red"), lty = c(1,1), lwd = c(2,1))
+
+plot_ly(x=~c(1:length(as.vector(Y[-train_index, ]))), y=~as.vector(Y[-train_index, ]), 
+        type="scatter", mode="lines", name="Noisy Signal") %>%
+  add_trace(x=~c(1:length(as.vector(pred_Y[-train_index, ]))), y=~as.vector(pred_Y[-train_index, ]), 
+            name="Model Prediction") %>%
+  layout(title="(Testing range) raw data vs. RNN model prediction",
+         xaxis=list(title="time"), yaxis=list(title="value"), legend = list(orientation='h'))
+```
+Notice the learning process expressed indirectly as progressive improvement of the RNN prediction (blue curve) over the time span. Three specific (longitudinally-expressed) characteristics of the forecasting are clearly shown:
+
+* The improved amplitude, signal intensity magnitude,
+* Reduced level of noise, and
+* Reduction of the phase offset (initial phase was $$\pi/8$$).
+
+# Climate Data Study
+
+Let’s use the 2009-2017 Climate Data from the Max Planck Institute in Jena, Germany to demonstrate time-series analysis via RNN. You can find more details about this study here. In a nutshell, this sequence data represents a time-series recorded at the Weather Station at the Max Planck Institute for Biogeochemistry in Jena, Germany. The data includes date-time and 14 climate measurements/features (e.g., atmospheric pressure, temperature and humidity), which are recorded every 10 minutes over 9 years.
+
+We will start by ingesting the large climate data (~50MB).
+
+```{r}
+# Download the climate data 
+clim_data_url <- "https://umich.instructure.com/files/8014703/download?download_frd=1"  
+clim_data_zip_file <- tempfile(); download.file(clim_data_url, clim_data_zip_file, mode="wb")   
+climate_data <- read.csv(unzip(clim_data_zip_file))
+dim(climate_data);  head(climate_data)
+unlink(clim_data_zip_file)
+```
+
+Prior to modeling the data using RNN, we can plot some of the data.
+
+```{r}
+# Date only: climate_time <- as.Date(climate_data$Date_Time, tryFormats = "%d/%m/%Y %H:%M")
+climate_time <- as.POSIXct(climate_data$Date_Time, format = "%d/%m/%Y %H:%M")
+head(climate_time)
+```
+```{r}
+# install.packages("zoo")
+library("zoo")
+
+# define each time series separately
+anyDuplicated(climate_time)   # there are some 9517 duplicated date-time points
+```
+```{r}
+# extract unique elements
+# (climate_time1 <- climate_time[!duplicated(climate_time)])
+climate_data_ts_temp <- zoo(climate_data$T_degC[!duplicated(climate_time)],
+                            climate_time[!duplicated(climate_time)])
+climate_data_ts_pressure <- zoo(climate_data$p_mbar[!duplicated(climate_time)],
+                                climate_time[!duplicated(climate_time)])
+climate_data_ts_humid <- zoo(climate_data$sh_g_kg[!duplicated(climate_time)],
+                             climate_time[!duplicated(climate_time)])
+
+# define aggregate TS object including all individual time-series for each feature
+climate_data_ts_aggregate = cbind(climate_data_ts_temp, 
+                                  climate_data_ts_pressure, climate_data_ts_humid)
+
+#plot(climate_data_ts_aggregate, main="Climate TS Data (Temperature, Pressure, Humidity)", 
+#     col=c("red", "green", "blue"), lty=1, lwd=2, plot.type="single") 
+# plot(climate_data_ts_aggregate, main="Climate TS Data (Temperature, Pressure, Humidity)", 
+#      col=c("red", "green", "blue"), lty=1, lwd=2) 
+# legend("center", legend=c("Temperature", "Pressure", "Humidity"), 
+#       col=c("red", "green", "blue"), lty=1, lwd=2, cex=0.6, x.intersp=0.5)
+
+x_len <- dim(climate_data_ts_aggregate)[1]
+pl1 <- plot_ly(x=~climate_time[!duplicated(climate_time)], y=~climate_data_ts_aggregate[, 1], 
+        type="scatter", mode="lines", name=colnames(climate_data_ts_aggregate)[1]) %>% 
+  layout(hovermode = "x unified")
+pl2 <- plot_ly(x=~climate_time[!duplicated(climate_time)], y=~climate_data_ts_aggregate[, 2], 
+        type="scatter", mode="lines", name=colnames(climate_data_ts_aggregate)[2])  %>% 
+  layout(hovermode = "x unified")
+pl3 <- plot_ly(x=~climate_time[!duplicated(climate_time)], y=~climate_data_ts_aggregate[, 3], 
+        type="scatter", mode="lines", name=colnames(climate_data_ts_aggregate)[3])  %>% 
+  layout(hovermode = "x unified")
+subplot(pl1, pl2, pl3, nrows=3,  shareX = TRUE, titleX = TRUE) %>% 
+  layout(title="(Climate Data) Temperature, Pressure & Humidity",
+         xaxis=list(title="time"), yaxis=list(title="value"), legend = list(orientation='h'))
+```
+
+Now we can proceed with the RNN time-series modeling and prediction.
+
+```{r}
+#colnames(climate_data)
+# [1] "Date_Time"     "p_mbar"        "T_degC"        "Tpot_K"        "Tdew_degC"  "rh_percent" 
+# [7] "VPmax_mbar"    "VPact_mbar"    "VPdef_mbar"    "sh_g_kg"       "H2OC_mmol_mol" "rho_g_m3"
+# [13] "wv_m_s"        "max_wv_m_s"    "wd_deg"       
+
+# Create random data frame and date column, then bind into a DF
+
+# Recall: Bivariate Input=(X,Y); Univariate Outcome (Z)
+X <- climate_data_ts_pressure
+Y <- climate_data_ts_humid
+Z <- climate_data_ts_temp
+
+# X <- smooth.spline(X, spar=0.3)$y   # rh_percent (Humidity)
+# Y <- smooth.spline(Y, spar=0.3)$y   # p_mbar (pressure)
+# Z <- smooth.spline(Z, spar=0.3)$y   # T_degC (temperature)
+
+# The RNN/LSTM algorithm requires the input data to be normalized, centered and scaled
+# mean_x <- mean(X); mean_y <- mean(Y); sd_x <- sd(X); sd_y <- sd(Y) 
+# X = (X-mean_x)/sd_x; Y = (Y-mean_y)/sd_y 
+
+# RNN requires standardization in the interval 0 - 1
+min_x <- min(X); min_y <- min(Y); min_z <- min(Z)
+max_x <- max(X); max_y <- max(Y); max_z <- max(Z)
+
+# Generic transformation:
+# forward (scale), for raw data, and reverse (unscale), for predicted data
+my.scale <- function (x, forward=TRUE, input="X") {
+  if (input=="X" && forward) {           # X=Input==predictors & Forward scaling
+    x <- (x - min_x) / (max_x - min_x)
+  } else if (input=="X" && !forward) {   # X=Input==predictors & Reverse scaling
+    x <- x * (max_x - min_x) + min_x
+  } else if (input=="Y" && forward) {    # Y=Input==predictors & Forward scaling
+    x <- (x - min_y) / (max_y - min_y)
+  } else if (input=="Y" && !forward) {   # Y=Input==predictors & Reverse scaling
+    x <- x * (max_y - min_y) + min_y
+  } else if (input=="Z" && forward) {    # Z=Output==predictors & Forward scaling
+    x <- (x - min_z) / (max_z - min_z)
+  } else if (input=="Z" && !forward) {   # Z=Output==predictors & Reverse scaling
+    x <- x * (max_z - min_z) + min_z
+  } 
+  return (x)
+}
+
+# Save tese transform parameters; center/scale, so we can invert the transforms
+# after we get the predicted values.
+X <- my.scale(X, forward=TRUE, input="X")
+Y <- my.scale(Y, forward=TRUE, input="Y")
+Z <- my.scale(Z, forward=TRUE, input="Z")
+# Check (forward o reversed)(Y) == Y
+# plot(Y, my.scale(Y, forward=FALSE, input="Y"))
+
+# length(Z) = 472731 ~ 9(yrs) * 6(min/hr) *24 (hrs/day) *365(day/yr)
+
+# For example, suppose we have a total of 472731 observations that are stacked in annual samples of 52560 time-points (per lag=year), 9 time steps (9 lags), and 2 features (bivariate predictor-vector, (X,Y)). Then, the RNN/LSTM input format will be a 3-tensor of dimensions (52560, 9, 2).
+
+X <- matrix(X, nrow = 52560, ncol = 9)
+Y <- matrix(Y, nrow = 52560, ncol = 9)
+Z <- matrix(Z, nrow = 52560, ncol = 9)
+X_tensor <- array(0, dim=c(52560,9,2))
+X_tensor[,,1] <- X
+X_tensor[,,2] <- Y
+dim(X_tensor); dim(Z)
+```
+```{r}
+# Plot the time courses of the Input (predictor) tensor and the Output (Z) as time-series
+X_ts <- zoo(as.vector(X_tensor[ , , 1]), climate_time[!duplicated(climate_time)])
+Y_ts <- zoo(as.vector(X_tensor[ , , 2]), climate_time[!duplicated(climate_time)])
+Z_ts <- zoo(as.vector(Z[ , ]), climate_time[!duplicated(climate_time)])
+
+# plot(X_ts, col='green', type='l', ylab = "X-tensor, Z", 
+#         main = "Renormalized Input (X-tensor), Output (Z)", lwd=2)    # ,log = "y")
+# lines(Y_ts, col = "blue", lty=1, lwd=2)
+# lines(Z_ts, col = "red", lty=1, lwd=2)
+# legend("topright", c("X-tensor(Pressure)", "X-tensor(Humid)", "Z(Temp)"), col = c("green", "blue","red"), 
+#        lty = c(1, 1, 1), lwd = c(2,2,2), cex=0.6, x.intersp=0.5)
+
+x_len <- dim(X_ts)[1]
+# Vertically stacked subplot
+# pl1 <- plot_ly(x=~climate_time[!duplicated(climate_time)], y=~X_ts,
+#         type="scatter", mode="lines", name="X-tensor(Pressure)") %>% 
+#   layout(hovermode = "x unified")
+# pl2 <- plot_ly(x=~climate_time[!duplicated(climate_time)], y=~Y_ts, 
+#         type="scatter", mode="lines", name="X-tensor(Humidity)")  %>% 
+#   layout(hovermode = "x unified")
+# pl3 <- plot_ly(x=~climate_time[!duplicated(climate_time)], y=~Z_ts, 
+#         type="scatter", mode="lines", name="Z(Temp)")  %>% 
+#   layout(hovermode = "x unified")
+# subplot(pl1, pl2, pl3, nrows=3,  shareX = TRUE, titleX = TRUE) %>% 
+#   layout(title="(Climate Data) Renormalized Input (X-tensor), Output (Z)",
+#          xaxis=list(title="time"), yaxis=list(title="X-tensor, Z"), legend = list(orientation='h'))
+
+plot_ly(x=~climate_time[!duplicated(climate_time)], y=~X_ts,
+        type="scatter", mode="lines", name="X-tensor(Pressure)") %>% 
+  add_trace(x=~climate_time[!duplicated(climate_time)], y=~Y_ts, 
+        type="scatter", mode="lines", name="X-tensor(Humidity)")  %>% 
+  add_trace(x=~climate_time[!duplicated(climate_time)], y=~Z_ts, 
+        type="scatter", mode="lines", name="Z(Temp)")  %>% 
+  layout(title="(Climate Data) Renormalized Input (X-tensor), Output (Z)",
+         xaxis=list(title="time"), yaxis=list(title="X-tensor, Z"), legend = list(orientation='h'))
+```
+```{r}
+# training-testing split; 52560(annual) and 9 (years) of data.
+# Train on first 8 years of data and predict the final, 9th year of data
+# train_index <- sample(seq_len(nrow(X)), size = 0.8*nrow(X))
+
+# Train the RNN model using only the training data
+# Running the full model is extremely computationally expensive:
+#     model_rnn <- rnn::trainr(Y=Z[train_index,], X=X_tensor[train_index, , ], ....
+# We run a reduced model as a demo, only learning on 1:10000, 1 (yr1) time points
+set.seed(1234)
+model_rnn <- rnn::trainr(Y=Z[1:10000, ], X=X_tensor[1:10000, , ],
+                learningrate = 0.06,
+                hidden_dim = 32,
+                learningrate_decay =0.99,
+                numepochs = 3,
+                network_type = "rnn")
+```
+```{r}
+# Predicted RNN values
+pred_Z <- predictr(model_rnn, X_tensor[10001:20000, , ])
+# hist(pred_Z)
+pl <- plot_ly()
+for (i in 1:dim(pred_Z)[2]) {
+  pl <- pl %>% add_trace(x=~pred_Z[ , i], type="histogram", name=paste0("Lag ", i))
+}
+pl <- pl %>%
+  layout(title="Z Histograms",
+         xaxis=list(title="value"), yaxis=list(title="frequency"), legend = list(orientation='h'))
+pl
+```
+```{r}
+# pred_Y_unscale <- my.scale(pred_Y, forward=FALSE, input=FALSE); hist(pred_Y_unscale)
+ 
+# Plot (transformed/normalized) predicted vs actual time series using the small-sample data
+# plot(as.vector(Z[10001:20000, ]), col = 'red', type = 'l', main = "Normalized Small Data: Actual vs predicted", ylab = "Z, pred_Z", lwd=1)
+# lines(as.vector(pred_Z), type = 'l', lty=1, col = 'blue', lwd=2)
+# legend("topright", c("Predicted", "Real"), col = c("blue","red"), lty = c(1,1), lwd = c(2,2), cex=0.6, x.intersp=0.5)
+
+x_sample <- climate_time[!duplicated(climate_time)]
+x1_sample <- x_sample[10001:20000]
+   
+plot_ly(x=~x1_sample, y=~as.vector(Z[10001:20000, 1]),
+        type="scatter", mode="lines", name="Raw Data") %>% 
+  add_trace(x=~x1_sample, y=~as.vector(pred_Z[ , 1]), 
+        type="scatter", mode="lines", name="Model Predicted")  %>% 
+  layout(title="Normalized Small Data: Actual vs Predicted",
+         xaxis=list(title="time"), yaxis=list(title="X-tensor, Z"), legend = list(orientation='h'))
+```
+```{r}
+# # Plot (Native C temperature space) predicted vs actual time series
+# plot(my.scale(as.vector(Z[10001:20000, ]), forward=FALSE, input="Z"), 
+#      col = 'red', type = 'l', main = "Small Data: Actual vs predicted (orig-temp-domain)", 
+#      ylab = "Celsius Temperature (Observed_Z vs. Predicted_Z", lwd=1)
+# lines(my.scale(as.vector(pred_Z), forward=FALSE, input="Z"),
+#       type = 'l', lty=1, col = 'blue', lwd=2)
+# legend("topright", c("Predicted", "Real"), col = c("blue","red"), lty = c(1,1), lwd = c(2,2), cex=0.6, x.intersp=0.5)
+# 
+# plot_ly(x=~x1_sample, y=~as.vector(Z[10001:20000, 1]),
+#         type="scatter", mode="lines", name="Raw Data") %>% 
+#   add_trace(x=~x1_sample, y=~as.vector(pred_Z[ , 1]), 
+#         type="scatter", mode="lines", name="Model Predicted")  %>% 
+#   layout(title="Normalized Small Data: Actual vs Predicted",
+#          xaxis=list(title="time"), yaxis=list(title="X-tensor, Z"), legend = list(orientation='h'))
+# 
+# # Add time on X-axis
+# obs_Temp_Z_ts <- zoo(my.scale(as.vector(Z[10001:20000, ]), forward=FALSE, input="Z"),
+#                             climate_time[10001:20000])
+# pred_Temp_Z_ts <- zoo(my.scale(as.vector(pred_Z[1:10000]), 
+#                      forward=FALSE, input="Z"), climate_time[10001:20000])
+# plot(obs_Temp_Z_ts, col = 'red', type = 'l',
+#      main = "Small Data: Actual vs predicted", 
+#      ylab = "Celsius Temperature (Observed_Z vs. Predicted_Z", lwd=1)
+# lines(pred_Temp_Z_ts, type = 'l', lty=1, col = 'blue', lwd=2)
+# legend("topleft", c("Predicted", "Real"), col = c("blue","red"), lty = c(1,1), lwd = c(2,2), cex=1.0, x.intersp=0.4)
+```
+
+These results can be significantly improved, by extending the scope of the learning; here we only used $$10,000$$ points (about 10 weeks of data) to learn. In addition, only 10 epochs were used to quickly complete the learning, prediction and plotting operations.
+
+Try to run the experiment with a larger sample-size, modify the 'rnn::trainr()' method parameters, and try to plot observed vs. predicted outcomes (temperature in Celsius). What conclusions can be drawn from this RNN forecasting?
+
+## Examine the ACF
+
+The Autocorrelation Function (ACF) determines the self-correlation within the time series by identifying similar repeats or lagged versions of itself. The 'stats::acf()' function computes the ACF values for all lags and plots the results. We can also obtain the raw ACF values for the time series using a new function 'my_acf()'.
+
+```{r}
+acf(climate_data_ts_temp, lag.max = 52560, na.action = na.pass)
+```
+```{r}
+# myACF <- acf(climate_data_ts_temp, lag.max = 52560)
+# myACF$acf
+# plot_ly(x=~c(1:length(myACF$acf[, 1, 1])), y=~myACF$acf[, 1, 1],
+#         type="scatter", mode="lines", name="Raw Data", fill = 'tozeroy') %>% 
+#   add_trace(x=~x1_sample, y=~as.vector(pred_Z[ , 1]), 
+#         type="scatter", mode="lines", name="Model Predicted")  %>% 
+#   layout(title="Auto-correlation function plot",
+#          xaxis=list(title="lag"), yaxis=list(title="ACF"), legend = list(orientation='h'))
+```
+
+The ACF is useful to identify that we have autocorrelation exceeding $$0.5$$ beyond the lag 52,560 (corresponding to annual measures). We can theoretically use this high autocorrelation lag to develop an LSTM model.
+
+We can employ backtesting as time-series modeling cross-validation (CV). Cross validation (Chapter 20) allows assessment of the model performance and evaluation of the statistical reliability using data sub-sampling. We aim to quantify the expected accuracy level and error range, we can iteratively split the complete dataset into training data and a complementary validation set. As time-series have intrinsic auto-correlation, they are distinct from cross-sectional data, so modified cross validation strategies are needed. In particular, the special time dependency on previous time samples has to be accounted for when developing a time-series CV sampling strategy. The simplest way to design a time-series CV approach is to use an offset window, e.g., one lag wide, to select sequential sub-samples. This type of strategy is called backtesting. This strategy suggests that the time-series CV splits the longitudinal data into multiple contiguous sequences offset by lag-windows, which facilitates testing and validation of past, current, and prospective (in time) observations.
+
+We can employ the 'rsample' package to perform time-series sampling, cross-validation, and backtesting. In our Climate Data, one sampling strategy may use 2 years of data (initial $$105,120=24×6×365×2$$ observations, each 10-minutes apart) as a training set. The sequence of time-points, covering the 3-rd year, will include $$105,121:157,681$$) and will serve as a validation/testing dataset. More information is available here.
+
+```{r}
+library(ggplot2)
+df_Temp_Time <- data.frame(Z=climate_data$T_degC[!duplicated(climate_time)], 
+                           t=as.Date(climate_time[!duplicated(climate_time)]))
+# plot1 <- ggplot(df_Temp_Time, aes(x=t, y=Z)) +
+#     geom_line(color = 'darkblue', alpha = 0.5) +   # plot Temp in C
+#     # geom_smooth(method = "loess", span = 0.2, se = TRUE) +  # plot smoothed-Temp
+#     labs(title = "2009-2017 (Full Data Set)")
+# plot1
+
+plot_ly(data=df_Temp_Time, x=~t, y=~Z,
+        type="scatter", mode="lines", name="Raw Data") %>%
+  layout(title="2009-2017 Temperature (Full Data Set)",
+         xaxis=list(title="time"), yaxis=list(title="T_degC"), legend = list(orientation='h'))
+```
+
+# Keras-based Multi-covariate LSTM Time-series Analysis and Forecasting
+
+The LSTM RNN model may be appropriate if there is evidence of periodicity in the data with autocorrelation that can be estimated using the autocorrelation function (ACF). LSTM uses the autocorrelation estimate to make forward series predictions. For instance, to generate a 1-year batch forecasting, we can create a single pass prediction (batch mode) across the entire forecast time domain. This is different from the more traditional time-point based prediction, which can also be used to iteratively estimate a sequence of predictions on prospective time points (intervals). Of course, batch prediction requires that the autocorrelation lag is bigger than the one year (365 days, or $$52,560$$ ten-minute time increments that the *Climate Data* is actually acquired at).
+
+## Using Keras to Model Stateful LSTM Time-series
+
+Recurrent Neural Networks are typically affected by gradient vanishing, which in ML refers to the reduction of the gradient during the process of interactively training the artificial RNN using backpropagation and gradient-based learning. At each learning epoch, the updates of the neural networks’ weights are proportional to the magnitude of the gradient of the error function, relative to the current weights. The ranges of the activation function values, e.g., hyperbolic tangent, include zero, e.g., $$(−1,1)$$ or $$[0,1)$$, and the use of chain rule in the backpropagation process may lead to multiplication of $$n$$ by small, or trivial, numbers. Thus, the gradient estimates of the “front” layers in an $$n$$-layer RNN yield to exponential decrease in the gradient (error signal) w.r.t. $$n$$, which in turn, leads to very slow training.
+
+Stateful LSTM networks allow fine control over resetting the internal state of the LSTM network, which avoids the gradient vanishing by replacing update multiplication by addition when computing the candidate weights at each iteration. This additive update of the state of every cell in the network prevents the rapid decay of the gradient. A nice visualization of the core LSTM RNN nets is available here.
+
+Statefulness is a property that determines if the network cell states are reset at each recursive iteration. Stateless models reset all cell states at each sequence, whereas stateful models propagate the cell states to the next batch; the state of the sample, $$X_i$$, located at index $$i$$, will be used in the computation of the sample $$X_{i+bs}$$ in the next batch, where $$b$$s is the batch size, i.e., no shuffling is applied. In practice, the stateful argument is a Boolean. The default is 'stateful=False', all cell states are reset at the next batch. In this situation, keras shuffles (i.e., permutes) the samples in the input matrix $$X$$ and the dependencies between $$X_i$$ and $$X_{i+1}$$ are lost.
+
+However, when 'stateful=True', the last state for each sample at index $$i$$ in a batch is used as the initial state of the following batch for the same sample index $$i$$.
+
+Building the input matrix $$X$$ is important. It’s shape depends on 'nb_samples', 'timesteps', 'input_dim', and 'batch_size', which must divide 'nb_samples'. A LSTM model with ratio 'nb_samples/batch_size' will receive this many blocks of samples, compute each output (number of timesteps for each sample), average the gradients, and propagate it to update the weight parameters vector.
+
+```{r}
+# install.packages("keras")
+# install_keras()
+# install.packages("devtools")
+# devtools::install_github("rstudio/keras")
+library(keras)
+```
+
+Here is an example of building a single 'keras' stateful LSTM model using a single sample. It’s simpler to merge the training and testing datasets into a single long-format dataset, including a separate column specifying the data type - *training* or *testing*. We need to re-specify the *tbl_time* object during the 'bind_rows()' step.
+
+```{r}
+# install.packages("tidyverse")
+# library("tidyverse")
+
+df_train <- as.numeric(df_Temp_Time[1:10000, 1])
+df_test <- as.numeric(df_Temp_Time[10001:20000, 1])
+```
+
+The LSTM model assumptions include standardized (centered and scaled) input.
+
+```{r}
+df_train.std <- scale(df_train)
+df_test.std <- scale(df_test)
+```
+
+Save the standardizing transformation, so that later we would be able to transform back the results into the domain of the original data.
+
+```{r}
+mean.train <- mean(df_train); sd.train <- sd(df_train) 
+mean.test <- mean(df_test); sd.test <- sd(df_test) 
+
+c("TRAIN: center" = mean.train, "TRAIN: SD" = sd.train)
+c("TEST: center" = mean.test, "TEST: SD" = sd.test)
+```
+
+### Definitions
+
+To build an LSTM plan we should clarify the basic terms.
+
+* Tensor Format: The predictors ($$X$$) are 3D arrays of dimensions $$[D_1=samples,D_2=timesteps,D_3=features]$$, where $$D_1$$ is the length of values, $$D_2$$ is the number of time steps (lags), and $$D_3$$ is the number of predictors ($$1$$ if univariate, or $$n$$ if multivariate)
+* Outcomes/Targets: $$(y)$$ is a 2D Array of dimensions:$$[D_1=samples, D_2=timesteps]$$
+* Training/Testing: The training and testing length must be evenly divisible (e.g., $$\frac{training\ length}{testing\ length}$$ must be an integer).
+* Batch Size: Represents the number of training examples in one forward/backward pass of the RNN prior to a weight update. The batch size must be evenly divisible into both the training and the testing lengths.
+* Time Steps: The time step is the number of lags included in the training/testing set.
+* Epochs: The epochs represent the total number of forward/backward pass iterations. Higher number of epochs tends to improve model performance, unless overfitting occurs, however, it’s more computationally intense.
+
+## Keras modeling of time-series data
+
+Let’s try to fit a stateful RNN model for a time-series problem on a subset of the Climate Data, covering 2 years of data. For training, we will use the initial $$105,120=24×6×365×2$$ observations, each 10-minutes apart, the 3-rd year of observations including $$105,121:157,681$$ will serve as a validation/testing dataset. More information is available here.
+
+```{r}
+# for stateful LSTM rnn, tsteps can be set to 1
+tsteps <- 1
+batch_size <- 25
+epochs <- 25
+# number of elements ahead that are used to make the prediction
+lahead <- 1
+
+# Prep the data
+df_Temp_Humid_Time <- data.frame(C=climate_data$T_degC[!duplicated(climate_time)], 
+                           H=climate_data$rh_percent[!duplicated(climate_time)],
+                           T=as.Date(climate_time[!duplicated(climate_time)]))
+df_Temp_train <- as.numeric(df_Temp_Humid_Time[1:10000, 1])
+df_Temp_test <- as.numeric(df_Temp_Humid_Time[10001:20000, 1])
+df_Humid_train <- as.numeric(df_Temp_Humid_Time[1:10000, 2])
+df_Humid_test <- as.numeric(df_Temp_Humid_Time[10001:20000, 2])
+
+# The LSTM model assumptions include standardized (centered and scaled) input. 
+df_Temp_train.std <- scale(df_Temp_train); df_Temp_test.std <- scale(df_Temp_test)
+df_Humid_train.std <- scale(df_Humid_train); df_Humid_test.std <- scale(df_Humid_test)
+
+x <- as.POSIXct(climate_data$Date_Time, format = "%d/%m/%Y %H:%M")
+head(x[1:6])
+```
+```{r}
+# Reformat the data as a 3D tensor, see above
+df_Temp_train.std.tensor <- array(data = df_Temp_train.std, dim = c(dim(df_Temp_train.std)[1], 1))
+df_Humid_train.std.tensor <- array(data=df_Humid_train.std, dim = c(dim(df_Humid_train.std)[1], 1,1))
+
+y <- df_Temp_train.std.tensor; x <- df_Humid_train.std.tensor
+dim(x); dim(y); summary(x); summary(y)
+```
+```{r}
+# model formulation
+model.2 <- keras_model_sequential()
+model.2 %>%
+  layer_lstm(units = 50, input_shape = c(tsteps, 1), batch_size = batch_size,
+             return_sequences = TRUE, stateful = TRUE) %>% 
+  layer_lstm(units = 50, return_sequences = FALSE, stateful = TRUE) %>% 
+  layer_dense(units = 1)
+model.2 %>% compile(loss = 'mse', optimizer = 'rmsprop')
+```
+```{r}
+### Iterative model fitting on training data
+for (i in 1:epochs) {
+  model.2 %>% fit(x, y, batch_size = batch_size,
+                epochs = 1, verbose = 1, shuffle = FALSE)
+            
+  model.2 %>% reset_states()
+}
+```
+```{r}
+# Predict the (standardized) Temp (C) using (standardized) Humidity (Time=1:10K)
+predicted_output <- model.2 %>% predict(x, batch_size = batch_size)
+# plot(df_Temp_Time$t[1:10000], y, xlab = 'time', 
+#      main="Time: [1:10K] Training model (Temp~Humidity): rNN vs. Observed",  
+#      lty=1, ylab='(std) T_degC ~ rh_percent', type="l", col="green")
+# lines(df_Temp_Time$t[1:10000], predicted_output,  col="blue", lwd=2)
+# legend("bottom", legend=c("Observed Temp", "LSTM rNN Predicted Temp"),
+#        col=c("green", "blue"), lty=c(1,1), cex=0.8)
+# legend("top", legend=sprintf("Temperature Corr(Obs,Pred)=%s", 
+#                              round(cor(y[,1], predicted_output[,1]), 2)), cex=0.8)
+
+x1 <- as.POSIXct(climate_data$Date_Time, format = "%d/%m/%Y %H:%M")
+plot_ly(x=~x1[1:10000], y=~y[ , 1], type="scatter", mode="lines", name="Observed Temp") %>%
+  add_trace(x=~x1[1:10000], y=~predicted_output[ , 1], name="LSTM RNN Predicted Temp") %>%
+  layout(title="2009-2017 Temperature (Full Data Set)",
+         xaxis=list(title="time"), 
+         yaxis=list(title="T_degC"), 
+         legend = list(orientation="h"))
+```
+```{r}
+### Prospective Forecasting/Prediction of Temp using Humidity (time: 10001 - 20000)
+x_test <- array(data=df_Humid_test.std, dim = c(dim(df_Humid_test.std)[1], 1,1))
+y_test <- array(data=df_Temp_test.std, dim = c(dim(df_Temp_test.std)[1], 1))
+
+predicted_output_test <- model.2 %>% predict(x_test, batch_size = batch_size)
+# plot(df_Temp_Time$t[10001:20000], y_test, xlab = 'time', 
+#      main="Time: [10K:20K]) Forecasting (Temp~Humidity): rNN vs. Observed",  
+#      lty=1, ylab='(std) T_degC ~ rh_percent', type="l", col="green")
+# lines(df_Temp_Time$t[10001:20000], predicted_output_test,  col="blue", lwd=2)
+# legend("bottom", legend=c("Observed Temp", "LSTM rNN Predicted Temp"),
+#        col=c("green", "blue"), lty=c(1,1), cex=0.8)
+# legend("top", legend=sprintf("Temperature Corr(Obs,Pred)=%s", 
+#                              round(cor(y_test[,1], predicted_output_test[,1]), 2)), cex=0.8)
+
+plot_ly(x=~x1[10001:20000], y=~y_test[ , 1], type="scatter", mode="lines", name="Observed Temp") %>%
+  add_trace(x=~x1[10001:20000], y=~predicted_output_test[ , 1], name="LSTM RNN Predicted Temp") %>%
+  layout(title=paste0("Temperature Corr(Obs,Pred)", round(cor(y_test[,1], predicted_output_test[,1]), 2)),
+         xaxis=list(title="time"), yaxis=list(title="T_degC"), legend = list(orientation='h'))
+```
+
+## Keras modeling of image classification data (CIFAR10)
+
+The CIFAR-10 dataset includes common images along with human derived class-labels. Specifically, CIFAR-10 contains 60,000 color images of size $$32×32$$, each labeled in 10 different classes: airplanes, cars, birds, cats, deer, dogs, frogs, horses, ships, and trucks. There are 6,000 images of each class. Each class label is represented as a nominal factor (from 0 to 9), representing the ground truth (human labeling of each image). These labels are included in the file batches.meta.mat.
+
+Let’s try to build a 'keras' deep learning model that can predict the class labels.
+
+```{r}
+library(keras)
+# 1. define model parameters
+batch_size <- 50
+epochs <- 4   # increase the epochs to improve the results
+data_augmentation <- TRUE
+
+# 2. prepare the data 
+# run ?dataset_cifar10 for more info on the data that is provided with keras distribution
+options(timeout = 600)
+cifar10 <- dataset_cifar10()
+
+# 3. scale RGB values in test and train inputsto [0; 1] range
+x_train <- cifar10$train$x/255
+x_test <- cifar10$test$x/255
+y_train <- to_categorical(cifar10$train$y, num_classes = 10)
+y_test <- to_categorical(cifar10$test$y, num_classes = 10)
+class_labels <- c("airplanes", "cars", "birds", "cats", "deer", "dogs", 
+      "frogs", "horses", "ships", "trucks")
+
+y_class_label <- rep("", dim(y_train)[1]); str(y_class_label)
+```
+```{r}
+for (i in 1:dim(y_train)[1]) {   # dim(y_train) is 50000(images) * 10 (class-label-indicators)
+  for (j in 1:dim(y_train)[2]) {
+    if (y_train[i,j] == 1) 
+      y_class_label[i] <- class_labels[j]
+  }
+}
+# y_class_label[1001]
+
+# 4. Visualize some of the images
+library("imager")
+dim(x_train)
+# [1] 50000    32    32     3
+# first convert the CSV data (one row per image, 42,000 rows)
+N <- 4
+array_3D <- array(x_train[1001:(1000+N), , , 1], c(4, 32, 32, 3)) # array_3D[index, x, y, RGB]
+mat_2D <- t(matrix(array_3D[1, , , 1], nrow = 32, ncol = 32))
+plot(as.cimg(mat_2D))
+```
+```{r}
+pretitle <- function(index) {
+  sprintf("Image: %d, true label: %s", index, y_class_label[index])
+}
+op <- par(mfrow = c(2,2), oma = c(5,4,0,0) + 0.1, mar = c(0,0,1,1) + 0.1)
+img_3D <- as.cimg(array_3D[N , , , 1], 32, 32, 1)
+for (k in 1:N) {
+  img_3D <- as.cimg(t(matrix(array_3D[k, , , 1], nrow = 32, ncol = 32)))
+  plot(img_3D, k, xlim = c(0,32), ylim = c(32,0), axes=F, ann=T, main=pretitle(1000+k))
+}
+```
+```{r}
+# 5. define a sequential LSTM rNN model 
+#### Initialize sequential model
+model.3 <- keras_model_sequential()
+
+model.3 %>%
+  # First hidden 2D convolutional layer of 32x32 pixel 2D images
+  layer_conv_2d(
+    filter = 32, kernel_size = c(4,4), padding = "same", 
+    input_shape = c(32, 32, 3)
+  ) %>%
+  layer_activation("relu") %>%
+
+  # Second hidden layer
+  layer_conv_2d(filter = 32, kernel_size = c(4,4)) %>%
+  layer_activation("relu") %>%
+
+  # Use max pooling
+  layer_max_pooling_2d(pool_size = c(2,2)) %>%
+  layer_dropout(0.25) %>%
+  
+  # add 2 additional hidden 2D convolutional layers
+  layer_conv_2d(filter = 32, kernel_size = c(4,4), padding = "same") %>%
+  layer_activation("relu") %>%
+  layer_conv_2d(filter = 32, kernel_size = c(4,4)) %>%
+  layer_activation("relu") %>%
+
+  # Use max pooling again
+  layer_max_pooling_2d(pool_size = c(2,2)) %>%
+  layer_dropout(0.25) %>%
+  
+  # Flatten max filtered output into feature vector 
+  # and feed into dense layer
+  layer_flatten() %>%
+  layer_dense(512) %>%
+  layer_activation("relu") %>%
+  layer_dropout(0.5) %>%
+
+  # Outputs from dense layer are projected onto 10-unit output layer
+  layer_dense(10) %>%
+  layer_activation("softmax")
+
+opt <- optimizer_rmsprop(learning_rate = 0.0001, weight_decay = 1e-6)
+```
+```{r}
+### Compile the model (i.e., specify loss function, optimizer, and metrics)
+model.3 %>% compile(
+  loss = "categorical_crossentropy",
+  optimizer = opt,
+  metrics = "accuracy"
+)
+```
+```{r}
+# 6. Model training
+if(!data_augmentation){
+  history <- model.3 %>% fit(
+    x_train, y_train,
+    batch_size = batch_size,
+    epochs = epochs,
+    validation_data = list(x_test, y_test),
+    shuffle = TRUE
+  )
+  
+} else {
+    datagen <- image_data_generator(
+    rotation_range = 20,
+    width_shift_range = 0.2,
+    height_shift_range = 0.2,
+    horizontal_flip = TRUE
+  )
+  
+  datagen %>% fit_image_data_generator(x_train)
+  
+  history <- model.3 %>% fit_generator(
+    flow_images_from_data(x_train, y_train, datagen, batch_size = batch_size),
+    steps_per_epoch = as.integer(20000/batch_size), 
+    # increase the iterations (steps_per_epoch) to improve the results, comp-complexity increases
+    # steps_per_epoch = as.integer(40000/batch_size),
+    epochs = epochs, 
+    validation_data = list(x_test, y_test)
+  )
+}
+```
+```{r}
+# 7. Validation: illustrate the relation between real and predicted class labels
+# Generate the 10 * 10 confusion matrix to 
+pred_prob <- predict(object = model.3, x = x_test)
+
+y_pred_class_label <- rep("", dim(y_test)[1]); str(y_pred_class_label)
+for (i in 1:dim(y_test)[1]) {   # dim(y_test) is 10000(images) * 10 (class-label-indicators)
+  for (j in 1:dim(y_test)[2]) {
+    if(j==1) j_max = 1
+    else if (pred_prob[i,j] > pred_prob[i, j_max]) j_max = j
+  }
+  y_pred_class_label[i] <- class_labels[j_max]
+}
+
+y_test_class_label <- rep("", dim(y_test)[1]); str(y_test_class_label)
+for (i in 1:dim(y_test)[1]) {   # dim(y_train) is 10000(images) * 10 (class-label-indicators)
+  for (j in 1:dim(y_test)[2]) {
+    if (y_test[i,j] == 1) 
+      y_test_class_label[i] <- class_labels[j]
+  }
+}
+
+length(y_test_class_label)==length(y_pred_class_label)
+table(y_pred_class_label, y_test_class_label)
+caret::confusionMatrix(as.factor(y_pred_class_label), as.factor(y_test_class_label))
+```
+```{r}
+# Plot algorithm convergence history
+plot(history, type="l")
+```
+
+Although the prediction accuracy may only be around $$0.38$$, this is pretty good as the expected random classifier accuracy is just $$0.1$$ (1 out of ten classes).
+
+Additional examples illustrating the practical use of 'keras' are included in Chapter 22 (Deep Learning).
+
+
