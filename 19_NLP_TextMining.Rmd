@@ -1,5 +1,5 @@
 ---
-title: "19 Natural Language Processing"
+title: "19 Natural Language Processing/Text Mining"
 author: "nobuo"
 date: "2021/5/2"
 output: html_document
@@ -197,10 +197,8 @@ We will go through the same procedure as we did for the course syllabi example a
 ## Step 1: make a VCorpus object	
 
 ```{r}
-jobs <- unlist(job[, 10])
-# class(jobs)
+jobs <- as.list(job$Description)	
 jobCorpus <- VCorpus(VectorSource(jobs))
-jobCorpus
 ```
 
 ## Step 2: clean the VCorpus object
@@ -266,30 +264,42 @@ Similarly, in the bottom, instead of the initial 846 terms, we only have 14 term
 Similar to what we did in [Chapter 7](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/07_NaiveBayesianClass.html), visualization of the terms-world clouds is available in R when combine `tm` with `wordcloud` package. First, we can count the term frequencies in two document-term matrices.	
 
 ```{r}
+library(plotly)	
 # Let's calculate the cumulative frequencies of words across documents and sort:	
-freq1 <- sort(colSums(as.matrix(dtms_top30)), decreasing=T)	
+freq1<-sort(colSums(as.matrix(dtms_top30)), decreasing=T)	
 freq1	
-freq2 <- sort(colSums(as.matrix(dtms_bot100)), decreasing=T)	
-freq2	
-	
+freq2<-sort(colSums(as.matrix(dtms_bot100)), decreasing=T)	
+freq2
+```
+```{r}
 # Plot frequent words (for bottom 100 jobs)	
 wf2=data.frame(term=names(freq2), occurrences=freq2)	
-library(ggplot2)	
-p <- ggplot(subset(wf2, freq2>2), aes(term, occurrences))	
-p <- p + geom_bar(stat="identity")	
-p <- p + theme(axis.text.x=element_text(angle=45, hjust=1))	
-p	
+# library(ggplot2)	
+# p <- ggplot(subset(wf2, freq2>2), aes(term, occurrences))	
+# p <- p + geom_bar(stat="identity")	
+# p <- p + theme(axis.text.x=element_text(angle=45, hjust=1))	
+# p	
 	
+df.freq2 <- subset(wf2, freq2>2)	
+plot_ly(data=df.freq2, x=~term, y=~occurrences, type="bar") %>%	
+  layout(title="Bottom 100 Job Descriptions (Frequent Terms)")	
+```
+```{r}
 # Plot frequent words (for top 30 jobs)	
 wf1=data.frame(term=names(freq1), occurrences=freq1)	
-p2 <- ggplot(subset(wf1, freq1>2), aes(term, occurrences, fill = freq1))	
-p2 <- p2 + geom_bar(stat="identity")	
-p2 <- p2 + theme(axis.text.x=element_text(angle=45, hjust=1))	
-p2	
+# p2 <- ggplot(subset(wf1, freq1>2), aes(term, occurrences, fill = freq1))	
+# p2 <- p2 + geom_bar(stat="identity")	
+# p2 <- p2 + theme(axis.text.x=element_text(angle=45, hjust=1))	
+# p2	
 	
-# what is common (frequently occuring words)	
+df.freq1 <- subset(wf1, freq1>2)	
+plot_ly(data=df.freq1, x=~term, y=~occurrences, type="bar") %>%	
+  layout(title="Top 30 Job Descriptions (Frequent Terms)")
+```
+```{r}
+# what is common (frequently occurring words)	
 # in the description of the top 30 and the bottom 100 jobs?	
-intersect(subset(wf1, freq1>2)$term, subset(wf2, freq2>2)$term)	
+intersect(df.freq1$term, df.freq2$term)	
 ```
 
 Then we apply `wordcloud` function to the `freq` dataset.
@@ -298,7 +308,8 @@ Then we apply `wordcloud` function to the `freq` dataset.
 library(wordcloud)	
 set.seed(123)	
 wordcloud(names(freq1), freq1)	
-	
+```
+```{r}
 # Color code the frequencies using an appropriate color map:	
 	
 # Sequential palettes names include: 	
@@ -306,7 +317,8 @@ wordcloud(names(freq1), freq1)
 	
 # Diverging palettes include  	
 # BrBG PiYG PRGn PuOr RdBu RdGy RdYlBu RdYlGn Spectral	
-wordcloud(names(freq2), freq2, min.freq=5, colors=brewer.pal(6, "Spectral"))
+wordcloud(names(freq2), freq2, min.freq=5, colors=brewer.pal(6, "Spectral"))	
+#wordcloud(names(freq2), freq2, min.freq=5, colors=brewer.pal(length(names(subset(wf2, freq2>5))), "Dark2"))
 ```
 
 It becomes apparent that top 30 jobs tend to focus more on research or discovery and include frequent keywords like "study", "nature", and "analyze". The bottom 100 jobs are more focused on mechanistic operations of objects or equipment, with frequent keywords like "operation", "repair", and "perform".	
@@ -344,8 +356,45 @@ fit <- cv.glmnet(x = as.matrix(dtm), y = job[['highrank']],
                  thresh = 1e-3, 	
                  # again lower number of iterations for faster training	
                  maxit = 1e3)	
-plot(fit)	
+# plot(fit)	
 print(paste("max AUC =", round(max(fit$cvm), 4)))
+```
+```{r}
+plotCV.glmnet <- function(cv.glmnet.object, name="") {	
+  df <- as.data.frame(cbind(x=log(cv.glmnet.object$lambda), y=cv.glmnet.object$cvm, 	
+                           errorBar=cv.glmnet.object$cvsd), nzero=cv.glmnet.object$nzero)	
+	
+  featureNum <- cv.glmnet.object$nzero	
+  xFeature <- log(cv.glmnet.object$lambda)	
+  yFeature <- max(cv.glmnet.object$cvm)+max(cv.glmnet.object$cvsd)	
+  dataFeature <- data.frame(featureNum, xFeature, yFeature)	
+	
+  plot_ly(data = df) %>%	
+    # add error bars for each CV-mean at log(lambda)	
+    add_trace(x = ~x, y = ~y, type = 'scatter', mode = 'markers',	
+        name = 'CV MSE', error_y = ~list(array = errorBar)) %>% 	
+    # add the lambda-min and lambda 1SD vertical dash lines	
+    add_lines(data=df, x=c(log(cv.glmnet.object$lambda.min), log(cv.glmnet.object$lambda.min)), 	
+              y=c(min(cv.glmnet.object$cvm)-max(df$errorBar), max(cv.glmnet.object$cvm)+max(df$errorBar)),	
+              showlegend=F, line=list(dash="dash"), name="lambda.min", mode = 'lines+markers') %>%	
+    add_lines(data=df, x=c(log(cv.glmnet.object$lambda.1se), log(cv.glmnet.object$lambda.1se)), 	
+              y=c(min(cv.glmnet.object$cvm)-max(df$errorBar), max(cv.glmnet.object$cvm)+max(df$errorBar)), 	
+              showlegend=F, line=list(dash="dash"), name="lambda.1se") %>%	
+    # Add Number of Features Annotations on Top	
+    add_trace(dataFeature, x = ~xFeature, y = ~yFeature, type = 'scatter', name="Number of Features",	
+        mode = 'text', text = ~featureNum, textposition = 'middle right',	
+        textfont = list(color = '#000000', size = 9)) %>%	
+    # Add top x-axis (non-zero features)	
+    # add_trace(data=df, x=~c(min(cv.glmnet.object$nzero),max(cv.glmnet.object$nzero)),	
+    #           y=~c(max(y)+max(errorBar),max(y)+max(errorBar)), showlegend=F, 	
+    #           name = "Non-Zero Features", yaxis = "ax", mode = "lines+markers", type = "scatter") %>%	
+    layout(title = paste0("Cross-Validation MSE (", name, ")"),	
+							xaxis = list(title=paste0("log(",TeX("\\lambda"),")"),	side="bottom", showgrid=TRUE), # type="log"	
+							hovermode = "x unified", legend = list(orientation='h'),  # xaxis2 = ax,  	
+							yaxis = list(title = cv.glmnet.object$name,	side="left", showgrid = TRUE))	
+}	
+	
+plotCV.glmnet(fit, "LASSO")
 ```
 
 Here `x` is a matrix and `y` is the response variable. The graph is showing all the AUC we got from models we created. The last line of code help us select the best AUC among all models. The resulting $AUC\sim 0.73$ represents a relatively good prediction model for this small sample size. 	
@@ -399,9 +448,11 @@ fit1 <- cv.glmnet(x = as.matrix(dtm.tfidf), y = job[['highrank']],
                  thresh = 1e-3, 	
                  # again lower number of iterations for faster training	
                  maxit = 1e3)	
-plot(fit1)	
-print(paste("max AUC =", round(max(fit1$cvm), 4)))
+# plot(fit1)	
+print(paste("max AUC =", round(max(fit1$cvm), 4)))	
+plotCV.glmnet(fit1, "LASSO")
 ```
+
 
 This output is about the same as the previous jobs ranking prediction classifier (based on the unweighted DTM). Due to random sampling, each run of the protocols may generate a slightly different result. The idea behind using TF-IDF is that one would expect to get more unbiased estimates of word importance. If the document includes stopwords, like "the" or "one", the DTM may distort the results, but TF-IDF can help fix this problem.	
 	
@@ -451,43 +502,43 @@ d. providing legal counsel on tax questions complicated by the absence of preced
 e. preparing and prosecuting criminal cases when the facts of the cases are complex or difficult to determine or the outcome will have a significant impact within the jurisdiction; and	
 f. advising and representing public defendants in all phases of criminal proceedings when the facts of the case are complex or difficult to determine, complex or unsettled legal issues are involved, or the prosecutorial jurisdiction devotes substantial resources to obtaining a conviction."	
 	
-xTestMachinist <- "Produces replacement parts and new parts in making repairs of metal parts of mechanical equipment. Work involves most of the following: interpreting written instructions and specifications; planning and laying out of work; using a variety of machinist's handtools and precision measuring instruments; setting up and operating standard machine tools; shaping of metal parts to close tolerances; making standard shop computations relating to dimensions of work, tooling, feeds, and speeds of machining; knowledge of the working properties of the common metals; selecting standard materials, parts, and equipment required for this work; and fitting and assembling parts into mechanical equipment. In general, the machinist's work normally requires a rounded training in machine-shop practice usually acquired through a formal apprenticeship or equivalent training and experience. Industrial machinery repairer. Repairs machinery or mechanical equipment. Work involves most of the following: examining machines and mechanical equipment to diagnose source of trouble; dismantling or partly dismantling machines and performing repairs that mainly involve the use of handtools in scraping and fitting parts; replacing broken or defective parts with items obtained from stock; ordering the production of a replacement part by a machine shop or sending the machine to a machine shop for major repairs; preparing written specifications for major repairs or for the production of parts ordered from machine shops; reassembling machines; and making all necessary adjustments for operation. In general, the work of a machinery maintenance mechanic requires rounded training and experience usually acquired through a formal apprenticeship or equivalent training and experience. Excluded from this classification are workers whose primary duties involve setting up or adjusting machines. Vehicle and mobile equipment mechanics and repairers. Repairs, rebuilds, or overhauls major assemblies of internal combustion automobiles, buses, trucks, or tractors. Work involves most of the following: Diagnosing the source of trouble and determining the extent of repairs required; replacing worn or broken parts such as piston rings, bearings, or other engine parts; grinding and adjusting valves; rebuilding carburetors; overhauling transmissions; and repairing fuel injection, lighting, and ignition systems. In general, the work of the motor vehicle mechanic requires rounded training and experience usually acquired through a formal apprenticeship or equivalent training and experience"	
-	
-testJDs <- c(xTestAccountant, xTestAttorney, xTestMachinist)	
-	
-# define the preprocessing (tolower case) function	
-preproc_fun = tolower	
-	
-# define the tokenization function	
-token_fun = text2vec::word_tokenizer	
-	
+xTestMachinist <- "Produces replacement parts and new parts in making repairs of metal parts of mechanical equipment. Work involves most of the following: interpreting written instructions and specifications; planning and laying out of work; using a variety of machinist's handtools and precision measuring instruments; setting up and operating standard machine tools; shaping of metal parts to close tolerances; making standard shop computations relating to dimensions of work, tooling, feeds, and speeds of machining; knowledge of the working properties of the common metals; selecting standard materials, parts, and equipment required for this work; and fitting and assembling parts into mechanical equipment. In general, the machinist's work normally requires a rounded training in machine-shop practice usually acquired through a formal apprenticeship or equivalent training and experience. Industrial machinery repairer. Repairs machinery or mechanical equipment. Work involves most of the following: examining machines and mechanical equipment to diagnose source of trouble; dismantling or partly dismantling machines and performing repairs that mainly involve the use of handtools in scraping and fitting parts; replacing broken or defective parts with items obtained from stock; ordering the production of a replacement part by a machine shop or sending the machine to a machine shop for major repairs; preparing written specifications for major repairs or for the production of parts ordered from machine shops; reassembling machines; and making all necessary adjustments for operation. In general, the work of a machinery maintenance mechanic requires rounded training and experience usually acquired through a formal apprenticeship or equivalent training and experience. Excluded from this classification are workers whose primary duties involve setting up or adjusting machines. Vehicle and mobile equipment mechanics and repairers. Repairs, rebuilds, or overhauls major assemblies of internal combustion automobiles, buses, trucks, or tractors. Work involves most of the following: Diagnosing the source of trouble and determining the extent of repairs required; replacing worn or broken parts such as piston rings, bearings, or other engine parts; grinding and adjusting valves; rebuilding carburetors; overhauling transmissions; and repairing fuel injection, lighting, and ignition systems. In general, the work of the motor vehicle mechanic requires rounded training and experience usually acquired through a formal apprenticeship or equivalent training and experience"
+```
+```{r}
+# Define the testing cases (1) list, (2) Y-category (top-30 or not), and (3) ID names	
+testJDs <- as.list(c(xTestAccountant, xTestAttorney, xTestMachinist))	
+testTop30 <- c(1,1,0)	
+testNames <- c("xTestAccountant", "xTestAttorney", "xTestMachinist")	
+  	
+### 1. Training Phase Labeled data	
 # loop to substitute "_" with blank space	
-for(j in seq(job[, 10])){	
-  job[j, 10] <- gsub("_", " ", job[j, 10])	
+for(j in seq(jobs)){	
+  jobs[[j]] <- gsub("_", " ", jobs[[j]])	
 }	
 	
+prep_fun = tolower	
+tok_fun = word_tokenizer	
 	
-# iterator for Job training and testing JDs	
-iter_Jobs = itoken(job[, 10], 	
-             preprocessor = preproc_fun, 	
-             tokenizer = token_fun, 	
-             progressbar = TRUE)	
-iter_testJDs = itoken(testJDs, 	
-             preprocessor = preproc_fun, 	
-             tokenizer = token_fun, 	
-             progressbar = TRUE)	
-	
-jobs_Vocab = create_vocabulary(iter_Jobs, stopwords=tm::stopwords("english"), ngram = c(1L, 2L))	
-jobsVectorizer = vocab_vectorizer(jobs_Vocab)	
-	
-dtm_jobsTrain = create_dtm(iter_Jobs, jobsVectorizer)	
-dtm_testJDs = create_dtm(iter_testJDs, jobsVectorizer)	
-	
-dim(dtm_jobsTrain); dim(dtm_testJDs)	
-	
-set.seed(2)	
-fit1 <- cv.glmnet(x = as.matrix(dtm_jobsTrain), y = job[['highrank']], 	
-                 family = 'binomial', 	
+trainIterator = itoken(unlist(jobs), 	
+             preprocessor = prep_fun, 	
+             tokenizer = tok_fun, 	
+             ids = rownames(jobs), 	
+             progressbar = FALSE)	
+vocab = create_vocabulary(trainIterator)	
+vocab	
+```
+```{r}
+# `text2vec` package has alternative tokenizer functions (?tokenizers), we can use simple wrappers of the `base::gsub()` function or	
+# write new tokenize. Let's construct a document-term matrix using the vocabulary of the trainIterator	
+vectorizer = vocab_vectorizer(vocab)	
+dtm_train = create_dtm(trainIterator, vectorizer)	
+dim(dtm_train)	
+```
+```{r}
+### 2. Fit LASSO model	
+set.seed(1234)	
+fit1 <- cv.glmnet(x = dtm_train, y = job[['highrank']], 	
+                   family = 'binomial', 	
                  # lasso penalty	
                  alpha = 1, 	
                  # interested in the area under ROC curve	
@@ -495,28 +546,35 @@ fit1 <- cv.glmnet(x = as.matrix(dtm_jobsTrain), y = job[['highrank']],
                  # 10-fold cross-validation	
                  nfolds = 10, 	
                  # high value is less accurate, but has faster training	
-                 thresh = 1e-3, 	
+                 thresh = 1e-5, 	
                  # again lower number of iterations for faster training	
-                 maxit = 1e3)	
+                 maxit = 1e4)	
 print(paste("max AUC =", round(max(fit1$cvm), 4)))
 ```
-
-Note that we improved somewhat the $AUC \sim 0.79$. Below, we will assess the JD predictive model using the three out of bag job descriptions.	
-
 ```{r}
-plot(fit1)	
-# plot(fit1, xvar="lambda", label="TRUE")	
-mtext("CV LASSO: Number of Nonzero (Active) Coefficients", side=3, line=2.5)	
+#### 3. Testing Phase (new JDs)	
+testIterator = tok_fun(prep_fun(unlist(testJDs)))	
+# turn off progressbar because it won't look nice in rmd	
+testIterator = itoken(testIterator, ids = testNames, progressbar = FALSE)	
 	
-predTestJDs <- predict(fit1, s = fit1$lambda.1se, 	
-                     newx = dtm_testJDs, type="response"); predTestJDs	
+dtm_test = create_dtm(testIterator, vectorizer)	
 	
-predTrainJDs <- predict(fit1, s = fit1$lambda.1se, newx = dtm_jobsTrain, type="response"); predTrainJDs
+predictedJDs = predict(fit1, dtm_test, type = 'response')[,1] # Type can be: "link", "response", "coefficients", "class", "nonzero"	
+predictedJDs	
+	
+# glmnet:::auc(testTop30, predictedJDs)
 ```
 
-Type can be: "link", "response", "coefficients", "class", "nonzero"	
+Note that we improved somewhat the $AUC \sim 0.62$. Below, we will assess the JD predictive model using the three out of bag job descriptions.	
+
+```{r}
+# plot(fit1)	
+# plot(fit1, xvar="lambda", label="TRUE")	
+# mtext("CV LASSO: Number of Nonzero (Active) Coefficients", side=3, line=2.5)	
 	
-	
+plotCV.glmnet(fit1, "LASSO")	
+```
+
 The output of the predictions shows that:	
 	
 * On the *training data*, the predicted probabilities rapidly decrease with the indexing of the jobs, corresponding to the *overall job ranking* (highly ranked/desired jobs are listed on the top).	
@@ -542,7 +600,7 @@ cos_dist = function(mat){
 	
 dist_cos = cos_dist(as.matrix(dtm))	
 	
-set.seed(2000)	
+set.seed(1234)	
 fit_cos <- cv.glmnet(x = dist_cos, y = job[['highrank']], 	
                  family = 'binomial', 	
                  # lasso penalty	
@@ -555,13 +613,13 @@ fit_cos <- cv.glmnet(x = dist_cos, y = job[['highrank']],
                  thresh = 1e-3, 	
                  # again lower number of iterations for faster training	
                  maxit = 1e3)	
-plot(fit_cos)	
-	
+# plot(fit_cos)	
+plotCV.glmnet(fit_cos, "Cosine-transformed LASSO")	
 print(paste("max AUC =", round(max(fit_cos$cvm), 4)))
 ```
 
 	
-The AUC now is greater than $0.8$, which is a pretty good result even better than what we obtained from DTM or TF-IDF. This suggests that our machine "understanding" of the content, i.e., the natural language processing, leads to a more acceptable content classifier.	
+The AUC now is greater than $0.84$, which is a pretty good result even better than what we obtained from DTM or TF-IDF. This suggests that our machine "understanding" of the content, i.e., the natural language processing, leads to a more acceptable content classifier.	
 	
 # Sentiment analysis	
 	
@@ -595,8 +653,12 @@ setkey(movie_review, id)
 	
 # View the data	
 # View(movie_review)	
-head(movie_review); dim(movie_review); colnames(movie_review)	
-	
+head(movie_review)
+dim(movie_review)
+colnames(movie_review)	
+```
+
+```{r}
 # Generate 80-20% training-testing split of the reviews	
 all_ids = movie_review$id	
 set.seed(1234)	
@@ -658,11 +720,13 @@ t0 = Sys.time()
 dtm_train = create_dtm(iter_train, reviewVectorizer)	
 dtm_test = create_dtm(iter_test, reviewVectorizer)	
 t1 = Sys.time()	
-print(difftime(t1, t0, units = 'sec'))	
-	
+print(difftime(t1, t0, units = 'sec'))
+```
+
+```{r}
 # check the DTM dimensions	
 dim(dtm_train); dim(dtm_test)	
-	
+
 # confirm that the training data review DTM dimensions are consistent 	
 # with training review IDs, i.e., #rows = number of documents, and	
 # #columns = number of unique terms (n-grams), dim(dtm_train)[[2]]	
@@ -697,11 +761,14 @@ lambda.best
 # report execution time	
 t1 = Sys.time()	
 print(difftime(t1, t0, units = 'sec'))	
-	
-# some prediciton plots	
-plot(glmnet_classifier)	
-# plot(glmnet_classifier, xvar="lambda", label="TRUE")	
-mtext("CV LASSO: Number of Nonzero (Active) Coefficients", side=3, line=2.5)
+```
+
+```{r}
+# some prediction plots	
+# plot(glmnet_classifier)	
+# # plot(glmnet_classifier, xvar="lambda", label="TRUE")	
+# mtext("CV LASSO: Number of Nonzero (Active) Coefficients", side=3, line=2.5)	
+plotCV.glmnet(glmnet_classifier)
 ```
 
 Now let's look at external validation, i.e., testing the model on the independent 20% of the reviews we kept aside. The performance of the binary prediction (binary sentiment analysis of these movie reviews) on the test data is roughly the same as we had from the internal statistical 10-fold cross-validation.	
@@ -717,7 +784,9 @@ yTest = test[['sentiment']]
 predLASSO <- predict(glmnet_classifier, 	
               s = glmnet_classifier$lambda.1se, newx = xTest)	
 testMSE_LASSO <- mean((predLASSO - yTest)^2); testMSE_LASSO	
-	
+```
+
+```{r}
 # Binarize the LASSO probabiliuty prediction 	
 binPredLASSO <- ifelse(predLASSO<0.5, 0, 1)	
 table(binPredLASSO, yTest)	
@@ -746,8 +815,10 @@ prunedReviewVocab = prune_vocabulary(reviewVocab,
                 term_count_min = 10, 	
                 doc_proportion_max = 0.5,	
                 doc_proportion_min = 0.001)	
-prunedVectorizer = vocab_vectorizer(prunedReviewVocab)	
-	
+prunedVectorizer = vocab_vectorizer(prunedReviewVocab)
+```
+
+```{r}
 t0 = Sys.time()	
 dtm_train = create_dtm(iter_train, prunedVectorizer)	
 dtm_test = create_dtm(iter_test, prunedVectorizer)	
@@ -758,6 +829,7 @@ print(difftime(t1, t0, units = 'sec'))
 Next refit the model and report the performance. Did we make improvement in the prediction accuracy?	
 
 ```{r}
+t0 = Sys.time()
 glmnet_prunedClassifier=cv.glmnet(x=dtm_train, 	
         y=train[['sentiment']], 	
         family = "binomial", 	
@@ -777,13 +849,16 @@ lambda.best <- glmnet_prunedClassifier$lambda.min
 lambda.best	
 	
 # report execution time	
-t1 = Sys.time()	
-print(difftime(t1, t0, units = 'sec'))	
-	
+t1 = Sys.time()
+print(difftime(t1, t0, units = 'sec'))
+```
+```{r}
 # some prediction plots	
-plot(glmnet_prunedClassifier)	
-mtext("Pruned-Model CV LASSO: Number of Nonzero (Active) Coefficients", side=3, line=2.5)	
-	
+# plot(glmnet_prunedClassifier)	
+# mtext("Pruned-Model CV LASSO: Number of Nonzero (Active) Coefficients", side=3, line=2.5)	
+plotCV.glmnet(glmnet_prunedClassifier)	
+```
+```{r}
 # report the mean internal cross-validated error	
 print(paste("max AUC =", round(max(glmnet_prunedClassifier$cvm), 4)))	
 	
@@ -796,8 +871,10 @@ predLASSO = predict(glmnet_prunedClassifier,
 testMSE_LASSO <- mean((predLASSO - yTest)^2); testMSE_LASSO	
 # Binarize the LASSO probabiliuty prediction 	
 binPredLASSO <- ifelse(predLASSO<0.5, 0, 1)	
-table(binPredLASSO, yTest)	
-	
+table(binPredLASSO, yTest)
+```
+
+```{r}
 # and testing data AUC	
 glmnet:::auc(yTest, predLASSO)	
 	
@@ -814,3 +891,7 @@ table(binPredLASSO, yTest)
 
 Using `n-grams` improved a bit the sentiment prediction model.	
 
+Try these NLP techniques to:
+* [MIMIC-III, a freely accessible critical care database. Johnson AEW, Pollard TJ, Shen L, Lehman L, Feng M, Ghassemi M, Moody B, Szolovits P, Celi LA, and Mark RG. Scientific Data (2016). DOI: 10.1038/sdata.2016.35. Available from:](https://www.nature.com/articles/sdata201635) 
+* [Other data from the list of our Case-Studies](https://umich.instructure.com/courses/38100/files/).
+* Your own free text.
