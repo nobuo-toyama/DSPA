@@ -1,5 +1,5 @@
 ---
-title: "20 Cross Validation"
+title: "20 Prediction and Internal Statistical Cross Validation"
 author: "nobuo"
 date: "2021/5/2"
 output: html_document
@@ -22,7 +22,7 @@ There are alternative metrics used for evaluation of model performance, see [Cha
 	
 * $R^2$, correlations (between predicted and observed outcomes), and [RMSE](https://en.wikipedia.org/wiki/Root-mean-square_deviation) measures may be used to quantify the performance of various supervised forecasting methods on `continuous features`.	
 
-Overfitting  	
+# Overfitting  	
 	
 Before we go into the cross-validation of predictive analytics, we will present several examples of *overfitting* that illustrate why certain amount of skepticism and mistrust may be appropriate when dealing with forecasting models based on large and complex data.	
 	
@@ -177,6 +177,8 @@ When group sizes are imbalanced, we may need to rebalance them to avoid potentia
 # SMOTE: Synthetic Minority Oversampling Technique to handle class misbalance in binary classification.	
 set.seed(1000)	
 # install.packages("unbalanced") to deal with unbalanced group data	
+# library(devtools)
+# devtools::install_github("dalpozz/unbalanced")
 require(unbalanced)	
 ppmi_data$PD <- ifelse(ppmi_data$ResearchGroup=="Control", 1, 0) 	
 uniqueID <- unique(ppmi_data$FID_IID) 	
@@ -211,6 +213,8 @@ colnames(balancedData) <- c(colnames(input), "PD")
 Next, we'll check the re-balanced cohort sizes.
 
 ```{r}
+library(plotly)	
+	
 ###Check balance	
 ## T test	
 alpha.0.05 <- 0.05	
@@ -234,15 +238,21 @@ test.results.raw[i]  <- my.t.test.p.value(input[, i], balancedData [, i])
 	print(c("i=", i, "var=", colnames(balancedData[i]), "t-test_raw_p_value=", test.results.raw[i]))	
 }	
 	
-# we can also employ (e.g., FDR, Bonferonni) correction for multiple testing!	
+# we can also employ (e.g., FDR, Bonferroni) correction for multiple testing!	
 	# test.results.corr <- stats::p.adjust(test.results.raw, method = "fdr", n = length(test.results.raw)) 	
 	# where methods are "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none")	
 	# plot(test.results.raw, test.results.corr)	
 	# sum(test.results.raw < alpha.0.05, na.rm=T)/length(test.results.raw)  #check proportion of inconsistencies	
 # sum(test.results.corr < alpha.0.05, na.rm =T)/length(test.results.corr)	
 	
-qqplot(input[, 5], balancedData [, 5]) # check visually for differences between the distributions of the raw (input) and rebalanced data (for only one variable, in this case)	
-	
+QQ <- qqplot(input[, 5], balancedData [, 5], plot=F) # check visually for differences between the distributions of the raw (input) and rebalanced data (for only one variable, in this case)	
+plot_ly(x=~QQ$x, y=~QQ$y, type="scatter", mode="markers", name="Data") %>%	
+  add_trace(x=c(0,1), y=c(0,1), name="Ideal Distribution Match", type="scatter", mode="lines") %>%	
+  layout(title=paste0("QQ-Plot Original vs. Rebalanced Data (Feature=",colnames(input)[5], ")"),	
+         xaxis=list(title="Original Data"), yaxis=list(title="Rebalanced Data"),	
+         hovermode = "x unified", legend = list(orientation='h'))
+```
+```{r}
 # Now, check visually for differences between the distributions of the raw (input) and rebalanced data.	
 # par(mar=c(1,1,1,1))	
 # par(mfrow=c(10,10))	
@@ -266,11 +276,11 @@ print(c("Wilcoxon test results: ", test.results.bin))
 # test.results.corr <- stats::p.adjust(test.results.raw, method = "fdr", n = length(test.results.raw)) 	
 # where methods are "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none")	
 # plot(test.results.raw, test.results.corr)	
-#' 	
-#' 	
-#' The next step will be the actual `Cross validation`.	
-#' 	
-#' 	
+```
+
+The next step will be the actual `Cross validation`.
+
+```{r}
 # using raw data:	
 X <- as.data.frame(input); Y <- output	
 neg <- "1"   # "Control" == "1"	
@@ -286,9 +296,6 @@ set.seed(115)
 cv.out <- crossval::crossval(my.ada, X, Y, K = 5, B = 1, negative = neg)	
 	# the label of a negative "null" sample (default: "control")	
 out <- diagnosticErrors(cv.out$stat) 
-```
-
-```{r}
 print(cv.out$stat)	
 print(out)
 ```
@@ -307,9 +314,13 @@ X = as.matrix(sleep[, 1, drop=FALSE]) # increase in hours of sleep,
 	# drop is logical, if TRUE the result is coerced to the lowest possible dimension. 	
 # The default is to drop if only one column is left, but not to drop if only one row is left.	
 Y = sleep[, 2] # drug given 	
-plot(X ~ Y)	
+# plot(X ~ Y)	
+	
+plot_ly(data=sleep, x=~group, y=~extra, color=~group, type="box", name="Hours of Sleep") %>%	
+  layout(title="Hours of Extra Sleep", legend = list(orientation='h'))	
+	
 levels(Y) # "1" "2"	
-dim(X) # 20  1
+dim(X) # 20  1	
 ```
 
 Next, we will define a new LDA (linear discriminant analysis) predicting function and perform the `Cross-validation` (CV) on the resulting predictor.	
@@ -411,11 +422,18 @@ dim(X);
 dim(Y)
 ```
 ```{r}
-layout(matrix(c(1, 2, 3, 4), 2, 2)) 		# optional 4 graphs/page	
 fit <- lm(Y~X); 	
-plot(fit)			# plot the fit 	
-levels(as.factor(Y)) 			# "0" "1"	
-c(dim(X), dim(Y))			# 1043  103
+	
+# layout(matrix(c(1, 2, 3, 4), 2, 2)) 		# optional 4 graphs/page	
+# plot(fit)			# plot the fit 	
+	
+xResid <- scale(fit$residuals)	
+QQ <- qqplot(xResid, rnorm(1000), plot=F) # check visually for differences between the distributions of the raw (input) and rebalanced data (for only one variable, in this case)	
+plot_ly(x=~QQ$x, y=~QQ$y, type="scatter", mode="markers", name="Data") %>%	
+  add_trace(x=c(-4,4), y=c(-4,4), name="Ideal Distribution Match", type="scatter", mode="lines") %>%	
+  layout(title="QQ Normal Plot of Model Residuals",	
+         xaxis=list(title="Model Residuals"), yaxis=list(title="Normal Residuals"),	
+         hovermode = "x unified", legend = list(orientation='h'))
 ```
 
 Apply `Cross-validation` to assess the performance of the linear model.
