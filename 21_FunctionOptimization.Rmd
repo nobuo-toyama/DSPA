@@ -31,7 +31,57 @@ Iterator: & \textbf{for } i=1, 2, 3,... & \textbf{do} \\
 \end{array}$$	
 	
 Various performance metrics may be used to drive the `learning` in the optimization process. Such loss metrics reward good optimizers or penalize bad optimizers, respectively. When minimizing an objective function, the loss representing the sum of the objective values over all iterations, i.e., the cumulative regret, leads to good optimizers that converge rapidly.	
+
+## First-order Gradient-based Optimization
+
+First-order gradient-based methods for solving unconstrained optimization problems are applicable for twice continuously differentiable (multivariate) functions. The solutions $x^*\in \mathbb{R}^n$  satisfy:	
+
+- the gradient (vector) of the objective function at $x^*$, $\nabla f(x^*)=0$, i.e., $\frac{\partial f(x^*)}{\partial x_j}=0,\ \forall 1\leq j\leq n$.
+- the Hessian matrix of the objective function at $x^*$ is positive definite, $\nabla^2 f(x^*)>0$, i.e., $u'\nabla^2 f(x^*)u>0,\ \forall u\in \mathbb{R}^n-\{0\}$, where the *prime* notation, $'$, denotes the transpose (matrix or vector).
+
+Gradient-based optimization involves 4 steps:
+
+– Set iteration index $k=0$, choose a starting point $x_o$, and specify a convergence criterion,	
+– Check if convergence conditions are satisfied; If yes, stop and declare current location $x_k$ as the solution; If not, continue.	
+– Propose a step direction (descent direction in $\mathbb{R}^n$) by defining a vector $\nu_k \in \mathbb{R}^n-\{0\}$) that reduces the value of the objective function relative to its value at the current location $x_k$.	
+– Calculate the step-size, $a_k>0$, in the direction $\nu_k$ that yields $f(x_k +a_k\nu_k)<f(x_k)$.	
+– Update the current solution $x_k \rightarrow x_{k+1}=x_k +a_k\nu_k$ and the iteration index $k \rightarrow (k+1)$ and continue repeating the process (step 2).
+
+Different gradient-based methods may utilize alternative strategies to calculating the descent direction (step 3) or the estimation of the step-size, learning-rate, in step 4. For instance:
+
+- The **steepest descent method** (gradient descent) uses at each iteration the normalized negative gradient vector as the search direction. Specifically, the search direction is $\nu_k = \frac{\nabla f(x_k)}{||\nabla f(x_k)||}$ and the step-size is 	
+  $a_k= \arg\min_{a} {f(x_k-a \nu_k)}$.	
 	
+  - The **conjugate descent method** attempts to move more directly towards	
+the optimum by by taking into account the history of the prior gradients. Although there are many alternative formulations, the general search direction is computed by $\nu_k=\begin{cases} -\nabla f(x_k) & \text{if k=0} \\ -\nabla f(x_k)+\gamma_k\nu_{k-1} & \text{if k>0} \end{cases}$, where one option for the coefficients is the Fletcher–Reeves estimates $\gamma_k =\frac{||\nabla f(x_k)||^2}{||\nabla f(x_{k-1})||^2}$. And the learning-rate is a number that satisfies $\begin{cases} f(x_k)-f(x_k +a_k \nu_k) \ge -\delta a_k (\nabla f(x_{k}))' \nu_k \\ ||(\nabla f(x_{k}+a_k\nu_k))'||\leq -\sigma (\nabla f(x_{k}))' \nu_k   \end{cases}$, for some pair of positive real values $ 0<\delta<\sigma<1$.
+
+## Second-order Hessian-based Optimization
+
+Second, and higher-order, optimization methods require more intensive calculations of the *search direction* and *step-size* that typically involve the Hessian matrix.
+
+### Newton's method
+
+The Newton’s method is often an improvement over first-order gradient descent optimization methods as it also utilizes the second-order Hessian to estimate the search descent direction and the learning rate as follows:	
+ 	
+–  The descent direction is computed by $\nu_k=[\nabla^2 f(x_{k})]^{-1}\times [\nabla f(x_{k})]$.	
+– The learning-rate is calculated by $a_k= \arg\min_{a} {f(x_k-a \nu_k)}$.
+
+### Broyden–Fletcher–Goldfarb–Shanno (BFGS) method
+
+The Hessian matrix computation is generally expensive and there are several alternatives to the brute-force Newton’s method that improve the computational efficiency. The Broyden–Fletcher–Goldfarb–Shanno (BFGS) method  rep[resent one such alternative using the gradient to  *approximate* the inverse of the Hessian matrix $H^{-1}_k=[\nabla^2 f(x_{k})]^{-1}$ at each iteration index $k$ and at each point $x_k$.
+
+$$H^{-1}_k=[\nabla^2 f(x_{k})]^{-1}=\left(I_{n\times n}-\frac{s_ky_k'}{s_k'y_k}\right)\times H^{-1}_{k-1} \times \left(I_{n\times n}-\frac{s_ky_k'}{s_k'y_k}\right) +\frac{s_ky_k'}{s_k'y_k},$$
+
+where the vectors $s_x=x_k-x_{k-1}$ and $y_k=\nabla f(x_{k})-\nabla f(x_{k-1})$.
+
+## Gradient-free Optimization
+
+As we saw above, gradient-based methods heavily rely on information about the gradient and the Hessian of the objective-function to estimate both the search-direction and the learning-rate. This makes such techniques applicable only to multiply continuously differentiable cost functions. 
+
+For solving more elaborate optimization problems involving multivariate objective functions that may not be continuous or differentiable and may have multiple minima requires alternative strategies.
+
+The *Nelder–Mead method* represents an example of a convex simplex technique that yields effective and computationally tractable solutions to such complex unconstrained optimization problems. *Simulated annealing* is	an alternative strategy that tracks the proximity of the initial point to the optimal point. It can't always guarantee a global minimum is reached since the iterative dynamics mimics physical cooling of a material in a heath bath, a process that allows uphill and downhill search-directional moves. Most simulated annealing implementations utilize the Metropolis algorithm, which simulates the change in the system energy subject to the cooling process. The optimization tends to converge to a final frozen steady-state with a low energy.
+
 # Free (unconstrained) optimization	
 	
 Unconstrained function optimization refers to searching for extrema without restrictions for the domain of the cost function, $\Omega \ni \{x_i\}$. The [extreme value theorem](https://en.wikipedia.org/wiki/Extreme_value_theorem) suggest that a solution to the free optimization processes, $\min_{x_1, x_2, x_3, \ldots, x_n}{f(x_1, x_2, x_3, \ldots, x_n)}$ or $\max_{x_1, x_2, x_3, \ldots, x_n}{f(x_1, x_2, x_3, \ldots, x_n)}$, may be obtained by a gradient vector descent method. This means that we can minimize/maximize the objective function by finding solutions to $\nabla f = \{\frac{d f}{d x_1}, \frac{d f}{d x_2}, \ldots, \frac{d f}{d x_n}\}=\{0, 0, \ldots, 0\}$.  Solutions to this equation, $x_1, \ldots, x_n$, will present candidate (local) minima and maxima.	
@@ -49,29 +99,33 @@ For each $p\in [0,1]$, the *inverse distribution function*, also called *quantil
 Below, we will plot the probability density function (PDF) and the CDF for *Normal* distribution in R.	
 
 ```{r}
+library(plotly)	
 par(mfrow=c(1,2), mar=c(3,4,4,2))	
 	
 z<-seq(-4, 4, 0.1)  # points from -4 to 4 in 0.1 steps	
 q<-seq(0.001, 0.999, 0.001)  # probability quantile values from 0.1% to 99.9% in 0.1% steps	
 	
-dStandardNormal <- data.frame(Z=z,
-                              Density=dnorm(z, mean=0, sd=1),
-                              Distribution=pnorm(z, mean=0, sd=1)) 	
+dStandardNormal <- data.frame(Z=z, Density=dnorm(z, mean=0, sd=1), Distribution=pnorm(z, mean=0, sd=1)) 	
 	
-plot(z, dStandardNormal$Density, col="darkblue",
-     xlab="z", ylab="Density", type="l",lwd=2, cex=2, 
-     main="Standard Normal PDF", cex.axis=0.8)	
+# plot(z, dStandardNormal$Density, col="darkblue",xlab="z", ylab="Density", type="l",lwd=2, cex=2, main="Standard Normal PDF", cex.axis=0.8)	
 # could also do	
 # xseq<-seq(-4, 4, 0.01); density<-dnorm(xseq, 0, 1); plot (density, main="Density")	
-	
-# Compute the CDF	
-xseq<-seq(-4, 4, 0.01); cumulative<-pnorm(xseq, 0, 1) 	
-# plot (cumulative, main="CDF")	
-plot(xseq, cumulative, col="darkred", 
-     xlab="", ylab="Cumulative Probability", type="l",lwd=2, cex=2,
-     main="CDF of (Simulated) Standard Normal", cex.axis=.8)
+# plot_ly(x=~z, y=~dStandardNormal$Density, type="scatter", mode="lines", name="N(0,1) Density")	
+z <- seq(-4, 4, 0.01)	
+density<-dnorm(z, 0, 1)	
+plot_ly(x=~z, y=~density, type="scatter", mode="lines", name="N(0,1) Density") %>%	
+  layout(title="N(0,1) Density")	
 ```
-The example below shows a semi-interactive standard normal distribution calculator using `plot_ly`. You can see many other probability distribution calculators on the [Distributome site](http://www.distributome.org/V3/calc/index.html).	
+```{r}
+# Compute the CDF	
+xseq<-seq(-4, 4, 0.01); CDF<-pnorm(xseq, 0, 1) 	
+# plot (cumulative, main="CDF")	
+# plot(xseq, CDF, col="darkred", xlab="", ylab="Cumulative Probability", type="l",lwd=2, cex=2, main="CDF of (Simulated) Standard Normal", cex.axis=.8)	
+plot_ly(x=~xseq, y=~CDF, type="scatter", mode="lines", name="N(0,1) CDF") %>%	
+  layout(title="N(0,1) Cumulative Distribution Function")
+```
+
+The example below shows a semi-interactive standard normal distribution calculator using `plot_ly`. You can see many other probability distribution calculators on the [Distributome site](http://www.distributome.org/V3/calc/index.html).
 
 ```{r}
 library(plotly)	
@@ -79,10 +133,7 @@ library(quantmod)
 	
 z<-seq(-4, 4, 0.1)  # points from -4 to 4 in 0.1 steps	
 q<-seq(0.001, 0.999, 0.01)  # probability quantile values from 0.1% to 99.9% in 0.1% steps	
-	
-dStandardNormal <- data.frame(Z=z, 
-                              Density=dnorm(z, mean=0, sd=1),
-                              Distribution=pnorm(z, mean=0, sd=1)) 	
+dStandardNormal <- data.frame(Z=z, Density=dnorm(z, mean=0, sd=1), Distribution=pnorm(z, mean=0, sd=1)) 	
 	
 # plot(z, dStandardNormal$Density, col="darkblue",xlab="z", ylab="Density", type="l",lwd=2, cex=2, main="Standard Normal PDF", cex.axis=0.8)	
 # polygon(z, dStandardNormal$Density, col="red", border="blue")	
@@ -139,11 +190,12 @@ plotMe <- dStandardNormal %>%
       prefix = "Z: "	
     )	
   )	
-plotMe 	
-	
+plotMe
+```
+```{r}
 # If you want to create a shareable plotly link to the Interactive Normal Distribution Calculator, see the API for establishing credentials: https://plot.ly/r/getting-started	
 # stdNormalCalculator = api_create(p, filename="SOCR/interactiveStdNormalCalculator")	
-# stdNormalCalculator	
+# stdNormalCalculator
 ```
 
 Suppose we are interested in computing, or estimating, the inverse-CDF from first principles. Specifically, to invert the CDF, we need to be able to solve the following equation (representing our objective function):	
@@ -209,7 +261,47 @@ x_optimal$value  # extrema value of the objective function
 * **L-BFGS-B**:  allows box constraints.	
 * **SANN**: a variant of simulated annealing, belonging to the class of stochastic global optimization methods.	
 * **Brent**:  for one-dimensional problems only, useful in cases where `optim()` is used inside other functions where only method can be specified.	
+
+Let's visualize the objective function
+$$f(x_1, x_2) = (x_1-3)^2 + (x_2+4)^2+x_1 x_2.$$
+```{r}
+library(magrittr, plotly)	
 	
+# define the function on a grid (matrix n*n)	
+grid_length <- 101	
+	
+f_function <- function(A) { # input bivariate matrix n*2 (x1, x2)	
+  A <- matrix(A, ncol=2)	
+  z <- (A[, 1]-3)^2 + (A[, 2]+4)^2	
+  return(z)	
+}	
+	
+# define the 2D grid to plot function over	
+x <- seq(-10, 10, length = grid_length)	
+y <- seq(-10, 10, length = grid_length)	
+	
+A <- as.matrix(expand.grid(x, y))	
+colnames(A) <- c("x", "y")	
+	
+# evaluate function	
+z <- f_function(A)	
+	
+# put x, y and z values in a data.frame for plotting	
+df <- data.frame(A, z)	
+	
+z_label <- list(	
+  title = "z=f(x,y)"	
+)	
+	
+fxy = matrix(z, grid_length,grid_length)	
+myPlot <- plot_ly(x=~x, y=~y, z=~fxy, 	
+                    type="surface", colors = colorRamp(rainbow(8)), 	
+                    opacity=0.9, hoverinfo="none") %>%	
+  layout(scene = list(zaxis=z_label)) 	
+	
+myPlot
+```
+
 ## Example 3: using simulated annealing to find the maximum of an oscillatory function	
 	
 Consider the function $f(x) = 10 \sin(0.3 x)\times \sin(1.3 x^2) - 0.00002 x^4 + 0.3 x+35$. Maximizing $f()$ is equivalent to minimizing $-f()$. Let's plot this oscillatory function, find and report its critical points and extremum values.	
@@ -226,9 +318,21 @@ funct_osc <- function (x) {
 res <- optim(16, funct_osc, method = "SANN",
              control = list(maxit = 20000, temp = 20, parscale = 20))	
 res$par	
-res$value	
-plot(funct_osc, -50, 50, n = 1000, main = "optim() minimizing an oscillatory function")	
-abline(v=res$par, lty=3, lwd=4, col="red")
+res$value
+```
+
+```{r}
+# plot(funct_osc, -50, 50, n = 1000, main = "optim() minimizing an oscillatory function")	
+# abline(v=res$par, lty=3, lwd=4, col="red")	
+	
+library("plotly")	
+x <- seq(-50, 50, 0.01);    y <- funct_osc(x)	
+df <- as.data.frame(cbind(x,y))	
+plot_ly(data=df, x = ~x, y = ~y, name = 'Function', 	
+        type = 'scatter', mode = 'lines', 	
+        line = list(width = 0.2)) %>%	
+  add_segments(x = res$par, xend = res$par, y = -50, yend = 100, 	
+               name = 'Min', line = list(width = 1.0))
 ```
 
 # Constrained Optimization	
@@ -322,22 +426,32 @@ $$ \left\{
 \end{array} \right.  . $$
 
 ```{r}
-library(ggplot2)	
-ggplot(data.frame(x = c(-100, 0)), aes(x = x)) + 	
-  stat_function(fun=function(x) {(150-2*x)/6}, aes(color="Function 1")) + 	
-  stat_function(fun=function(x) { -x }, aes(color = "Function 2")) + 	
-  theme_bw() + 	
-  scale_color_discrete(name = "Function") + 	
-  geom_polygon(	
-    data = data.frame(x = c(-100, -100, 0, 0, Inf), y = c(0,350/6, 150/6, 0, 0)),	
-    aes(x = x, y = y, fill = "Constraint 1"),	
-    inherit.aes = FALSE, alpha = 0.5) + 	
-  geom_polygon(	
-    data = data.frame(x = c(-100, -100, 0, Inf), y = c(0, 100, 0, 0)),	
-    aes(x = x, y = y, fill = "Constraint 2"),	
-    inherit.aes = FALSE, alpha = 0.3) + 	
-  scale_fill_discrete(name = "Constraint Set") + 	
-  scale_y_continuous(limits = c(0, 100))
+# library(ggplot2)	
+# ggplot(data.frame(x = c(-100, 0)), aes(x = x)) + 	
+#   stat_function(fun=function(x) {(150-2*x)/6}, aes(color="Function 1")) + 	
+#   stat_function(fun=function(x) { -x }, aes(color = "Function 2")) + 	
+#   theme_bw() + 	
+#   scale_color_discrete(name = "Function") + 	
+#   geom_polygon(	
+#     data = data.frame(x = c(-100, -100, 0, 0, Inf), y = c(0,350/6, 150/6, 0, 0)),	
+#     aes(x = x, y = y, fill = "Constraint 1"),	
+#     inherit.aes = FALSE, alpha = 0.5) + 	
+#   geom_polygon(	
+#     data = data.frame(x = c(-100, -100, 0, Inf), y = c(0, 100, 0, 0)),	
+#     aes(x = x, y = y, fill = "Constraint 2"),	
+#     inherit.aes = FALSE, alpha = 0.3) + 	
+#   scale_fill_discrete(name = "Constraint Set") + 	
+#   scale_y_continuous(limits = c(0, 100))	
+x = seq(-100, 100, by=1)
+y = (150-2*x)/6	
+
+plot_ly(x = ~x, y = ~y, type = 'scatter', mode = 'lines', fill = 'tonexty', opacity=0.2, name="Constrain 1") %>% 
+  add_trace(x = ~x, y = -100, type = 'scatter', mode = 'lines', opacity=0.2, name="Lower Limit") %>%
+  add_trace(x = ~x, y = ~(-x), type = 'scatter', mode = 'lines', fill = 'tonexty', opacity=0.2, name="Constrain 2") %>%
+  #add_trace(x = ~x, y = -100, type = 'scatter', mode = 'lines', opacity=0.2, name="Lower Limit") %>%
+  add_markers(x=-150/4, y=150/4, mode='markers', marker=list(size=20), name="Intersection Point") %>%
+  add_markers(x=10, y=10, mode='markers', marker=list(size=20), name="Inside Point") %>%
+  layout(title="Venn Diagram of 2D constraints", xaxis = list(title = 'x1'), yaxis = list(title = 'x2'))
 ```
 
 Here is another example of `maximization` of a trivariate cost function, $f(x_1, x_2, x_3)=3x_1+ 4x_2 -x_3$, subject to:	
@@ -401,21 +515,45 @@ z3 <- matrix(40 -5*region$x - 4*region$y, n, n)
 # define the values of z = z(x.seq, y.seq), as a Matrix of dimension c(dim(x.seq), dim(y.seq))	
 #z <- t(outer(x.seq, y.seq, z.seq))	
 	
+### Compute and Plot the unique 3D point of the intersecting 3 planes	
+library(geometry)	
+library(pracma)	
+# plane normals and their unitary counterparts	
+n1 <- c(2,4,6); n2 <- c(1,-6,1); n3 <- c(5,4,1)	
+n1 <- n1/sqrt(dot(n1,n1)); n2 <- n2/sqrt(dot(n2,n2)); n3 <- n3/sqrt(dot(n3,n3))	
+# Points on the panes	
+P1 <- c(0,0,150/6); P2 <- c(0,0,0); P3 <- c(0,0,-40)	
+# compute the normalizing determinant of the normals matrix	
+det <- det(as.matrix(cbind(n1, n2, n3)))	
+	
+# unique point of intersection is https://mathworld.wolfram.com/Plane-PlaneIntersection.html	
+intersectPoint <- (dot(P1,n1)*cross(n2,n3) + dot(P2,n2)*cross(n3,n1) + dot(P3,n3)*cross(n1,n2))/det	
+iP <- c(round(intersectPoint[1], 3), round(intersectPoint[2], 3), round(intersectPoint[3], 3))	
+paste0("Intersection point of all 3 Planes is (", iP[1], ",", iP[2], ",", iP[3], "!)\n")	
+	
 library(plotly)	
-myPlotly <- plot_ly(x=~x, y=~y, z=~z1,	
-      colors = c("blue", "red"),type="surface", opacity=0.7) %>%	
-  add_trace(x=~x, y=~y, z=~z2, type="surface",	
-            colors = "green", opacity=0.5) %>%	
-  add_trace(x=~x, y=~y, z=~z3, type="surface", 	
+plot_ly() %>%	
+  # 1. Add 3 vectors representing the paired intersections (there are 3 of these) of any pair of planes	
+  add_trace(x=c(iP[1], iP[1]+400*cross(n1,n2)[2]), y=c(iP[2], iP[2]+400*cross(n1,n2)[1]), z=c(iP[3], iP[3]+400*cross(n1,n2)[3]),	
+            type="scatter3d", mode="lines", name="Planes 1-2", line=list(color = "orange", width=40), opacity=1.0) %>%	
+  add_trace(x=c(iP[1], iP[1]+400*cross(n1,n3)[2]), y=c(iP[2], iP[2]+400*cross(n1,n3)[1]), z=c(iP[3], iP[3]+400*cross(n1,n3)[3]),	
+            type="scatter3d", mode="lines", name="Planes 1-3", line=list(color = "gray", width=40), opacity=1.0) %>%	
+  add_trace(x=c(iP[1], iP[1]+400*cross(n2,n3)[2]), y=c(iP[2], iP[2]+400*cross(n2,n3)[1]), z=c(iP[3], iP[3]+400*cross(n2,n3)[3]),	
+            type="scatter3d", mode="lines", name="Planes 2-3", line=list(color = "blue", width=40), opacity=1.0) %>%	
+  # 2. Add all 3 planes	
+  add_trace(x=~x, y=~y, z=~z1, name="Plane 1",	
+      colors = c("blue", "red"), type="surface", opacity=0.3) %>%	
+  add_trace(x=~x, y=~y, z=~z2, type="surface", name="Plane 2",	
+            colors = "green", opacity=0.3) %>%	
+  add_trace(x=~x, y=~y, z=~z3, type="surface", name="Plane 3",	
             colors = "orange", opacity=0.3) %>%	
-  layout(scene = list(	
-    aspectmode = "manual", aspectratio = list(x=1, y=1, z=1),	
-    xaxis = list(title = "X"),	
-    yaxis = list(title = "Y"),	
-    zaxis = list(title = "ZA"))	
-    )	
-# print(myPlotly)	
-myPlotly
+  # 3. Add common intersection point	
+  add_trace(x=~intersectPoint[1], y=~intersectPoint[2], z=~intersectPoint[3], type="scatter3d", mode="markers",	
+            name="Common Intersection Point", marker=list(color = "blue", size=30), opacity=1.0) %>%	
+  layout(title="Hyperplane constraits in 3D", legend = list(orientation='h'),	
+           scene = list(aspectmode = "manual", aspectratio = list(x=1, y=1, z=1),	
+                      xaxis = list(title = "X"), yaxis = list(title = "Y"), zaxis = list(title = "ZA"))) %>%	
+  hide_colorbar()
 ```
 
 It is possible to restrict the domain type to contain only solutions that are:	
@@ -866,10 +1004,17 @@ poly_model1 <- loess(x_noisy(xs) ~ xs, span=0.1, data=df) # tight model
 poly_model2 <- loess(x_noisy(xs) ~ xs, span=0.9, data=df) # smoother model	
 # To see some of numerical results of hte model-fitting:	
 # View(as.data.frame(cbind(xs, x_noisy, predict(poly_model1))))	
-	
-plot(xs, x_noisy(xs), type='l')	
-lines(xs, poly_model1$fitted, col="red", lwd=2)	
-lines(xs, poly_model2$fitted, col="blue", lwd=3)
+
+# plot(xs, x_noisy(xs), type='l')	
+# lines(xs, poly_model1$fitted, col="red", lwd=2)	
+# lines(xs, poly_model2$fitted, col="blue", lwd=3)	
+
+plot_ly() %>%	
+  add_trace(x=~xs, y=~x_noisy(xs), type="scatter", mode="lines", name="Noisy Data") %>%	
+  add_trace(x=~xs, y=~poly_model1$fitted, type="scatter", mode="lines", line=list(width=5), name="Tight LOESS Smoothing") %>%	
+  add_trace(x=~xs, y=~poly_model2$fitted, type="scatter", mode="lines", line=list(width=5), name="Smoother LOESS Model") %>%	
+  add_trace(x=~xs, y=~sin(xs)^2/(1.5+cos(xs)), type="scatter", mode="lines", line=list(width=5), name="Original Process") %>%	
+  layout(title="Noisy Data and Smoothed Models", legend = list(orientation='h'))	
 ```
 
 Next, let's initiate the parameters, define the objective function and optimize it, i.e., estimate the parameters that minimize the cost function as a mixture of fidelity and regularization terms.	
@@ -944,7 +1089,11 @@ betas <- sol_lambda$pars
 x_denoisedManu <- x_denoised(xs, betas)	
 print(paste0("Final Denoised Model:", round(betas[1],3), "*sin(", 	
              round(betas[2],3), "*x)^2/(", round(betas[3],3), "+cos(x)))"))	
-plot(x_denoisedManu)
+plot_ly() %>%
+  add_trace(x=~xs, y=~x_noisy(xs), type="scatter", mode="lines", name="Noisy Data") %>%
+  add_trace(x=~xs, y=~x_denoisedManu/2, type="scatter", mode="lines", name="Manual denoising", line=list(width=5)) %>%
+  add_trace(x=~xs, y=~sin(xs)^2/(1.5+cos(xs)), type="scatter", mode="lines", line=list(width=5), name="Original Process") %>%
+  layout(title="Noisy Data and Smoothed Models", legend = list(orientation='h'))
 ```
 
 Finally, we can validate our manual denoising protocol against the automated TV denoising using the R package [tvd](https://cran.r-project.org/web/packages/tvd).	
@@ -958,16 +1107,23 @@ x_denoisedTVD <- tvd1d(x_noisy(xs), lambda_0, method = "Condat")
 # lambda_o is the total variation penalty coefficient	
 # method is a string indicating the algorithm to use for denoising. 	
 # Default method is "Condat"	
-	
-# plot(xs, x_denoisedTVD, type='l')	
-plot(xs, x_noisy(xs), type='l')	
-lines(xs, poly_model1$fitted, col="red", lwd=2)	
-lines(xs, poly_model2$fitted, col="blue", lwd=3)	
-lines(xs, x_denoisedManu, col="pink", lwd=4)	
-lines(xs, x_denoisedTVD, col="green", lwd=5)	
-# add a legend	
-legend("bottom", c("x_noisy", "poly_model1$fitted", "poly_model2$fitted", "x_denoisedManu", "x_denoisedTVD"), col=c("black", "red", "blue", "pink", "green"), lty=c(1,1, 1,1), cex=0.7, lwd= c(1,2,3,4,5), title="TV Denoising")	
 
+# plot(xs, x_denoisedTVD, type='l')	
+# plot(xs, x_noisy(xs), type='l')	
+# lines(xs, poly_model1$fitted, col="red", lwd=2)	
+# lines(xs, poly_model2$fitted, col="blue", lwd=3)	
+# lines(xs, x_denoisedManu, col="pink", lwd=4)	
+# lines(xs, x_denoisedTVD, col="green", lwd=5)	
+# # add a legend	
+# legend("bottom", c("x_noisy", "poly_model1$fitted", "poly_model2$fitted", "x_denoisedManu", "x_denoisedTVD"), col=c("black", "red", "blue", "pink", "green"), lty=c(1,1, 1,1), cex=0.7, lwd= c(1,2,3,4,5), title="TV Denoising")	
+	
+plot_ly() %>%	
+  add_trace(x=~xs, y=~x_noisy(xs), type="scatter", mode="lines", name="Noisy Data", opacity=0.3) %>%	
+  add_trace(x=~xs, y=~x_denoisedManu/2, type="scatter", mode="lines", name="Manual Denoising", line=list(width=5)) %>%	
+  add_trace(x=~xs, y=~poly_model1$fitted, type="scatter", mode="lines", name="LOESS Smoothing", line=list(width=5)) %>%	
+  add_trace(x=~xs, y=~sin(xs)^2/(1.5+cos(xs)), type="scatter", mode="lines", line=list(width=5), name="Original Process") %>%	
+  add_trace(x=~xs, y=~x_denoisedTVD, type="scatter", mode="lines", name="TV Denoising", line=list(width=5)) %>%	
+  layout(title="Noisy Data and Smoothed Models", legend = list(orientation='h'))
 ```
 
 # Sparse Matrices	
@@ -1142,8 +1298,8 @@ surface = function(f, from.x=0, to.x=1, from.y=0, to.y=1, n.x=30, n.y=30, theta=
   plot.grid = expand.grid(x.seq,y.seq)	
   z.vals = apply(plot.grid,1,f)	
   z.mat = matrix(z.vals,nrow=n.x)	
-  	
-  # Plot with the persp function 	
+	
+  # Plot with the persp function	
   orig.mar = par()$mar # Save the original margins	
   par(mar=c(1,1,1,1))  # Make the margins small	
   r = persp(x.seq,y.seq,z.mat,theta=theta,phi=phi,...)	
@@ -1151,12 +1307,29 @@ surface = function(f, from.x=0, to.x=1, from.y=0, to.y=1, n.x=30, n.y=30, theta=
   invisible(r)	
 }	
 	
-# Draw our simple function in 2d, and our gradient descent path on top	
-r = surface(f,from.x=-2,to.x=5,from.y=-6,to.y=5,theta=45,phi=-5,xlab="x1",ylab="x2",zlab="f")	
-points(trans3d(x0[1],x0[2],f(x0),r),col="red",cex=2)	
-lines(trans3d(optim.f$xmat[1,],optim.f$xmat[2,],apply(optim.f$xmat,2,f),r),lwd=4,col="red")	
-points(points(trans3d(optim.f$x[1],optim.f$x[2],f(optim.f$x),r), col="gray",cex=2))	
+# # Draw our simple function in 2d, and our gradient descent path on top	
+# r = surface(f,from.x=-2,to.x=5,from.y=-6,to.y=5,theta=45,phi=-5,xlab="x1",ylab="x2",zlab="f")	
+# points(trans3d(x0[1],x0[2],f(x0),r),col="red",cex=2)	
+# lines(trans3d(optim.f$xmat[1,],optim.f$xmat[2,],apply(optim.f$xmat,2,f),r),lwd=4,col="red")	
+# points(points(trans3d(optim.f$x[1],optim.f$x[2],f(optim.f$x),r), col="gray",cex=2))	
+	
+x <- seq(from=-2, to=5, length.out=100)	
+y <- seq(from=-6, to=5, length.out=100)	
+z_fun <- function(x,y) { return((x - 3)^2 + (y +4)^2 ) }	
+z <- outer(x, y, FUN="z_fun")	
+	
+plot_ly() %>%   	
+  add_trace(x=x, y=y, z=t(z), type="surface", opacity=0.7, showlegend = FALSE, name="Function Surface") %>%	
+  add_markers(x = optim.f$x[1], y = optim.f$x[2], z = f(optim.f$x), 	
+            type = 'scatter3d', mode = 'markers', opacity = 1, 	
+            marker = list(size = 20, color = "red"), name = 'Minimum (f)', showlegend=F) %>%	
+  add_trace(x = c(optim.f$x[1], optim.f$x[1]), y = c(optim.f$x[2],optim.f$x[2]), z = c(f(optim.f$x),f(optim.f$x)+80), 	
+            type = 'scatter3d', mode = 'lines', opacity = 1, 	
+            line = list(width = 4, color = "orange"), name = 'Min Projection', showlegend=F) %>%	
+  layout(title="Graphical Representation of a Quadratic Function Optimizaiton") %>%	
+  hide_colorbar()
 ```
+
 
 ### Summary of Gradient Descent	
 	
@@ -1195,13 +1368,49 @@ optim.f4 = gradDescent(f,x4)
 	
 # Draw our simple function in 2d, and all gradient descent paths on top	
 r = surface(f,from.x=-2,to.x=5,from.y=-5,to.y=2, theta=45,phi=-5,xlab="x",ylab="x2",zlab="f")	
-lines(trans3d(optim.f0$xmat[1,],optim.f0$xmat[2,],apply(optim.f0$xmat,2,f),r),lwd=4,col="red")	
-lines(trans3d(optim.f1$xmat[1,],optim.f1$xmat[2,],apply(optim.f1$xmat,2,f),r),lwd=4,col="green")	
-lines(trans3d(optim.f2$xmat[1,],optim.f2$xmat[2,],apply(optim.f2$xmat,2,f),r), lwd=4,col="blue")	
-lines(trans3d(optim.f3$xmat[1,],optim.f3$xmat[2,],apply(optim.f3$xmat,2,f),r), lwd=4,col="purple")	
-lines(trans3d(optim.f4$xmat[1,],optim.f4$xmat[2,],apply(optim.f4$xmat,2,f),r),lwd=4,col="orange")	
-points(trans3d(3,-4,f(c(3,-4)),r),col="red",cex=2, lwd=4, pch=0)  # optimum solution	
 ```
+```{r}
+# Draw our simple function in 2d, and all gradient descent paths on top	
+# lines(trans3d(optim.f0$xmat[1,],optim.f0$xmat[2,],apply(optim.f0$xmat,2,f),r),lwd=4,col="red")	
+# lines(trans3d(optim.f1$xmat[1,],optim.f1$xmat[2,],apply(optim.f1$xmat,2,f),r),lwd=4,col="green")	
+# lines(trans3d(optim.f2$xmat[1,],optim.f2$xmat[2,],apply(optim.f2$xmat,2,f),r), lwd=4,col="blue")	
+# lines(trans3d(optim.f3$xmat[1,],optim.f3$xmat[2,],apply(optim.f3$xmat,2,f),r), lwd=4,col="purple")	
+# lines(trans3d(optim.f4$xmat[1,],optim.f4$xmat[2,],apply(optim.f4$xmat,2,f),r),lwd=4,col="orange")	
+# points(trans3d(3,-4,f(c(3,-4)),r),col="red",cex=2, lwd=4, pch=0)  # optimum solution	
+	
+x <- seq(from=-2, to=5, length.out=100)	
+y <- seq(from=-5, to=2, length.out=100)	
+z_fun <- function(x,y) { return((x - 3)^2 + (y +4)^2 ) }	
+z <- outer(x, y, FUN="z_fun")	
+	
+plot_ly() %>%   	
+  add_trace(x=x, y=y, z=t(z), type="surface", opacity=0.7, showlegend = FALSE, name="Function Surface") %>%	
+  add_markers(x = optim.f$x[1], y = optim.f$x[2], z = f(optim.f$x), 	
+            type = 'scatter3d', mode = 'markers', opacity = 1, 	
+            marker = list(size = 20, color = "red"), name = 'Minimum (f)', showlegend=F) %>%	
+  add_trace(x = c(optim.f$x[1], optim.f$x[1]), y = c(optim.f$x[2],optim.f$x[2]), z = c(f(optim.f$x),f(optim.f$x)+80), 	
+            type = 'scatter3d', mode = 'lines', opacity = 1, 	
+            line = list(width = 4, color = "orange"), name = 'Min Projection', showlegend=F) %>%	
+  # Add Solution Paths	
+  add_trace(x = ~optim.f0$xmat[1,], y = ~optim.f0$xmat[2,], z = apply(optim.f0$xmat,2,f), 	
+            type = 'scatter3d', mode = 'lines', opacity = 1, 	
+            line = list(width = 5), name = 'Solution Path 1', showlegend=F) %>%	
+  add_trace(x = ~optim.f1$xmat[1,], y = ~optim.f1$xmat[2,], z = apply(optim.f1$xmat,2,f), 	
+            type = 'scatter3d', mode = 'lines', opacity = 1, 	
+            line = list(width = 5), name = 'Solution Path 2', showlegend=F) %>%	
+  add_trace(x = ~optim.f2$xmat[1,], y = ~optim.f2$xmat[2,], z = apply(optim.f2$xmat,2,f), 	
+            type = 'scatter3d', mode = 'lines', opacity = 1, 	
+            line = list(width = 5), name = 'Solution Path 3', showlegend=F) %>%	
+  add_trace(x = ~optim.f3$xmat[1,], y = ~optim.f3$xmat[2,], z = apply(optim.f3$xmat,2,f), 	
+            type = 'scatter3d', mode = 'lines', opacity = 1, 	
+            line = list(width = 5), name = 'Solution Path 4', showlegend=F) %>%	
+  add_trace(x = ~optim.f4$xmat[1,], y = ~optim.f4$xmat[2,], z = apply(optim.f4$xmat,2,f), 	
+            type = 'scatter3d', mode = 'lines', opacity = 1, 	
+            line = list(width = 5), name = 'Solution Path 5', showlegend=F) %>%	
+  layout(title="Quadratic Function Optimizaiton Gradient Descent Paths") %>%	
+  hide_colorbar()
+```
+
 
 So, all iterative solution pathways in this convex problem do lead to the optimal point. However, problems are not always convex, and this process can be significantly disrupted.	
 	
@@ -1692,46 +1901,11 @@ x -\frac{y}{2}+z^2 \leq 50\\
 \end{cases} .$$	
 	
 Alternatively, *minimize* $f^*(x,y,z)=-(x^3 + 5y -2^z)$. It's difficult to plot a 4D surface in 2D or 3D space, but we can try animating or cross-sectioning the $w=f(x,y,z)$ surface. The code below can be used, or modified, to generate a dynamic surface or a volume rendering of the objective function, $f^*(x,y,z)$. This code is not executed here (`eval=F`) to reduce the size of the output HTML output file.	
-library(plotly)	
-grid_length <- 101	
-BO_function <- function(A) {	
-  A <- matrix(A, ncol=3)	
-  x <- A[ , 1]	
-  y <- A[ , 2]	
-  z <- A[ , 3]	
-  # calculate the function value for each row of x	
-  w_xyz <- -(x^3 + 5*y -2^z)	
-  return(w_xyz)	
-}	
-	
-x <- seq(-50, 50, length = grid_length)	
-y <- seq(-50, 50, length = grid_length)	
-z <- seq(-50, 50, length = grid_length)	
-A <- as.matrix(expand.grid(x, y, z))	
-colnames(A) <- c("x", "y", "z")	
-	
-# evaluate function	
-w <- log(abs(BO_function(A)))   # apply log(abs()) to tamper the the large w values	
-# put x, y and z values in a data.frame for plotting	
-df <- data.frame(A, w); str(df)	
-# Show that the histogram has a lower bound (corresponding to a minimum)	
-# hist(df$w, xlim=c(-20000000000, 10000000000), freq=T, breaks = 10, 	
-#     main="Histogram of f has a lower bound\n (corresponding to a minimum)")	
-	
-z_label <- list(title = "w=f(x,y_o,z)")	
-myPlotly <- plot_ly(df, x=~x, y=~y, z=~matrix(df$w, grid_length,grid_length,grid_length), frame = ~df$z,	
-                    type="surface", colors = colorRamp(rainbow(8)), 	
-                    opacity=0.8, hoverinfo="none", showscale=T ) %>%	
-  layout(scene = list(zaxis=z_label), showlegend = FALSE)  %>%	
-  animation_opts(500, easing = "elastic", redraw = F) %>% 	
-  animation_slider(active = 50, currentvalue = list(prefix = "Z ", font = list(color="red")))	
-  	
-myPlotly	
-	
-# 3D Volume rendering	
-library(brainR)	
-vol_surface <- array(df$w, c(grid_length,grid_length,grid_length)); dim(vol_surface)	
-contour3d(vol_surface, level = c(-10,-8,0), color =c("red", "green", "blue"), alpha = 0.1, draw = TRUE)	
+
+It's difficult to visualize this complicated objective function, however, we can use time as the 4th dimension to show the dynamic nature of the singularities of the function. Below are two alternative displays of the surface and the point-cloud representation of the 4D object.
+
+ - Degenerate surface representation (due to singularities).
+ 
 
 ```{r}
 library(plotly)	
@@ -1761,19 +1935,40 @@ df <- data.frame(A, w); str(df)
 #     main="Histogram of f has a lower bound\n (corresponding to a minimum)")	
 	
 z_label <- list(title = "w=f(x,y_o,z)")	
-myPlotly <- plot_ly(df, x=~x, y=~y, z=~matrix(df$w, grid_length,grid_length,grid_length), frame = ~df$z,	
+myPlotly <- plot_ly(df, x=~x, y=~y, z=~matrix(df$w, grid_length,grid_length,grid_length), 	
+                    frame = ~df$z,	
                     type="surface", colors = colorRamp(rainbow(8)), 	
                     opacity=0.8, hoverinfo="none", showscale=T ) %>%	
   layout(scene = list(zaxis=z_label), showlegend = FALSE)  %>%	
   animation_opts(500, easing = "elastic", redraw = F) %>% 	
   animation_slider(active = 50, currentvalue = list(prefix = "Z ", font = list(color="red")))	
   	
-myPlotly	
-	
-# 3D Volume rendering	
-library(brainR)	
-vol_surface <- array(df$w, c(grid_length,grid_length,grid_length)); dim(vol_surface)	
-contour3d(vol_surface, level = c(-10,-8,0), color =c("red", "green", "blue"), alpha = 0.1, draw = TRUE)
+myPlotly
+```
+```{r}
+# # 3D Volume rendering	
+# library(brainR)	
+# vol_surface <- array(df$w, c(grid_length,grid_length,grid_length)); dim(vol_surface)	
+# contour3d(vol_surface, level = c(-10,-8,0), color =c("red", "green", "blue"), alpha = 0.1, draw = TRUE)
+```
+
+- point-cloud representation of the objective function as a 4D object with temporal dynamics.	
+
+```{r}
+fig <- df %>%	
+  plot_ly(	
+    x = ~x,	
+    y = ~y,	
+    z = ~w,	
+    frame = ~df$z, type = "scatter3d", mode = "markers", opacity=0.1, scene="scene"	
+    # type="surface", colors = colorRamp(rainbow(8))	
+  ) %>%	
+  layout(title = "3D Subplots",	
+         scene = list(domain=list(x=c(-50,50),y=c(-50,50)),	
+                      aspectmode='cube',	
+                      zaxis = list(title = "f", range = c(-40,40))	
+                      ))	
+fig
 ```
 
 Next, we can use `solnp` to optimize the objective function.
@@ -1801,10 +1996,10 @@ uh <- c(50, 1.5, Inf)
 x0 <- c(1,0,1) # setup: Try alternative starting-parameter vector (pars)	
 sol3 <- solnp(x0, fun=fun3, ineqfun=ineq3, ineqLB=lh, ineqUB=uh)   #, LB=lb, UB=ub)	
 cat("Min is attained at: (", sol3$pars[1], ", ", sol3$pars[2], ", ", sol3$pars[1], ")\n")	
-cat("Min_f = ", sol3$values[length(sol3$values)])	
+cat("Min_f = ", sol3$values[length(sol3$values)])
 ```
 
-Finally, we can also try the `optim()` method using *simulated annealing*, a slower stochastic global optimization optimizer that works well with difficult functions, e.g., non-differentiable, non-convex.	
+Finally, we can also try the `optim()` method using *simulated annealing*, a slower stochastic global optimization optimizer that works well with difficult functions, e.g., non-differentiable, non-convex.
 
 ```{r}
 # Define the constraints with conditions returning NA to restrict SANN stochastic walk	
@@ -1849,9 +2044,6 @@ Examples of explicit optimization methods use in artificial intelligence and mac
 * [Boosting](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/14_ImprovingModelPerformance.html#42_boosting) requires minimization of an objective function of weighted average of weaker classifiers.	
 * The [SVM](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/10_ML_NN_SVM_Class.html#52_classification_with_hyperplanes) search for the Maximum Margin Hyperplane (MMH) requires optimization of a separations objective function whose extremas lead to optimal separation of the samples.	
 * [RandomForest](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/14_ImprovingModelPerformance.html#43_random_forests) relies on optimization to obtain an optimal `mtry` parameter (representing the number of variables randomly sampled as candidates at each tree-node split) that minimizes the Out-of-Bag error error estimate of the classifier, see `randomForest::tuneRF()`.	
-	
-	
-	
 	
 # References	
 	
