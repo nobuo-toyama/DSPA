@@ -1,5 +1,5 @@
 ---
-title: "22 Deep Learning"
+title: "22 Deep Learning, Neural Networks"
 author: "nobuo"
 date: "2021/5/3"
 output: html_document
@@ -52,17 +52,25 @@ The role of the bias parameter is similar to the intercept term in linear regres
 * the [tanh (hyperbolic tangent function)](https://en.wikipedia.org/wiki/Hyperbolic_function#Hyperbolic_tangent).	
 
 ```{r}
+library(plotly)	
 sigmoid <- function(x) { 1 / (1 + exp(-x)) }	
 relu <- function(y) { pmin(pmax(0, y), 1) }	
-x_Llimit <- -10; x_Rlimit <- 10; y_Llimit <- 0; y_Rlimit <- 1	
+x_Llimit <- -5; x_Rlimit <- 5; y_Llimit <- 0; y_Rlimit <- 1	
 x <- seq(x_Llimit, x_Rlimit, 0.01)	
-plot(c(x_Llimit,x_Rlimit), c(y_Llimit,y_Rlimit), type="n", xlab="Input/Domain", ylab="Output/Range" ) 	
-lines(x, sigmoid(x), col="blue", lwd=3)	
-lines(x, (1/2)*(tanh(x)+1), col="green", lwd=3)	
-lines(x, relu(x), col="red", lwd=3)	
-legend("left", title="Probability Transform Functions",	
-       c("sigmoid","tanh","relu"), fill=c("blue", "green", "red"),	
-       ncol = 1, cex = 0.75)
+# plot(c(x_Llimit,x_Rlimit), c(y_Llimit,y_Rlimit), type="n", xlab="Input/Domain", ylab="Output/Range" ) 	
+# lines(x, sigmoid(x), col="blue", lwd=3)	
+# lines(x, (1/2)*(tanh(x)+1), col="green", lwd=3)	
+# lines(x, relu(x), col="red", lwd=3)	
+# legend("left", title="Probability Transform Functions",	
+#        c("sigmoid","tanh","relu"), fill=c("blue", "green", "red"),	
+#       ncol = 1, cex = 0.75)	
+y <- sigmoid(x)	
+	
+plot_ly(type="scatter")  %>%	
+  add_trace(x = ~x, y=~y, name = 'Sigmoid()', mode = 'lines') %>%	
+  add_trace(x = ~x, y = ~(1/2)*(tanh(x)+1), name = 'Tanh()', mode = 'lines') %>%	
+  add_trace(x = ~x, y = ~relu(x+1/2), name = 'Relu()', mode = 'lines')%>%	
+  layout(legend = list(orientation = 'h'), title="Probability Transformation Functions")
 ```
 
 The final fully-connected layer may be hidden of size equal to the number of classes in the dataset and may be followed by a `softmax` layer mapping the input into a probability score. For example, if a size ${n\times m}$ input is denoted by $X_{n\times m}$, then the probability scores may be obtained by the `softmax` transformation function, which maps real valued vectors to vectors of probabilities:	
@@ -490,7 +498,7 @@ Below we will demonstrate the utilization of the `Keras` package for deep neural
 
 ```{r}
 # devtools::install_github("rstudio/keras")	
-library("keras")
+library(keras)
 # install_keras()	
 	
 #install.packages("tensorflow")	
@@ -576,28 +584,58 @@ We can start by some [simple EDA plots](https://www.socr.umich.edu/people/dinov/
 
 ```{r}
 library(ggplot2)	
-summary(dat)	
+summary(dat)
+```
+```{r}
+# cols <- c("red","green")[unclass(dat$survived)]	
+# 	
+# plot(dat$ticketcount, dat$fare, pch=21, cex=1.5,	
+#      bg=alpha(cols, 0.4),	
+#      xlab="Number of Tickets per Party", ylab="Passenger Fare", 	
+#      main="Titanic Passenger Data (TicketCount vs. Fare) Color Coded by Survival")	
+# legend("topright", inset=.02, title="Survival",	
+#    c("0","1"), fill=c("red", "green"), horiz=F, cex=0.8)	
 	
-cols <- c("red","green")[unclass(dat$survived)]	
+plot_ly(dat, type="scatter")  %>%	
+    add_trace(x = ~ticketcount, y=~fare, mode = 'markers', 	
+              color = ~as.character(survived), colors=~survived) %>%	
+    layout(legend = list(title=list(text='<b> Survival </b>'), orientation = 'h'), 	
+           title="Titanic Passenger Data (TicketCount vs. Fare) Color Coded by Survival")
+
+# plot_ly(dat, x = ~ticketcount, color = ~survived) %>% add_histogram()
+# 
+# plot_ly(dat, x = ~ticketcount, y = ~fare, color = ~survived, name=~survived) %>% add_bars() %>% layout(barmode = "stack")
+```
+```{r}
+# ggplot(dat, aes(x=survived, y=fare, fill=sex)) + 	
+#   #geom_dotplot(binaxis='y', stackdir='center',	
+#   #               position=position_dodge(1)) +	
+#   #scale_fill_manual(values=c("#999999", "#E69F00")) +	
+#   geom_violin(trim=FALSE) +	
+#   theme(legend.position="top")	
 	
-plot(dat$ticketcount, dat$fare, pch=21, cex=1.5,	
-     bg=alpha(cols, 0.4),	
-     xlab="Number of Tickets per Party", ylab="Passenger Fare", 	
-     main="Titanic Passenger Data (TicketCount vs. Fare) Color Coded by Survival")	
-legend("topright", inset=.02, title="Survival",	
-   c("0","1"), fill=c("red", "green"), horiz=F, cex=0.8)	
+fig <- dat %>% plot_ly(type = 'violin') 	
+fig <- fig %>% add_trace(x = ~survived[dat$survived == '1'], y = ~fare[dat$survived == '1'],	
+    legendgroup = 'survived',   scalegroup = 'survived',  name = 'survived',  	
+    box = list(visible = T),  meanline = list(visible = T ),  color = I("green")) 	
+fig <- fig %>% add_trace(x = ~survived[dat$survived == '0'], y = ~fare[dat$survived == '0'],	
+    legendgroup = 'died',   scalegroup = 'died',  name = 'died',  	
+    box = list(visible = T),  meanline = list(visible = T ),  color = I("red"))	
+fig <- fig %>% layout( xaxis = list(title="Survival"), yaxis = list(title="Fare"),	
+                       title='<b> Titanic Passenger Survival vs. Fare </b>', orientation = 'h')	
+fig	
+```
+```{r}
+# library(GGally)	
+# ggpairs(dat[ , c("pclass", "age", "sibsp", "parch", 	
+#                  "fare", "price", "ticketcount", "survived")], 	
+#         aes(colour = as.factor(survived), alpha = 0.4))	
 	
-ggplot(dat, aes(x=survived, y=fare, fill=sex)) + 	
-  #geom_dotplot(binaxis='y', stackdir='center',	
-  #               position=position_dodge(1)) +	
-  #scale_fill_manual(values=c("#999999", "#E69F00")) +	
-  geom_violin(trim=FALSE) +	
-  theme(legend.position="top")	
-	
-library(GGally)	
-ggpairs(dat[ , c("pclass", "age", "sibsp", "parch", 	
-                 "fare", "price", "ticketcount", "survived")], 	
-        aes(colour = as.factor(survived), alpha = 0.4))
+dims <- dplyr::select_if(dat, is.numeric)	
+dims <- purrr::map2(dims, names(dims), ~list(values=.x, label=.y))	
+plot_ly(type = "splom", dimensions = setNames(dims, NULL), showupperhalf = FALSE, 	
+        diagonal = list(visible = FALSE) ) %>% 	
+  layout( title='<b> Titanic Passengers Pairs-Plots </b>')
 ```
 
 ## Data Preprocessing	
@@ -729,33 +767,60 @@ track.model.1 <- model.1 %>% fit(
  )
 ```
 
+## Convolutional Neural Networks (CNNs)
+
+Convolutional Neural Networks represent a specific type of Deep Learning algorithms that incorporate the topological, geometric, spatial and temporal structure of the input data (generally images) and assign importance by learning the weights and biases of the (image) intensities associated with the objects or affinities present in the data. These importance features are then utilized to differentiate between datasets (images) or components within the data (structure and objects in images). CNNs require less pre-processing compared to other DL classification algorithms, which may depend on manually-specified filters. CNNs tend to learn these filters by iteratively extrapolating multi-resolution characteristics in the data objects by convolution methods. See the [DSPA Appendix for the mathematical operation convolution and its applications in image processing](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/DSPA_Appendix_6_ImageFilteringSpectralProcessing.html).
+
+Recall that one may attempt to learn the features of an image (or a higher dimensional tensor) by flattening the image array (matrix/tensor) into a 1D vector. This vectorization works well if there are no spatiotemporal dependencies in the data. Most of the time, there are such image intensity correlations that can’t be ignored. The CNN architecture facilitates a mechanism to better model the intrinsic image affinities, reduce the number of DNN parameters, and produce more reliable predictions. Many images are represented as tensors whose modes (dimensions) encode spatial, temporal, color-channel, and other information about the observed image intensity. For instance, an RGB image of size $1,000 \times 1,000=10^6$ pixels, may require 3MB of memory/storage. A CNN learns to encode the image into a higher-dimensional multispectral hierarchical tensor encoding the intrinsic image characteristics that can lead to easy classification of similar images or generation of synthetic images. For instance, ignoring the color-channels and using a stride=10, convoluting the original image of dimension with a kernel of size $10\times 10$ would yield another (smoother) lower-resolution image of size $100\times 100$, encoding the convolved features.
+
+The convolution process aims to extract the high-level features such as edges, borders, and contrasts from the input image. CNNs involve both convolutional and dense layer. Much like the [Fourier transform](https://www.socr.umich.edu/TCIU/HTMLs/Chapter3_Kime_Phase_Problem.html), the first convolutional layer captures low-level features such as edges, color, gradient orientation, etc. Subsequent layers progressively add higher-level details and the entire CNN encodes holistically the understanding of the input image structure.
+
+Convolution, de-convolution (the reverse process) and padding reduce or increase the image dimensionality.
+
+Most CNNs mix *convolutional layers* with *pooling layers*. The latter are responsible for reducing the spatial size of the convolved features, which decreases the computational data processing demand. Pooling may be implemented as *Max Pooling* or *Average Pooling*. Max-pooling takes an image patch defined by the kernel and returns the maximum intensity value. It performs noise-suppression as it decimates noisy pixel intensities, denoises the image, and reduces the image dimensions. Average-pooling returns the average of all intensity values covered by the image-kernel and reduces the image dimension.
+
+Jointly, the convolutional and the pooling processes form the CNN $i$-th layer and the number of layers may reflect the ANN complexity. Fully connected layers are typically added to the ANN architecture to enhance the classification, prediction, or regression performance of DL model. Fully-connected layers provide mechanism to learn non-linear associations and non-affine characteristics of high-level features captured as outputs of the convolutional layers. 
+
 ## Model EDA	
 	
 We can visualize the model fitting process using `keras::plot()` jointly depicting the loss of the objective function and the accuracy of the model, across epochs. Alternatively, we can split the pair of plots - one for the *model loss* and the other one for the *model accuracy*. The $\$$ operator is used to access the tensor data and plot it step-by-step. A sign of overfitting may be an accuracy (on training data) that keeps improving while the accuracy (on the validation data) worsens. This may be in indication that the NN model starts to *learn* noise in the data instead of learning real patterns or affinities in the data. While the accuracy trends of both datasets are rising towards the final epochs, this may indicate that the model is still in the process of learning on the training dataset (and we can increase the number of epochs).	
 
 ```{r}
 # Plot the history	
-plot(track.model.1)
+# plot(track.model.1)	
+# 	
+# # NN model loss on the training data	
+# plot(track.model.1$metrics$loss, main="Model 1 Loss", 	
+#      xlab = "Epoch", ylab="Loss", col="green", type="l", ylim=c(0.54, 0.6))	
+# 	
+# # NN model loss of the 20% validation data	
+# lines(track.model.1$metrics$val_loss, col="blue", type="l")	
+# 	
+# # Add legend	
+# legend("right", c("train", "test"), col=c("green", "blue"), lty=c(1,1))	
+# 	
+# # Plot the accuracy of the training data 	
+# plot(track.model.1$metrics$acc, main="Model 1 Accuracy", 	
+#      xlab = "Epoch", ylab="Accuracy", col="blue", type="l", ylim=c(0.65, 0.75))	
+# 	
+# # Plot the accuracy of the validation data	
+# lines(track.model.1$metrics$val_acc, col="green")	
+# 	
+# # Add Legend	
+# legend("bottom", c("Training", "Testing"), col=c("blue", "green"), lty=c(1,1))	
 	
-# NN model loss on the training data	
-plot(track.model.1$metrics$loss, main="Model 1 Loss", 	
-     xlab = "Epoch", ylab="Loss", col="green", type="l", ylim=c(0.54, 0.6))	
+## plot_ly	
+epochs <- 200	
+time <- 1:epochs	
+hist_df <- data.frame(time=time, loss=track.model.1$metrics$loss, acc=track.model.1$metrics$acc,	
+                      valid_loss=track.model.1$metrics$val_loss, valid_acc=track.model.1$metrics$val_acc)	
 	
-# NN model loss of the 20% validation data	
-lines(track.model.1$metrics$val_loss, col="blue", type="l")	
-	
-# Add legend	
-legend("right", c("train", "test"), col=c("green", "blue"), lty=c(1,1))	
-	
-# Plot the accuracy of the training data 	
-plot(track.model.1$metrics$acc, main="Model 1 Accuracy", 	
-     xlab = "Epoch", ylab="Accuracy", col="blue", type="l", ylim=c(0.65, 0.75))	
-	
-# Plot the accuracy of the validation data	
-lines(track.model.1$metrics$val_acc, col="green")	
-	
-# Add Legend	
-legend("bottom", c("Training", "Testing"), col=c("blue", "green"), lty=c(1,1))
+plot_ly(hist_df, x = ~time)  %>%	
+  add_trace(y = ~loss, name = 'training loss', mode = 'lines') %>%	
+  add_trace(y = ~acc, name = 'training accuracy', mode = 'lines+markers') %>%	
+  add_trace(y = ~valid_loss, name = 'validation loss',mode = 'lines+markers') %>%	
+  add_trace(y = ~valid_acc, name = 'validation accuracy', mode = 'lines+markers') %>% 	
+  layout(legend = list(orientation = 'h'))
 ```
 
 ## Passenger Survival Forecasting using New Data	
@@ -764,8 +829,9 @@ Once the model is fit, we can use it to predict the survival of passengers using
 
 ```{r}
 # Predict the classes for the test data	
-predict.survival <- model.1 %>% predict_classes(test_dat2.X, batch_size = 30)	
-	
+# predict.survival <- model.1 %>% predict_classes(test_dat2.X, batch_size = 30)	
+predict.survival <- model.1 %>% predict(test_dat2.X) %>% k_argmax()	%>% as.vector()
+
 # Confusion matrix	
 test_dat2.Y <- dat1[-train_set_ind , 8]	
 table(test_dat2.Y, predict.survival)	
@@ -824,27 +890,40 @@ print(model2.qual)
 	
 # EDA on the loss and accuracy metrics of this model.2	
 # Plot the history	
-plot(track.model.2)	
+# plot(track.model.2)	
+# 	
+# # NN model loss on the training data	
+# plot(track.model.2$metrics$loss, main="Model Loss", 	
+#      xlab = "Epoch", ylab="Loss", col="green", type="l", ylim=c(0.54, 0.6))	
+# 	
+# # NN model loss of the 20% validation data	
+# lines(track.model.2$metrics$val_loss, col="blue", type="l")	
+# 	
+# # Add legend	
+# legend("right", c("Training", "Testing"), col=c("green", "blue"), lty=c(1,1))	
+# 	
+# # Plot the accuracy of the training data 	
+# plot(track.model.2$metrics$acc, main="Model 2 (Extra Layer) Accuracy", 	
+#      xlab = "Epoch", ylab="Accuracy", col="blue", type="l", ylim=c(0.65, 0.76))	
+# 	
+# # Plot the accuracy of the validation data	
+# lines(track.model.2$metrics$val_acc, col="green")	
+# 	
+# # Add Legend	
+# legend("top", c("Training", "Testing"), col=c("blue", "green"), lty=c(1,1))
+
+## plot_ly	
+epochs <- 200	
+time <- 1:epochs	
+hist_df2 <- data.frame(time=time, loss=track.model.2$metrics$loss, acc=track.model.2$metrics$acc,	
+                      valid_loss=track.model.2$metrics$val_loss, valid_acc=track.model.2$metrics$val_acc)	
 	
-# NN model loss on the training data	
-plot(track.model.2$metrics$loss, main="Model Loss", 	
-     xlab = "Epoch", ylab="Loss", col="green", type="l", ylim=c(0.54, 0.6))	
-	
-# NN model loss of the 20% validation data	
-lines(track.model.2$metrics$val_loss, col="blue", type="l")	
-	
-# Add legend	
-legend("right", c("Training", "Testing"), col=c("green", "blue"), lty=c(1,1))	
-	
-# Plot the accuracy of the training data 	
-plot(track.model.2$metrics$acc, main="Model 2 (Extra Layer) Accuracy", 	
-     xlab = "Epoch", ylab="Accuracy", col="blue", type="l", ylim=c(0.65, 0.76))	
-	
-# Plot the accuracy of the validation data	
-lines(track.model.2$metrics$val_acc, col="green")	
-	
-# Add Legend	
-legend("top", c("Training", "Testing"), col=c("blue", "green"), lty=c(1,1))
+plot_ly(hist_df2, x = ~time)  %>%	
+  add_trace(y = ~loss, name = 'training loss', mode = 'lines') %>%	
+  add_trace(y = ~acc, name = 'training accuracy', mode = 'lines+markers') %>%	
+  add_trace(y = ~valid_loss, name = 'validation loss',mode = 'lines+markers') %>%	
+  add_trace(y = ~valid_acc, name = 'validation accuracy', mode = 'lines+markers') %>% 	
+  layout(legend = list(orientation = 'h'))	
 ```
 
 Next we can examine the effects of adding more *hidden units* to the NN model.
@@ -879,29 +958,42 @@ track.model.3 <- model.3 %>% fit(
 model3.qual <- model.3 %>% evaluate(test_dat2.X, test_dat2.Y, batch_size = 30)	
 print(model3.qual)	
 	
-# EDA on the loss and accuracy metrics of this model.2	
+# EDA on the loss and accuracy metrics of this model.3	
 # Plot the history	
-plot(track.model.3)	
+# plot(track.model.3)	
+# 	
+# # NN model loss on the training data	
+# plot(track.model.3$metrics$loss, main="Model Loss", 	
+#      xlab = "Epoch", ylab="Loss", col="green", type="l", ylim=c(0.54, 0.7))	
+# 	
+# # NN model loss of the 20% validation data	
+# lines(track.model.3$metrics$val_loss, col="blue", type="l")	
+# 	
+# # Add legend	
+# legend("top", c("Training", "testing"), col=c("green", "blue"), lty=c(1,1))	
+# 	
+# # Plot the accuracy of the training data 	
+# plot(track.model.3$metrics$acc, main="Model 3 (Extra Layer/More Hidden Units)", 	
+#      xlab = "Epoch", ylab="Accuracy", col="blue", type="l", ylim=c(0.65, 0.76))	
+# 	
+# # Plot the accuracy of the validation data	
+# lines(track.model.3$metrics$val_acc, col="green")	
+# 	
+# # Add Legend	
+# legend("top", c("Training", "Testing"), col=c("blue", "green"), lty=c(1,1))
+
+## plot_ly	
+epochs <- 200	
+time <- 1:epochs	
+hist_df3 <- data.frame(time=time, loss=track.model.3$metrics$loss, acc=track.model.3$metrics$acc,	
+                      valid_loss=track.model.3$metrics$val_loss, valid_acc=track.model.3$metrics$val_acc)	
 	
-# NN model loss on the training data	
-plot(track.model.3$metrics$loss, main="Model Loss", 	
-     xlab = "Epoch", ylab="Loss", col="green", type="l", ylim=c(0.54, 0.7))	
-	
-# NN model loss of the 20% validation data	
-lines(track.model.3$metrics$val_loss, col="blue", type="l")	
-	
-# Add legend	
-legend("top", c("Training", "testing"), col=c("green", "blue"), lty=c(1,1))	
-	
-# Plot the accuracy of the training data 	
-plot(track.model.3$metrics$acc, main="Model 3 (Extra Layer/More Hidden Units)", 	
-     xlab = "Epoch", ylab="Accuracy", col="blue", type="l", ylim=c(0.65, 0.76))	
-	
-# Plot the accuracy of the validation data	
-lines(track.model.3$metrics$val_acc, col="green")	
-	
-# Add Legend	
-legend("top", c("Training", "Testing"), col=c("blue", "green"), lty=c(1,1))
+plot_ly(hist_df3, x = ~time)  %>%	
+  add_trace(y = ~loss, name = 'training loss', mode = 'lines') %>%	
+  add_trace(y = ~acc, name = 'training accuracy', mode = 'lines+markers') %>%	
+  add_trace(y = ~valid_loss, name = 'validation loss',mode = 'lines+markers') %>%	
+  add_trace(y = ~valid_acc, name = 'validation accuracy', mode = 'lines+markers') %>% 	
+  layout(legend = list(orientation = 'h'))
 ```
 
 Finally, we can attempt to fine-tune the optimization parameters provided to the `compile()` function. For instance, we can experiment with alternative optimization algorithms, like the Stochastic Gradient Descent (SGD), `optimizer_sgd()`, and adjust the *learning rate*, `lr`. Specifying alternative learning rate to train the NN, typically 10-fold increase or decrease, to trade accuracy, speed of convergence, and avoiding local minima.	
@@ -916,7 +1008,7 @@ model.4 %>%
     layer_dense(units = 2, activation = 'softmax')	
 	
 # Define an optimizer	
-SGD <- optimizer_sgd(lr = 0.001)	
+SGD <- optimizer_sgd(learning_rate = 0.001)	
 	
 # Compile the model	
 model.4 %>% compile(	
@@ -941,27 +1033,39 @@ print(model4.qual)
 	
 # EDA on the loss and accuracy metrics of this model.2	
 # Plot the history	
-plot(track.model.4)	
+# plot(track.model.4)	
+# 	
+# # NN model loss on the training data	
+# plot(track.model.4$metrics$loss, main="Model 4 Loss", 	
+#      xlab = "Epoch", ylab="Loss", col="green", type="l", ylim=c(0.54, 0.7))	
+# 	
+# # NN model loss of the 20% validation data	
+# lines(track.model.4$metrics$val_loss, col="blue", type="l")	
+# 	
+# # Add legend	
+# legend("top", c("Training", "Testing"), col=c("green", "blue"), lty=c(1,1))	
+# 	
+# # Plot the accuracy of the training data 	
+# plot(track.model.4$metrics$acc, main="Model 4 (Extra Layer/More Hidden Units/SGD)", 	
+#      xlab = "Epoch", ylab="Accuracy", col="blue", type="l", ylim=c(0.65, 0.76))	
+# 	
+# # Plot the accuracy of the validation data	
+# lines(track.model.4$metrics$val_acc, col="green")	
+# 	
+# # Add Legend	
+# legend("top", c("Training", "Testing"), col=c("blue", "green"), lty=c(1,1))
+
+epochs <- 200	
+time <- 1:epochs	
+hist_df4 <- data.frame(time=time, loss=track.model.4$metrics$loss, acc=track.model.4$metrics$acc,	
+                      valid_loss=track.model.4$metrics$val_loss, valid_acc=track.model.4$metrics$val_acc)	
 	
-# NN model loss on the training data	
-plot(track.model.4$metrics$loss, main="Model 4 Loss", 	
-     xlab = "Epoch", ylab="Loss", col="green", type="l", ylim=c(0.54, 0.7))	
-	
-# NN model loss of the 20% validation data	
-lines(track.model.4$metrics$val_loss, col="blue", type="l")	
-	
-# Add legend	
-legend("top", c("Training", "Testing"), col=c("green", "blue"), lty=c(1,1))	
-	
-# Plot the accuracy of the training data 	
-plot(track.model.4$metrics$acc, main="Model 4 (Extra Layer/More Hidden Units/SGD)", 	
-     xlab = "Epoch", ylab="Accuracy", col="blue", type="l", ylim=c(0.65, 0.76))	
-	
-# Plot the accuracy of the validation data	
-lines(track.model.4$metrics$val_acc, col="green")	
-	
-# Add Legend	
-legend("top", c("Training", "Testing"), col=c("blue", "green"), lty=c(1,1))
+plot_ly(hist_df3, x = ~time)  %>%	
+  add_trace(y = ~loss, name = 'training loss', mode = 'lines') %>%	
+  add_trace(y = ~acc, name = 'training accuracy', mode = 'lines+markers') %>%	
+  add_trace(y = ~valid_loss, name = 'validation loss',mode = 'lines+markers') %>%	
+  add_trace(y = ~valid_acc, name = 'validation accuracy', mode = 'lines+markers') %>% 	
+  layout(legend = list(orientation = 'h'))	
 ```
 
 ## Model Export and Import	
@@ -982,37 +1086,58 @@ yaml_string <- model_to_yaml(model.old)
 model.new <- model_from_yaml(yaml_string)
 ```
 
-# Classification using `MXNet`	
+Let’s demonstrate loading several pre-trained models, (resnet50), VGG16, VGG19, and using them for simple out-of-the-box image classification and automated labeling of an image of New Zealand’s Lake Mapourika.
+
+```{r}
+library(keras)	
 	
-In [MXNet](mxnet.io/api/r/), a [Multilayer perceptron (`MLP`)](https://github.com/dmlc/mxnet/blob/986b736b816018b96e9d1e2c358bb7665b80944d/example/image-classification/train_mnist.R) may be defined by:	
+# get info about local version of Python installation	
+reticulate::py_config()
+```
+```{r}
+# The first time you run this install Pillow!	
+# tensorflow::install_tensorflow(extra_packages='pillow')	
 	
-* Creating a place holder variable for the input data, `data = mx.sym.Variable('data')`	
-* Flattening the data from 4D shape space (width, height, batch_size, num_channel) into 2D (num_channel\*width\*height, batch_size), 'data = mx.sym.Flatten(data=data)`	
-* And iterating over the fully-connected layers:	
-   + First layer, `fc1  = mx.sym.FullyConnected(data=data, name='fc1', num_hidden=128)`	
-   + Apply `relu` function to the output of the first fully-connected layer, `act1 = mx.sym.Activation(data=fc1, name='relu1', act_type="relu")`	
-   + Generate the second fully-connected layer and apply the activation function, `fc2  = mx.sym.FullyConnected(data=act1, name='fc2', num_hidden = 64); act2 = mx.sym.Activation(data=fc2, name='relu2', act_type="relu")`	
-   + Generate the third/final fully-connected layer, with a hidden size $k=10$, which in digit recognition tasks corresponds to the number of unique digits $0:9]$, `fc3  = mx.sym.FullyConnected(data=act2, name='fc3', num_hidden=10)`	
-* Finally, mapping the input into a probability score using the softmax and loss layer, `mlp  = mx.sym.SoftmaxOutput(data=fc3, name='softmax')`. See the [mlp R source code here](https://raw.githubusercontent.com/dmlc/mxnet/e7514fe1b3265aaf15870b124bb6ed0edd82fa76/R-package/R/mlp.R).	
+# load the image	
+download.file("https://upload.wikimedia.org/wikipedia/commons/2/23/Lake_mapourika_NZ.jpeg", paste(getwd(),"results/image.png", sep="/"), mode = 'wb')	
+img <- image_load(paste(getwd(),"results/image.png", sep="/"), target_size = c(224,224))	
+	
+# Preprocess input image	
+x <- image_to_array(img)	
+# ensure we have a 4d tensor with single element in the batch dimension,	
+# the preprocess the input for prediction using resnet50	
+x <- array_reshape(x, c(1, dim(x)))	
+x <- imagenet_preprocess_input(x)	
+	
+# Specify and compare Predictions based on different Pre-trained Models	
+# Model 1: resnet50	
+model_resnet50 <- application_resnet50(weights = 'imagenet')	
+	
+# make predictions then decode and print them	
+preds_resnet50 <- model_resnet50 %>% predict(x)	
+imagenet_decode_predictions(preds_resnet50, top = 10)	
+```
+```{r}
+# Model2: VGG19	
+model_vgg19 <- application_vgg19(weights = 'imagenet')	
+preds_vgg19 <- model_vgg19 %>% predict(x)	
+imagenet_decode_predictions(preds_vgg19, top = 10)
+```
+```{r}
+# Model 3: VGG16	
+model_vgg16 <- application_vgg16(weights = 'imagenet')	
+preds_vgg16 <- model_vgg16 %>% predict(x)	
+imagenet_decode_predictions(preds_vgg16, top = 10)
+```
+
+# Classification examples.	
 	
 ## Sonar data example	
 	
 Let's load the `mlbench` and `mlbench` packages and demonstrate the basic invocation of `mxnet`. The [Sonar data](https://www.rdocumentation.org/packages/mlbench/versions/2.1-1/topics/Sonar) `mlbench::Sonar` includes sonar signals bouncing off a metal cylinder or a roughly cylindrical rock. Each of 208 patterns includes a set of 60 numbers (features) in the range 0.0 to 1.0, and a label M (metal) or R (rock). Each feature represents the energy within a particular frequency band, integrated over a certain period of time. The M and R labels associated with each observation classify the record as rock or mine (metal) cylinder. The numbers in the labels are in increasing order of aspect angle, but they do not encode the angle directly. 	
 
 ```{r}
-# Load the required packages: mlbench and mxnet	
-# install.packages("mlbench"); install.packages("mxnet")	
-# Note mxnet requires "visNetwork"	
-# If it doesn't work, you may need the following lines:	
-# install.packages("drat", repos="https://cran.rstudio.com")	
-# drat:::addRepo("dmlc")	
-# install.packages("mxnet")	
-# install.packages("C:/Users/Dinov/Desktop/apache-mxnet-src-1.6.0-incubating.tar.gz", repos = NULL, type="source")	
-	
-# ON WINDOWS, mxnet requires R << 4.0 ...	
-	
-require(mlbench)	
-require(mxnet)	
+library(mlbench)	
 	
 data(Sonar, package="mlbench")	
 	
@@ -1025,197 +1150,159 @@ train.ind = sample(1:nrow(Sonar),0.7*nrow(Sonar))
 train.x = data.matrix(Sonar[train.ind, 1:60])	
 train.y = Sonar[train.ind, 61]	
 test.x = data.matrix(Sonar[-train.ind, 1:60])	
-test.y = Sonar[-train.ind, 61]
+test.y = Sonar[-train.ind, 61]	
 ```
 
-Let's start by using a **multi-layer perceptron** as a classifier. The `mxnet` function `mx.mlp` builds a general multi-layer neural network that can be utilized to do classification or regression graph modeling. It relies on the following parameters:	
-	
+Let's start by using a **multi-layer perceptron** as a classifier using a general multi-layer neural network that can be utilized to do classification or regression modeling. It relies on the following parameters:
+
 * Training data and labels	
 * Number of hidden nodes in each hidden layers	
 * Number of nodes in the output layer	
 * Type of activation	
 * Type of output loss	
-* The device to train (GPU or CPU)	
-* Additional optional parameters, see `mx.model.FeedForward.create`	
-	
+
 Here is one example using the *training* and *testing* data we defined above:	
 
 ```{r}
-set.seed(1234)	
-model.mx <- mlp(train.x, train.y, hidden_node=8, out_node=2, out_activation="softmax",	
-            num.round=200, array.batch.size=15, learning.rate=0.1, momentum=0.9, 	
-            eval.metric=mx.metric.accuracy,verbose=T)	
+library(plotly)	
+dim(train.x)  # [1] 145  60	
+dim(test.x)   # [1] 63 60	
 	
-#calculate Prediction sensitivity & specificity	
-preds = predict(model.mx, test.x)  # these are probabilities	
+model <- keras_model_sequential() 	
 	
-# You can inspect the test labels vs. assigned probabilities by	
-# View(data.frame(test.y, preds[2,]))	
-preds1 <- ifelse(preds[2,] <= 0.5, 0, 1) # dichotomize to labels	
-table(preds1)	
+model %>% 	
+  layer_dense(units = 256, activation = 'relu', input_shape = ncol(train.x)) %>% 	
+  layer_dropout(rate = 0.4) %>% 	
+  layer_dense(units = 128, activation = 'relu') %>%	
+  layer_dropout(rate = 0.3) %>%	
+  layer_dense(units = 2, activation = 'sigmoid')	
 	
-pred.label = t(preds1)	
-table(pred.label, test.y)	
-library("caret")	
-sensitivity(factor(preds1), factor(as.numeric(test.y)),positive = 1)	
-specificity(factor(preds1), factor(as.numeric(test.y)),negative = 0)
+model %>% compile(	
+  loss = 'binary_crossentropy',	
+  optimizer = 'adam',	
+  metrics = c('accuracy')	
+)	
+	
+one_hot_labels <- to_categorical(train.y, num_classes = 2)	
+	
+# Train the model, iterating on the data in batches of 25 samples	
+history <- model %>% fit(	
+  train.x, one_hot_labels, 	
+  epochs = 100, 	
+  batch_size = 5,	
+  validation_split = 0.3	
+)	
+ 	
+# Evaluate model	
+metrics <- model %>% evaluate(test.x, to_categorical(test.y, num_classes = 2))	
+metrics	
+```
+```{r}
+epochs <- 100	
+time <- 1:epochs	
+hist_df <- data.frame(time=time, loss=history$metrics$loss, acc=history$metrics$accuracy,	
+                      valid_loss=history$metrics$val_loss, valid_acc=history$metrics$val_accuracy)	
+	
+plot_ly(hist_df, x = ~time)  %>%	
+  add_trace(y = ~loss, name = 'training loss', mode = 'lines') %>%	
+  add_trace(y = ~acc, name = 'training accuracy', mode = 'lines+markers') %>%	
+  add_trace(y = ~valid_loss, name = 'validation loss',mode = 'lines+markers') %>%	
+  add_trace(y = ~valid_acc, name = 'validation accuracy', mode = 'lines+markers') %>% 	
+  layout(legend = list(orientation = 'h'))	
+```
+```{r}
+# Finally prediction of binary class labels and Confusion Matrix	
+predictions <- model %>% predict(test.x) %>% `>`(0.5) %>% k_argmax() %>% as.vector()
+	
+# We can also inspect the corresponding probabilities of the automated binary classification labels	
+prediction_probabilities <- model %>% predict(test.x)	
+	
+table(predictions,test.y)
 ```
 
-We can also use `crossval::diagnosticErrors()` and `crossval::confusionMatrix()` to get more detailed evaluations. Similar to `sensitivity()` and `specificity()`, we should specify the *negative* and *positive* labels. 	
-	
-*Note* that you have to specify `crossval::confusionMatrix()` if you also have the `caret` package loaded, as `caret` also has a function called `confusionMatrix()`.	
+*Note* that you may need to specify `crossval::confusionMatrix()`, in case you also have the `caret` package loaded, as `caret` also has a function called `confusionMatrix()`.
 
 ```{r}
 library("crossval")	
-diagnosticErrors(crossval::confusionMatrix(preds1,test.y, negative = 0))
+diagnosticErrors(crossval::confusionMatrix(predictions,test.y, negative = 0))
 ```
 
-Now, we compare the results of different number of rounds, or epochs, representing the number of full (training-phase) passes through the data (cf. `num.round=n`).	
-
-```{r}
-mx.set.seed(1234)	
-get_pred = function(n){	
-  model.mx <- mx.mlp(train.x, train.y, hidden_node=8, out_node=2, out_activation="softmax",	
-          num.round=n, array.batch.size=15, learning.rate=0.1, momentum=0.9, 	
-          eval.metric=mx.metric.accuracy,verbose=F)	
-  preds = predict(model.mx, test.x) 	
-}	
-preds100 = get_pred(100)	
-preds50 = get_pred(50)	
-preds10 = get_pred(10)
-```
-
-We can plot the ROC curve and calculate the AUC (Area under the curve):
+We can plot the ROC curve and calculate the AUC (Area under the curve). Specifically, we will show computing the *area under the curve (AUC)* and draw the *receiver operating characteristic (ROC)* curve. Assuming 'positive' ranks higher than 'negative', the [AUC](https://en.wikipedia.org/wiki/Receiver_operating_characteristic#Area_under_the_curve) quantifies the probability that a classifier will rank a randomly chosen positive instance higher than a randomly chosen negative instance. $0\leq AUC\leq 1$ and (bad) *uninformative classifier* yields $AUC=0.5$, whereas $AUC\to 1^-$ suggests a perfect classifier.
 
 ```{r}
 # install.packages("pROC"); install.packages("plotROC"); install.packages("reshape2")	
 library(pROC); library(plotROC); library(reshape2); 	
 # compute AUC	
 get_roc = function(preds){	
-  roc_obj <- roc(test.y, preds[2,])	
+  roc_obj <- roc(test.y, preds, quiet=TRUE)	
   auc(roc_obj)	
 }	
-get_roc(preds)	
-get_roc(preds100)	
-get_roc(preds50)	
-get_roc(preds10)	
+get_roc(predictions)	
 	
 #plot roc	
-dt <- data.frame(test.y, preds[2,], preds100[2,], preds50[2,], preds10[2,])	
-colnames(dt) <- c("D","rounds=200","rounds=100","rounds=50","rounds=10")	
-dt <- melt(dt,id.vars = "D")	
+dt <- data.frame(test.y, predictions)	
+colnames(dt) <- c("class","scored.probability")	
 	
-basicplot <- ggplot(dt, aes(d = D, m = value, colour=variable)) + geom_roc(labels = FALSE, size = 0.5, alpha.line = 0.6, linejoin = "mitre") +  	
-  theme_bw() + coord_fixed(ratio = 1) + style_roc() + ggtitle("ROC CURVE")+	
-  ggplot2::annotate("rect", xmin = 0.4, xmax = 0.9, ymin = 0.1, ymax = 0.5,	
-           alpha = 0.2)+	
-  ggplot2::annotate("text", x = 0.65, y = 0.32, size = 3,	
-           label = "AUC: \n rounds=200: 0.9209\n rounds=100: 0.9128\n rounds=50: 0.8824\n rounds=10: 0.8022\n " )	
-basicplot
-```
-
-The plot suggests that the results stabilize after 100 training (epoch) iterations.
-
-Let's look at some visualizations of the real labels of the test data (`test.y`) and their corresponding ML-derived classification labels (`preds[2,]`) using 200 iterations.	
-
-```{r}
-graph.viz(model.mx$symbol)	
-hist(preds10[2,],main = "rounds=10")	
-hist(preds50[2,],main = "rounds=50")	
-hist(preds100[2,],main = "rounds=100")	
-hist(preds[2,],main = "rounds=200")	
-```
-
-We see a significant bimodal trend when the number of rounds increases. Another plot may be generated by:	
-
-```{r}
-library(ggplot2)	
-get_gghist = function(preds){	
-  ggplot(data.frame(test.y, preds),	
-         aes(x=preds, group=test.y, fill=as.factor(test.y)))+	
-    geom_histogram(position="dodge",binwidth=0.25)+theme_bw()	
+# basicplot <- ggplot(dt, aes(d = class, m = scored.probability)) + 	
+#   geom_roc(labels = FALSE, size = 0.5, alpha.line = 0.6, linejoin = "mitre") +  	
+#   theme_bw() + coord_fixed(ratio = 1) + style_roc() + ggtitle("ROC CURVE")+	
+#   ggplot2::annotate("rect", xmin = 0.4, xmax = 0.9, ymin = 0.1, ymax = 0.5,	
+#            alpha = 0.2)+	
+#   ggplot2::annotate("text", x = 0.65, y = 0.32, size = 3,	
+#            label = paste0("AUC: ", round(get_roc(predictions)[[1]], 3)))	
+# basicplot	
+	
+# Compute the AUC and draw the ROC curve	
+roc_curve <- function(df) {	
+  x <- c()	
+  y <- c()	
+  true_class = df[, "class"]	
+  probabilities = df[, "scored.probability"]	
+  thresholds = seq(0, 1, 0.01)	
+  rx <- 0	
+  ry <- 0	
+  for (threshold in thresholds) {	
+    predicted_class <- c()	
+    for (val in probabilities) {	
+      if (val > threshold) {	
+        predicted_class <- c(predicted_class, 1)	
+      }	
+      else { predicted_class <- c(predicted_class, 0)   }	
+    }	
+    df2 <- as.data.frame(cbind(true_class, predicted_class))	
+    TP <- nrow(filter(df2, true_class == 1 & predicted_class == 1))	
+    TN <- nrow(filter(df2, true_class == 0 & predicted_class == 0))	
+    FP <- nrow(filter(df2, true_class == 0 & predicted_class == 1))	
+    FN <- nrow(filter(df2, true_class == 1 & predicted_class == 0))	
+    specm1 <- 1 - ((TN) / (TN + FP))	
+    sens <- (TP) / (TP + FN)	
+    x <- append(x, specm1)	
+    y <- append(y, sens)	
+  }	
+  dfr <- as.data.frame(cbind(x, y))	
+  plot_ly(dfr, x = ~ x, y = ~ y, type = 'scatter', mode = 'lines') %>%	
+    layout(title = paste0("ROC Curve and AUC"), annotations = list(	
+        text = paste0("Area Under Curve = ", round(get_roc(predictions)[[1]], 3)),	
+        x = 0.75, y = 0.25, showarrow = FALSE),	
+      xaxis = list(showgrid = FALSE, title = "1-Specificity (false positive rate)"),	
+      yaxis = list(showgrid = FALSE, title = "Sensitivity (true positive rate)"),	
+      legend = list(orientation = 'h')	
+    ) 	
 }	
-	
-df = data.frame(preds[2,],preds100[2,],preds50[2,],preds10[2,])	
-p <- lapply(df,get_gghist)	
-require(gridExtra) # used for arrange ggplots	
-grid.arrange(p$preds10.2...,p$preds50.2...,p$preds100.2...,p$preds.2...)
+roc_curve(data.frame(class=test.y, scored.probability=prediction_probabilities[,2]))
 ```
-
-## MXNet Notes	
-	
-* The `mx.mlp()` function is a proxy to the more complex and laborious process of defining a neural network by using **MXNet**'s `Symbol`. For instance, this call `model.mx <- mx.mlp(train.x, train.y, hidden_node=8, out_node=2, out_activation="softmax", num.round=20, array.batch.size=15, learning.rate=0.1, momentum=0.9, eval.metric=mx.metric.accuracy)` would be equivalent to a symbolic network definition like:  `data <- mx.symbol.Variable("data"); fc1 <- mx.symbol.FullyConnected(data, num_hidden=128) act1 <- mx.symbol.Activation(fc1, name="relu1", act_type="relu"); fc2 <- mx.symbol.FullyConnected(act1, name="fc2", num_hidden=64); act2 <- mx.symbol.Activation(fc2, name="relu2", act_type="relu"); fc3 <- mx.symbol.FullyConnected(act2, name="fc3", num_hidden=2); lro <- mx.symbol.SoftmaxOutput(fc3, name="sm"); model2 <- mx.model.FeedForward.create(lro, X=train.x, y=train.y, ctx=mx.cpu(), num.round=100, array.batch.size=15, learning.rate=0.07, momentum=0.9)` (see example with linear regression below).	
-	
-* Layer-by-layer definitions translate inputs into outputs. At each level, the network allows for a different number of neurons and alternative activation functions. Other options can be specified by using `mx.symbol`: 	
-* `mx.symbol.Convolution` applies convolution to the input and then adds a bias. It can create convolutional neural networks. 	
-* `mx.symbol.Deconvolution` does the opposite and can be used in segmentation networks along with `mx.symbol.UpSampling`, e.g., to reconstruct the pixel-wise classification of an image. 	
-* `mx.symbol.Pooling` reduces the data by selecting signals with the highest response. 	
-* `mx.symbol.Flatten` links convolutional and pooling layers to form a fully connected network. 	
-* `mx.symbol.Dropout` attempts to cope with the overfitting problem.	
-	
-The function `mx.mlp()` is a wrapper for quick design of standard multi-layer perceptrons. For more extensive experiments, customized symbolic representation can be explicitly specified using combinations of the above methods.	
-
-```{r}
-# Example of **LeNet** network for recognizing handwritten digits:	
-	
-data <- mx.symbol.Variable('data') 	
-conv1 <- mx.symbol.Convolution(data=data, kernel=c(5,5), num_filter=20) 	
-tanh1 <- mx.symbol.Activation(data=conv1, act_type="tanh") 	
-pool1 <- mx.symbol.Pooling(data=tanh1, pool_type="max", kernel=c(2,2), stride=c(2,2))	
-conv2 <- mx.symbol.Convolution(data=pool1, kernel=c(5,5), num_filter=50) 	
-tanh2 <- mx.symbol.Activation(data=conv2, act_type="tanh") 	
-pool2 <- mx.symbol.Pooling(data=tanh2, pool_type="max", kernel=c(2,2), stride=c(2,2))	
-flatten <- mx.symbol.Flatten(data=pool2) 	
-fc1 <- mx.symbol.FullyConnected(data=flatten, num_hidden=500) 	
-tanh3 <- mx.symbol.Activation(data=fc1, act_type="tanh") 	
-fc2 <- mx.symbol.FullyConnected(data=tanh3, num_hidden=10) 	
-lenet <- mx.symbol.SoftmaxOutput(data=fc2) 	
-model <- mx.model.FeedForward.create(lenet, X=train.x, y=train.y, ctx=device.cpu, num.round=5, array.batch.size=100, learning.rate=0.05, momentum=0.9)	
-```
-
-To allow smooth, fast, and consistent operation on CPU and GPU, in `in mxnet`, the generic R function controlling the reproducibility of stochastic results is overwritten by `mx.set.seed`. So can use `mx.set.seed()` to control random numbers in **MXNet**.	
-	
-To examine the accuracy of the `model.mx` learner (trained on the training data), we can make prediction (on testing data) and evaluate the results using the provided testing labels (report the confusion matrix).	
-
-```{r}
-preds = predict(model.mx, test.x)	
-pred.label = max.col(t(preds))-1	
-table(pred.label, test.y)
-```
-
-For multi-class predictions, `mxnet` outputs $n\ (class) \times m\ (examples)$ confusion matrices where each row corresponds to probability of the corresponding (column-defined) class.	
 	
 # Case-Studies	
 
-Let's demonstrate regression and prediction deep learning examples using several complementary datasets.	
-	
-<!---	
-## Schizophrenia Neuroimaging Study	
-[Here is the SOCR Schizo Data](http://wiki.stat.ucla.edu/socr/index.php/SOCR_Data_Oct2009_ID_NI).	
+Let's demonstrate deep neural network regression-modeling and classification-prediction using several biomedical case-studies.
+
+## Schizophrenia Neuroimaging Study
+
+[Here is the SOCR Schizo Data](http://wiki.stat.ucla.edu/socr/index.php/SOCR_Data_Oct2009_ID_NI).
 
 ```{r}
-# Boston Housing Data	
-data(BostonHousing, package="mlbench")	
-	
-train.ind = seq(1, 506, 3)	
-train.x = data.matrix(BostonHousing[train.ind, -14])	
-train.y = BostonHousing[train.ind, 14]	
-test.x = data.matrix(BostonHousing[-train.ind, -14])	
-test.y = BostonHousing[-train.ind, 14]	
-model <- mx.mlp(train.x, train.y, hidden_node=10, out_node=3, 	
-            out_activation="softmax", num.round=20, array.batch.size=3,	
-            learning.rate=0.07, momentum=0.9, eval.metric=mx.metric.accuracy)
-```
-```{r}
-# install.packages("XML"); install.packages("xml2"); install.packages("rvest")	
-# Install MXNet	
-# cran <- getOption("repos")	
-# cran["dmlc"] <- "https://s3-us-west-2.amazonaws.com/apache-mxnet/R/CRAN/"	
-# options(repos = cran)	
-# install.packages("mxnet",dependencies = T)	
-	
 library("XML"); library("xml2")	
-library("rvest"); library("mxnet")	
+library("rvest");	
 	
 # Schizophrenia Data	
 # UCLA Data is available here: 	
@@ -1230,33 +1317,292 @@ SchizoData<- html_table(html_nodes(wiki_url, "table")[[1]])
 # View (SchizoData): Select an outcome response "DX"(3), "FS_IQ" (5)	
 set.seed(1234)	
 test.ind = sample(1:63, 10, replace = F)  # select 10/63 of cases for testing, train on remaining (63-10)/63 cases	
-train.x = data.matrix(SchizoData[-test.ind, c(2, 4:9)]) #, 11:66)]) # exclude outcome	
-train.y = ifelse(SchizoData[-test.ind, 3] < 2, 1, 2) # Binarize the outcome, Controls=1	
-test.x = data.matrix(SchizoData[test.ind, c(2, 4:9)]) #, 11:66)])	
-test.y = ifelse(SchizoData[test.ind, 3] < 2, 1, 2)	
+train.x = scale(data.matrix(SchizoData[-test.ind, c(2, 4:9)])) #, 11:66)]) # exclude outcome	
+train.y = ifelse(SchizoData[-test.ind, 3] < 2, 0, 1) # Binarize the outcome, Controls=1	
+test.x = scale(data.matrix(SchizoData[test.ind, c(2, 4:9)])) #, 11:66)])	
+test.y = ifelse(SchizoData[test.ind, 3] < 2, 0, 1)	
 	
 # View(data.frame(test.x, test.y))	
-# View(data.frame(train.x, train.y))	
+# View(data.frame(train.x, train.y))
+```
+```{r}
+model <- keras_model_sequential() 	
 	
-#mx.set.seed(1234); model <- mx.mlp(train.x, train.y, hidden_node=10, out_node=2, out_activation="softmax", num.round=4, array.batch.size=3,learning.rate=0.07, momentum=0.9, eval.metric=mx.metric.accuracy, array.layout = "rowmajor")	
+model %>% 	
+  layer_dense(units = 256, activation = 'relu', input_shape = ncol(train.x)) %>% 	
+  layer_dropout(rate = 0.4) %>% 	
+  layer_dense(units = 128, activation = 'relu') %>%	
+  layer_dropout(rate = 0.3) %>%	
+  layer_dense(units = 64, activation = 'relu') %>%	
+  layer_dropout(rate = 0.1) %>%	
+  layer_dense(units = 32, activation = 'relu') %>%	
+  layer_dropout(rate = 0.1) %>%	
+  layer_dense(units = 2, activation = 'sigmoid')	
 	
-mx.set.seed(1234); model <- mx.mlp(train.x, train.y, hidden_node=10, out_node=2, out_activation="softmax", num.round=1, array.batch.size=3,   learning.rate=0.07, momentum=0.9, eval.metric=mx.metric.rmse, array.layout = "rowmajor")	
+model %>% compile(	
+  loss = 'binary_crossentropy',	
+  optimizer = 'adam',	
+  metrics = c('accuracy')	
+)	
+
+one_hot_labels <- to_categorical(train.y, num_classes = 2)	
 	
-preds = predict(model, test.x)  # these are probabilities	
-preds1 <- ifelse(preds[1,] <= 0.02, 1, 2) # dichotomize to labels	
+# Train the model, iterating on the data in batches of 25 samples	
+history <- model %>% fit(	
+  train.x, one_hot_labels, 	
+  epochs = 100, 	
+  batch_size = 5,	
+  validation_split = 0.1	
+)	
+ 	
+# Evaluate model	
+metrics <- model %>% evaluate(test.x, to_categorical(test.y, num_classes = 2))	
+metrics	
 	
-pred.label = t(preds1)	
-table(pred.label, test.y)	
+plot(history)	
+```
+```{r}
+epochs <- 100	
+time <- 1:epochs	
+hist_df <- data.frame(time=time, loss=history$metrics$loss, acc=history$metrics$accuracy,	
+                      valid_loss=history$metrics$val_loss, valid_acc=history$metrics$val_accuracy)	
 	
-# Plot the distribution of the Predicted (preds[2,]) vs. real (test.y) diagnoses	
-# library(ggplot2)	
-# ggplot(data.frame(test.y, preds[1,]), aes(x=preds[1,], group=test.y, fill=test.y))+	
-# geom_histogram(position="dodge",binwidth=0.25)+theme_bw()	
-	
-#calculate sensitivity & specificity	
-library("caret")	
-sensitivity(factor(preds1), factor(as.numeric(test.y)))	
-specificity(factor(preds1), factor(as.numeric(test.y)))	
+plot_ly(hist_df, x = ~time)  %>%	
+  add_trace(y = ~loss, name = 'training loss', mode = 'lines') %>%	
+  add_trace(y = ~acc, name = 'training accuracy', mode = 'lines+markers') %>%	
+  add_trace(y = ~valid_loss, name = 'validation loss',mode = 'lines+markers') %>%	
+  add_trace(y = ~valid_acc, name = 'validation accuracy', mode = 'lines+markers') %>% 	
+  layout(legend = list(orientation = 'h'))
+```
+```{r}
+# Finally prediction of binary class labels and Confusion Matrix
+predictions <- model %>% predict(test.x) %>%  k_argmax()
+table(factor(predictions$numpy()),factor(test.y))
 ```
 
+## ALS regression example
+
+The second example demonstrates a deep learning regression using the [ALS data]("https://umich.instructure.com/files/1789624/download?download_frd=1) to predict `ALSFRS_slope`. Note that in this case the clinical feature we are predicting, $Y=ALSFRS_slope$, is a continuous outcome. Hence, we have a *regression problem*, which requires a different `keras` network formulation from the *categorical or binary classification problem* above.
+
+In general, normalizing all data features ensures model is scale- and range-invariant. Feature normalization may not be always necessary, but it helps with improving the network training and ensures the resulting network prediction is more robust. The function `tfdatasets::feature_spec()` provides tensorflow data normalization for tabular data.
+
+```{r}
+library(tfdatasets)	
+	
+als <- read.csv("https://umich.instructure.com/files/1789624/download?download_frd=1")	
+ALSFRS_slope <- als[,7]	
+als <- as.data.frame(als[,-c(1,7,94)])	
+colnames(als)
+```
+```{r}
+spec <- feature_spec(als, ALSFRS_slope ~ . ) %>% 
+  step_numeric_column(all_numeric(), normalizer_fn = scaler_standard()) %>% 
+  fit()
+spec
+```
+
+The `feature_spec` output *spec is used together with `keras::layer_dense_features()` method to directly perform pre-processing in the TensorFlow graph. We can take a look at the output of a dense-features layer created by the `feature_spec`, which is a matrix (2D tensor) with scaled values.
+
+```{r}
+layer <- layer_dense_features(feature_columns = dense_features(spec), dtype = tf$float32)	
+# layer(als)
+```
+
+Next, we design the network architecture model using the feature_spec API by passing the dense_features from the new spec object.
+
+```{r}
+input <- layer_input_from_dataset(als)	
+	
+output <- input %>% 	
+  layer_dense_features(dense_features(spec)) %>% 	
+  layer_dense(units = 256, activation = "relu") %>%	
+  layer_dense(units = 128, activation = "relu") %>%	
+  layer_dense(units = 64, activation = "relu") %>%	
+  layer_dense(units = 16, activation = "relu") %>%	
+  layer_dense(units = 1) 	
+	
+model <- keras_model(input, output)	
+	
+# summary(model)	
+```
+
+It's time to compile the deep network model and wrap it into a function `build_model()` that can be reused for different experiments. Remember that `keras::fit()` modifies the model in-place.
+
+```{r}
+model %>% compile(loss = "mse", optimizer = optimizer_rmsprop(), metrics = list("mean_absolute_error"))	
+	
+build_model <- function() {	
+  input <- layer_input_from_dataset(als)	
+  output <- input %>% 	
+  layer_dense_features(dense_features(spec)) %>% 	
+  layer_dense(units = 256, activation = "relu") %>%	
+  layer_dense(units = 128, activation = "relu") %>%	
+  layer_dense(units = 64, activation = "relu") %>%	
+  layer_dense(units = 16, activation = "relu") %>%	
+  layer_dense(units = 1) 	
+	
+  model <- keras_model(input, output)	
+  	
+  model %>% compile(loss = "mse", optimizer = optimizer_rmsprop(), metrics = list("mean_absolute_error"))	
+  	
+  model	
+}
+```
+Model train follows with 200 epochs where we record the training and validation accuracy in a *keras_training_history* object. For tracking the learning progress, we use a custom callback to replace the default training output at each epoch by a single dot (period) printed in the console .
+
+```{r}
+# Display training progress by printing a single dot for each completed epoch.	
+print_dot_callback <- callback_lambda(	
+  on_epoch_end = function(epoch, logs) {	
+    if (epoch %% 80 == 0) cat("\n")	
+    cat(".")	
+  }	
+)    	
+	
+model <- build_model()	
+	
+history <- model %>% fit(	
+  x = als,	
+  y = ALSFRS_slope,	
+  epochs = 200,	
+  validation_split = 0.2,	
+  verbose = 0,	
+  callbacks = list(print_dot_callback)	
+)	
+```
+
+Let's visualize the model’s training data performance using the metrics stored in the history object. This graph provides clues to determine how long to train as the model performance converges.
+
+This graph shows little improvement in the model after about 200 epochs. Let’s update the fit method to automatically stop training when the validation score doesn’t improve. We’ll use a callback that tests a training condition for every epoch. If a set amount of epochs elapses without showing improvement, it automatically stops the training.
+
+```{r}
+#plot(history)	
+	
+epochs <- 200	
+time <- 1:epochs	
+hist_df <- data.frame(time=time, loss=history$metrics$loss, mae=history$metrics$mean_absolute_error,	
+                      valid_loss=history$metrics$val_loss, valid_mae=history$metrics$val_mean_absolute_error)	
+	
+plot_ly(hist_df, x = ~time)  %>%	
+  add_trace(y = ~loss, name = 'training loss', mode = 'lines') %>%	
+  add_trace(y = ~mae, name = 'training MAE', mode = 'lines+markers') %>%	
+  add_trace(y = ~valid_loss, name = 'validation loss',mode = 'lines+markers') %>%	
+  add_trace(y = ~valid_mae, name = 'validation MAE', mode = 'lines+markers') %>% 	
+  layout(legend = list(orientation = 'h'))	
+```
+```{r}
+# # Note that this graph shows little improvement in the model after about 100 epochs. 	
+# # hence, we can update the fit method to automatically *stop training* when the validation score 	
+# # doesn’t improve. The callback that tests a training condition for every epoch. 	
+# # If a set amount of epochs elapses without showing improvement, it automatically stops the training.	
+# 	
+# # The patience parameter is the amount of epochs to check for improvement.	
+# early_stop <- callback_early_stopping(monitor = "val_loss", patience = 20)	
+# 	
+# model <- build_model()	
+# 	
+# history <- model %>% fit(	
+#   x = train_df %>% select(-label),	
+#   y = train_df$label,	
+#   epochs = 500,	
+#   validation_split = 0.2,	
+#   verbose = 0,	
+#   callbacks = list(early_stop)	
+# )	
+	
+# library(deepviz)	
+# model %>% plot_model()
+```
+
+Have a look at the [Google TensorFlow API](http://playground.tensorflow.org/#activation=tanh&batchSize=10&dataset=circle&regDataset=reg-plane&learningRate=0.03&regularizationRate=0&noise=0&networkShape=4,2&seed=0.81083&showTestData=false&discretize=false&percTrainData=50&x=true&y=true&xTimesY=false&xSquared=false&ySquared=false&cosX=false&sinX=false&cosY=false&sinY=false&collectStats=false&problem=classification&initZero=false&hideText=false). It shows the importance of *learning rate* and the *number of rounds*. You should test different sets of parameters. 	
+
+* Too small *learning rate* may lead to long computations.	
+* Too large *learning rate* may cause the algorithm to fail to converge, as large step size (learning rate) may by-pass the optimal solution and then oscillate or even diverge.
+
+Finally, we can forecast and predict the ALSFRS_slope using data in the testing set:
+
+```{r}
+cases <- 100	
+test_sample <- sample(1:dim(als)[1], size=cases)	
+test_predictions <- model %>% predict(als[test_sample, ])	
+# test_predictions[ , 1]	
+	
+print(paste0("Corr(real_ALSFRS_Slope, predicted_ALSFRS_Slope)=", 	
+             round(cor(test_predictions, ALSFRS_slope[test_sample]), 3)))	
+	
+cases <- 1:cases	
+hist_df <- data.frame(cases=cases, real=ALSFRS_slope[test_sample], predicted=test_predictions)	
+	
+plot_ly(hist_df, x = ~real)  %>%	
+  add_trace(y = ~predicted, name = 'Scatter (Real vs. Predicted ALSFRS_Slope)', mode = 'markers') %>%	
+  add_lines(x = ~real, y = ~fitted(lm(predicted ~ real, hist_df)), name="LM(Pred ~ Real)") %>% 	
+  layout(legend = list(orientation = 'h'))
+```
+
+## IBS Study
+
+Let's try another example using the [IBS NI Study data](http://wiki.stat.ucla.edu/socr/index.php/SOCR_Data_April2011_NI_IBS_Pain). Again, we will use deep neural network learning to predict a categorical/binary classification label (diagnosis, DX).
+
+```{r}
+# IBS NI Data	
+library(xml2)	
+library(rvest)	
+	
+# UCLA Data	
+wiki_url <- read_html("http://wiki.stat.ucla.edu/socr/index.php/SOCR_Data_April2011_NI_IBS_Pain")	
+IBSData<- html_table(html_nodes(wiki_url, "table")[[2]])	
+set.seed(1234)	
+test.ind = sample(1:354, 50, replace = F)  # select 50/354 of cases for testing, train on remaining (354-50)/354 cases	
+	
+# UMich Data (includes MISSING data): use `mice` to impute missing data with mean: newData <- mice(data,m=5,maxit=50,meth='pmm',seed=500); summary(newData)	
+# wiki_url <- read_html("https://wiki.socr.umich.edu/index.php/SOCR_Data_April2011_NI_IBS_Pain")	
+# IBSData<- html_table(html_nodes(wiki_url, "table")[[1]]) # load Table 1	
+# set.seed(1234)	
+# test.ind = sample(1:337, 50, replace = F)  # select 50/337 of cases for testing, train on remaining (337-50)/337 cases	
+# summary(IBSData); IBSData[IBSData=="."] <- NA; newData <- mice(IBSData,m=5,maxit=50,meth='pmm',seed=500); summary(newData)	
+	
+html_nodes(wiki_url, "#content")	
+	
+# View (IBSData); dim(IBSData): Select an outcome response "DX"(3), "FS_IQ" (5)	
+	
+# scale/normalize all input variables	
+IBSData <- na.omit(IBSData) 	
+IBSData[,4:66] <- scale(IBSData[,4:66])  # scale the entire dataset	
+train.x = data.matrix(IBSData[-test.ind, c(4:66)]) # exclude outcome	
+train.y = IBSData[-test.ind, 3]-1	
+test.x = data.matrix(IBSData[test.ind, c(4:66)])	
+test.y = IBSData[test.ind, 3]-1	
+	
+train.y <- train.y$Group	
+test.y <- test.y$Group	
+	
+# View(data.frame(test.x, test.y))	
+# View(data.frame(train.x, train.y))
+```
+
+
+## Country QoL Ranking Data
+
+Another case-study we have seen before is the [country quality of life (QoL) dataset](http://wiki.stat.ucla.edu/socr/index.php/SOCR_Data_2008_World_CountriesRankings). Let's try to fit a network model and use it to predict the overall QoL. This is another binary classification of countries into *developed* or *developing.*
+
+```{r}
+wiki_url <- read_html("http://wiki.stat.ucla.edu/socr/index.php/SOCR_Data_2008_World_CountriesRankings")	
+html_nodes(wiki_url, "#content")	
+CountryRankingData<- html_table(html_nodes(wiki_url, "table")[[1]])	
+	
+# View (CountryRankingData); dim(CountryRankingData): Select an appropriate	
+# outcome "OA": Overall country ranking (13)	
+# Dichotomize outcome, Top-countries OA<20, bottom countries OA>=20	
+set.seed(1234)	
+test.ind = sample(1:100, 30, replace = F)  # select 15/100 of cases for testing, train on remaining 85/100 cases	
+	
+CountryRankingData[,c(8:12,14)] <- scale(CountryRankingData[,c(8:12,14)])	
+# scale/normalize all input variables	
+train.x = data.matrix(CountryRankingData[-test.ind, c(8:12,14)]) # exclude outcome	
+train.y = ifelse(CountryRankingData[-test.ind, 13] < 50, 1, 0)	
+test.x = data.matrix(CountryRankingData[test.ind, c(8:12,14)])	
+test.y = ifelse(CountryRankingData[test.ind, 13] < 50, 1, 0) # developed (high OA rank) country	
+```
+
+## Handwritten Digits Classification
 
