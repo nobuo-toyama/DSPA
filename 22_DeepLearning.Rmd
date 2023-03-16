@@ -1606,3 +1606,1091 @@ test.y = ifelse(CountryRankingData[test.ind, 13] < 50, 1, 0) # developed (high O
 
 ## Handwritten Digits Classification
 
+In [Chapter 10 (ML, NN, SVM Classification)](https://www.socr.umich.edu/people/dinov/courses/DSPA_notes/10_ML_NN_SVM_Class.html) we discussed Optical Character Recognition (OCR). Specifically, we analyzed handwritten notes (unstructured text) and converted it to printed text.
+
+[MNIST](http://yann.lecun.com/exdb/mnist/) includes a large set of human annotated/labeled handwritten digits imaging data set. Every digit is represented by a $28\times 28$ thumbnail image. You can download the training and testing data from [Kaggle](https://www.kaggle.com/c/digit-recognizer/data).
+
+The `train.csv` and `test.csv` data files contain gray-scale images of hand-drawn digits, $0, 1, 2, \ldots, 9$. Each 2D image is $28\times 28$ in size and each of the $784$ pixels has a single pixel-intensity representing the lightness or darkness of that pixel (stored as a 1 byte integer $[0,255]$). Higher intensities correspond to darker pixels.
+
+The training data, `train.csv`, has 785 columns, where the first column, **label**, codes the actual the digit drawn by the user. The remaining  $784$ columns contain the $28\times 28=784$ pixel-intensities of the associated 2D image. Columns in the training set have $pixel_K$ names, where $0\leq K\leq 783$. To reconstruct a 2D image out of each row in the training data we use this relation between pixel-index ($K$) and $X,Y$ image coordinates: 	
+   $$K = Y \times 28 + X,$$	
+where $0\leq X, Y\leq 27$. Thus, $pixel_K$ is located on row $Y$ and column $X$ of the corresponding 2D Image of size $28\times 28$. For instance, $pixel_{60=(2\times 28 + 4)} \longleftrightarrow (X=4,Y=2)$ represents the pixel on the 3-rd row and 5-th column in the image. Diagrammatically, omitting the "pixel" prefix, the pixels may be ordered to reconstruct the 2D image as follows:	
+ 	
+Row  | Col0 | Col1 | Col2 | Col3 | Col4 | ... | Col26 | Co27	
+-----|------|------|------|------|------|------|------|-----	
+Row0 | 000 | 001 | 002 | 003 | 004 | ... | 026 | 027	
+Row1 | 028 | 029 | 030 | 031 | 032 | ... | 054 | 055	
+**Row2** | 056 | 057 | 058 | 059 | **060** | ... | 082 | 083	
+RowK | ...|...|...|...|...|...|...|...| ...	
+Row26| 728 | 729 | 730 | 731 | 732 | ... | 754 | 755	
+Row27| 756 | 757 | 758 | 759 | 760 | ... | 782 | 783	
+
+Note that the point-to-pixelID transformation ($K = Y \times 28 + X$) may easily be inverted as a pixelID-to-point mapping: $X= K\ mod\ 28$ (remainder of the integer division ($K/28$) and $Y=K %/%28$ (integer part of the division $K/28$)). For example:
+
+```{r}
+K <- 60	
+X <- K %% 28 # X= K mod 28, remainder of integer division 60/28	
+Y <- K%/%28  # integer part of the division	
+# This validates that the application of both, the back and forth transformations, leads to an identity	
+K; X; Y; Y * 28 + X
+```
+
+The `test data` (test.csv) has the same organization as the training data, except that it does not contain the first **label** column. It includes 28,000 images and we can predict image labels that can be stored as $ImageId,Label$ pairs, which can be visually compared to the 2D images for validation/inspection.
+
+```{r}
+# train.csv	
+pathToZip <- tempfile()	
+download.file("https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/data/DigitRecognizer_TrainingData.zip", pathToZip)	
+train <- read.csv(unzip(pathToZip))	
+dim(train)	
+unlink(pathToZip)
+```
+```{r}
+# test.csv	
+pathToZip <- tempfile()	
+download.file("https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/data/DigitRecognizer_TestingData.zip", pathToZip)	
+test <- read.csv(unzip(pathToZip))	
+dim(test)	
+unlink(pathToZip)
+```
+```{r}
+train <- data.matrix(train)	
+test <- data.matrix(test)	
+	
+train.x <- train[,-1]	
+train.y <- train[,1]	
+	
+# Scaling will be discussed below	
+train.x <- t(train.x/255)	
+test <- t(test/255)	
+	
+# Note that you can also load the MNIST dataset (training & testing directly from keras)	
+# mnist <- dataset_mnist()	
+# train.x <- mnist$train$x	
+# train.y <- mnist$train$y	
+# test <- mnist$test$x	
+# test.y <- mnist$test$y
+```
+
+Let's look at some of these example images:
+
+```{r}
+library("imager")	
+# first convert the CSV data (one row per image, 28,000 rows)	
+array_3D <- array(test, c(28, 28, 28000))	
+mat_2D <- matrix(array_3D[,,1], nrow = 28, ncol = 28)	
+plot(as.cimg(mat_2D))
+```
+```{r}
+# extract all N=28,000 images	
+N <- 28000	
+img_3D <- as.cimg(array_3D[,,], 28, 28, N)	
+	
+# plot the k-th image (1<=k<=N)	
+k <- 5	
+plot(img_3D, k)	
+```
+```{r}
+image_2D <- function(img,index)	
+{	
+    img[,,index,,drop=FALSE]	
+}	
+	
+plot(image_2D(img_3D, 1))
+```
+```{r}
+# Plot a collage of the first 4 images	
+imappend(list(image_2D(img_3D, 1), image_2D(img_3D, 2), image_2D(img_3D, 3), image_2D(img_3D, 4)),"y") %>% plot	
+```
+```{r}
+# img <- image_2D(img_3D, 1)	
+# for (i in 10:20)  { imappend(list(img, image_2D(img_3D, i)),"x") }
+```
+
+In these CSV data files, each $28\times 28$ image is represented as a single row. Gray-scale images are $1$ byte, in the range $[0, 255]$, which we linearly transformed into $[0,1]$. Note that we only scale the $X$ input, not the output (labels). Also, we don't have manual gold-standard validation labels for the testing data, i.e., `test.y` is not available for the handwritten digits data.
+
+```{r}
+# We already scaled earlier	
+# train.x <- t(train.x/255)	
+# test <- t(test/255)
+```
+
+Next, we can transpose the input matrix to $n\ (pixels) \times  m\ (examples)$, as column major format required by the classifiers. The image labels are evenly distributed:
+
+```{r}
+table(train.y); prop.table(table(train.y))
+```
+
+The majority class (`1`) in the training set includes 11.2% of the observations.
+
+### Configuring the Neural Network
+
+The neural network model is trained by feeding the training data, i.e., *training images (train.x)* and *training labels (train.y)*. The network learns to associate specific images with concrete labels. Then, the network generates label predictions for (new) *testing images* that can be compared to the true labels of test-images (if these are available) or visually inspected to confirm correct auto-classification.
+
+The `magrittr` package pipe operator, `%>%`, is commonly used for short-hand notation to allow left-and-right feed-and-assignment that can be interpreted as “do <something> then feed into and do <subsequent operation>”.
+
+Nodes and layers represent the basic building-blocks of all artificial neural networks. Both are generalizations of brain neuron and network data processing that effectively transforms, compresses, or filters the input data. *Inputs* go in a node or a layer, and *outputs* come out. Network layers learn to extract effective representations of the inputs that are coded as meaningful outputs that can be connected by chaining together multiple layers that progressive distill the information into compressed generic knowledge (patterns) that can be used to predict, forecast, classify, or model the mechanistic relations in the process. That is, we use data as proxy of observable processes for which we don;t have explicit closed-form probability distribution models (typically complex multivariate processes).
+
+ The network below chains a pair of layers densely connected (i.e., fully connected neural layers). The `keras_model_sequential()` method specifies the network architecture before we start with training (i.e., estimating the weights). The *loss function* specifies how the network measures its performance on the	training data to adjust the network weights (using train.x and train.y) to optimize the loss. The *optimizer* specifies the mechanism for updating the network weight coefficients using the training data relative to the specified loss function. Different metrics can be used to track the performance during the iterative training and testing process. For instance, accuracy represents the fraction of the images that were correctly classified. The second layer is a *10-way softmax layer* that returns a vector of 10 probability scalars (all positive and summing to 1) each representing the probability that the current hand-written image represents any of the 10 digits ($0, 1, 2, \cdots,9$). The `compile()` function modifies the network in place to specify the optimization strategy, the loss function and the assessment metric that will be used in the learning process.
+
+In this network example, we chain two dense layers each layer applying simple tensor operations (tensor-dot-product/matrix multiplication and tensor addition) to the input data to estimate the weight parameter tensors, i.e., attributes of the layers encoding the persistent knowledge of the network. The `categorical_crossentropy` is the specific loss function that is optimized in the training phase to provide a feedback signal for learning the weight tensors. The loss optimization relies on mini-batch stochastic gradient descent, which is defined by the `rmsprop` optimizer argument.
+
+```{r}
+network <- keras_model_sequential() %>%	
+  layer_dense(units = 512, activation = "relu", input_shape = c(28 * 28)) %>%	
+  layer_dense(units = 10, activation = "softmax")	
+	
+network %>% compile(optimizer = "rmsprop", loss = "categorical_crossentropy", metrics = c("accuracy"))
+```
+
+Concatenating dense layers allows us to build a neural network whose depth is determined by the number of layers that are specified by a version of `layer_dense(units = 512, activation = "relu")`, which represents a function of the input (2D tensor) and output a different 2D tensor that may be fed as input tensor to the next layer. Let $ReLu(x)=\max(x, 0)$, and $W$ and $b$ represent two of the attributes of the layer (trainable weight parameters of the layer); the 2D tensor (kernel) and the vector (bias). Then the layer-output $O$ is:
+$$O= ReLu( W\times input) + b).$$
+A deep learning network models are represented as directed, acyclic graphs of layers. Often, these networks constitute a linear stack of layers mapping a single input to a single output. Different types of network layers are appropriate for different kinds of data tensors:
+
+- Simple vector data, stored in *2D tensors* of shape $(samples,features)$, are often modeled using densely connected layers, i.e., fully connected dense layers (`keras::layer_dense function()`). 	
+- Sequence data, stored in *3D tensors* of shape $(samples, timesteps, features)$, are typically modeled by recurrent layers such as `keras::layer_lstm()`. 	
+- Image data, stored in *4D tensors*, is usually processed by 2D convolution layers (`keras::layer_conv_2d()`).
+
+### Training
+
+We are ready to start the network training process. At the initialization step of the learning process, the weight matrices are filled with random values (random initialization). At the start, the output `relu(W*input) + b)`, when $W$ and $b$ are random is likely going to be meaningless. However, the subsequent iterative process optimizing the objective (loss) function will gradually adapt these weights (training process) by repeating the following steps until certain stopping criterion is met:
+
+- Draw a (random) batch of training samples $x$ and their corresponding targets $y$.	
+- Forward pass: Run the network on $x$ to obtain predictions $y_{pred}$. 	
+- Estimate the loss of the network on the batch data assessing the mismatch between $y$ and $y_{pred}$.	
+- Update all weights ($W$ and $b$) of the network to reduce the overall loss on this batch.
+
+Iterating this process eventually yields a network that has a low loss on its training data indicating good fidelity (match between predictions $y_{pred}$ and expected targets $y$). This reflects the network learning process progressed and accurately maps inputs to correct targets. See the [BPAD Mathematical Foundations Chapter](https://socr.umich.edu/BPAD/BPAD_notes/Biophysics430_Chap01_MathFoundations.html) for more information on calculus of differentiation and integration, gradient minimization, and loss optimization.
+
+**Stochastic gradient descent (SGD)** is a powerful function optimization strategy for differentiable multivariate functions. Recall that function's extrema are attained at points where the derivative (gradient, $\nabla (f)$) is trivial ($0$) or at the domain boundary. Hence, to minimize the loss, we need to find all points (parameter vectors/tensors) that correspond to trivial derivative/gradient of the objective function $f$. Then, pick the parameter vectors/tensors/points leading to the smallest values of the loss. In neural network learning, this means analytically finding the combination of weight values corresponding to the smallest possible loss values.
+
+This optimization is achieved at $W_o$ when $\nabla (f)(W_o) = 0$. Often, this gradient equation is a polynomial equation of $N$ parameters (variables) corresponding to the number of coefficients ($W$ and $b$) in the network. For large networks (with millions of parameters), this optimization is difficult. An approximate solution may be derived using alternative numerical solutions. This involves incrementally modifying the parameters and assuming the loss function is differentiable, we can compute its gradient, which points the direction of the fastest growth or decay of the objective function.
+
+- Draw a (random) batch of training samples $x$ and their corresponding targets $y$.	
+- Forward pass: Run the network on $x$ to obtain predictions $y_{pred}$. 	
+- Estimate the loss of the network on the batch data assessing the mismatch between $y$ and $y_{pred}$.	
+- Compute the gradient of the loss $\nabla (f)$ with regard to the network’s parameters (a backward pass).	
+- Slightly update/adjust the parameters in the opposite direction of the gradient, e.g., $W = W-(step *gradient)$, which reduces the loss function value on the batch data.
+
+In practice, neural network learning depends on chaining many tensor operations. For instance, a network $f$ composed of three tensor operations $a$, $b$, and $c$, with weight matrices $W_1$, $W_2$, and $W_3$ can be expressed as $f(W_1, W_2, W_3) = a(W_1, b(W_2, c(W_3)))$. The chain-rule for differentiation yields that  $f(g(x)) = f'(g(x)) \times g'(x)$ leads to a corresponding neural network optimization algorithm (*backpropagation*), which starts with the final loss value and works backward from the top layers to the bottom layers, sequentially applying the chain rule to compute the contribution that each parameter to in the aggregate loss value.
+
+```{r}
+train_images <- t(train.x)  # (42000, 28 * 28))	
+test_images <- t(test)    # (28000, 28 * 28))	
+# Note: we can also use the `array_reshape()` tensor-reshaping function to reshape the array.	
+	
+# categorically encode the training-image labels	
+train_labels <- to_categorical(train.y)	
+```
+
+Let's now train (fit or estimate) the neural network model using `keras`. In general, the first mode (axis) in the data tensors is typically the samples axis (samples dimension). Often, it's difficult to process all data at the same time, breaking the data into small **batches**, e.g., batch_size=128, allows more effective, efficient, and tractable processing (learning). The MNIST tensor consists of images, saved as 3D arrays, (height, width, color) depth, with gray-scale images (like the MNIST digits) having only only one color channel. In general, image tensors are always 3D. Hence, a batch of 128 gray-scale images of size $256\times 256$ is stored in a tensor of *shape* $(128, 256, 256, 1)$, where as a batch of 128 color (RGB) images is stored as a $(128, 256, 256, 3)$ tensor.
+
+```{r}
+network %>% fit(train_images, train_labels, epochs = 10, batch_size = 128)
+```
+
+Calling the method `fit()` launches the iterative network learning on the training data using mini-batches of 128 samples. Each iteration over all the training data is called an **epoch**. Here we use epoch=10 to indicate looping 10 times over. At each iteration, the network computes the gradients of the weights with regard to the loss on the batch and updates the tensor weights. After the 10 epochs are complete, the network learning performed 3,290 gradient updates (329 per epoch), which progressively reduced the loss of the network from $10^{-2}$ to $10^{-4}$. This low loss indicates the network learned to classify handwritten digits with high accuracy (0.99).
+
+During the training process, two graphs are dynamically shown that illustrate the parity between the network loss function (expected to decrease) and the accuracy of the network, using the training data. Note that the accuracy approaches 0.99, but remember, this is training-data sample-accuracy, which is biased. To get a more realistic performance estimate, we can test the model on an independent set of 10,000 testing data images.
+
+```{r}
+# Load and preprocess the testing data	
+mnist <- dataset_mnist()	
+test_images <- mnist$test$x	
+test_labels <- mnist$test$y	
+dim(test_images)    # [1] 10000    28    28	
+length(test_labels) # [1] 10000	
+test_images <- array_reshape(test_images, c(10000, 28 * 28))	
+test_images <- test_images / 255	
+test_labels <- to_categorical(test_labels)	
+	
+metrics <- network %>% evaluate(test_images, test_labels)	
+metrics	
+# metrics 	
+#       loss   accuracy 	
+# 0.04423446 0.98860002 
+```
+
+The testing data accuracy is 0.9886, on par with the training data performance (no evidence of overfitting).
+
+### Forecasting
+
+Next, we will generate forecasting using the model on testing data and evaluate the prediction performance. The `preds` matrix has $28,000$ rows and $10$ columns, containing the desired classification probabilities from the `output layer` of the neural net. To extract the maximum label for each row, we can use the `max.col`:
+
+```{r}
+pred.label <- network %>% predict(test_images) %>%  k_argmax()
+heat <- table(factor(pred.label$numpy()),factor(mnist$test$y))
+keys = c(0:9)
+plot_ly(x =~keys, y = ~keys, z = ~matrix(heat, 10,10), name="NN Model Performance",
+        hovertemplate = paste('<i>Matching</i>: %{z:.0f}', 
+                              '<br><b>True</b>: %{x}<br>', '<b>Pred</b>: %{y}'),
+        colors = 'Reds', type = "heatmap") %>% 
+  layout(title="MNIST Predicated Number Classes vs. True Labels", 
+         xaxis=list(title="Actual Class"), yaxis=list(title="Predicted Class"))
+```
+
+The predictions are stored in a 1D $28,000(rows)$ vector, including the predicted classification labels generated by the network output layer.
+
+```{r}
+# For example, the ML-classification labels assigned to the first 7 images (from the 28,000 testing data collection) are:	
+head(pred.label, n = 7L)	
+# library(knitr)	
+# kable(head(pred.label, n = 7L), format = "markdown", align='c')
+
+# label.names <- c("0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
+# 
+# #initialize a list of m=7 images from the N=28,000 available images
+# m_start <- 4
+# m_end <- 10
+# if (m_end <= m_start) 
+#   { m_end = m_start+1 }  # check that m_end > m_start
+# 
+# label_Ypositons <- vector()  # initialize the array of label positions on the plot
+# for (i in m_start:m_end) {
+#   if (i==m_start) { 
+#     img1 <- as.cimg(test_images[m_start,], 28, 28)
+#     # img1 <- image_2D(img_3D, m_start) 
+#   }
+#   else img1 <- imappend(list(img1, as.cimg(test_images[i,], 28, 28)),"y")
+#   # else img1 <- imappend(list(img1, image_2D(img_3D, i)),"y")
+#   label.names[i+1-m_start] <- pred.label[i]
+#   label_Ypositons[i+1-m_start] <- 15 + 28*(i-m_start)
+# }
+# 
+# plot(img1, axes=FALSE)
+# text(40, label_Ypositons, labels=label.names[1:(m_end-m_start)], cex= 1.2, col="blue")
+# mtext(paste((m_end+1-m_start), " Random Images \n Indices (m_start=", m_start, " : m_end=", m_end, ")"), side=2, line=-6, col="black")
+# mtext("NN Classification Labels", side=4, line=-5, col="blue") 
+```
+
+### Examining the Network Structure
+
+There is a variety of network topologies, e.g., two-branch networks, multi-head networks, inception blocks, etc., that encode the *a priori* hypothesis space of predefined possibilities. Specifying the network topology constrains the space of possibilities to a specific series of tensor operations that map input data onto outputs. Then, the learning only searches for is a good set of network parameter values (the weight tensors involved in these tensor operations). Specifying the network architecture in advance is as much an art as it is science.
+
+There are two main strategies to define an a priori network topology model. Linear stacks of network layers are specified using the `keras::keras_model_sequential()` method, whereas functional API's provide interfaces for specifying directed acyclic graph (DAG) layers networks with more flexible architectures. Functional network API facilitates managing the data tensors that the model processes and applying layers to this tensor just as if the layers are abstract functions. In the compilation step below, we configure the learning process by specifying the model optimizer and loss functions and the metrics for tracking the iterative learning process.
+
+```{r}
+#  Linear stacks of network layers	
+network <- keras_model_sequential() %>%	
+  layer_dense(units = 512, activation = "relu", input_shape = c(28 * 28)) %>%	
+  layer_dense(units = 10, activation = "softmax")	
+	
+# vs. functional API network (DAG)	
+input_tensor  <- layer_input(shape = c(784))	
+output_tensor <- input_tensor %>%	
+  layer_dense(units = 32, activation = "relu") %>%	
+  layer_dense(units = 10, activation = "softmax")	
+model <- keras_model(inputs = input_tensor, outputs = output_tensor)	
+	
+model %>% compile(	
+    optimizer = optimizer_adam(),	
+    loss = "mse",	
+    metrics = c("accuracy")	
+)	
+	
+model %>% fit(train_images, train_labels, epochs = 10, batch_size = 128)
+```
+
+### Model Validation
+
+We can use *accuracy* to track the performance of the NN training during the learning process on new (prospective) data.
+
+```{r}
+val_indices <- sample(1:dim(train_images)[1], size=10000)  # randomly choose 10K images	
+x_val <- train_images[val_indices, ]	
+y_val <- to_categorical(train.y[val_indices])	
+	
+partial_x_train <- train_images[-val_indices, ]	
+partial_y_train <- to_categorical(train.y[-val_indices])	
+	
+# train the model for 20 iterations over all samples in the x_train and y_train tensors (20 epochs), 	
+# using mini-batches of 512 samples and track the loss and accuracy on the 10,000 validation samples 	
+	
+model %>% compile(optimizer = "rmsprop", loss = "binary_crossentropy", metrics = c("accuracy"))	
+history <- model %>% fit(partial_x_train, partial_y_train, epochs = 20, batch_size = 512, 	
+                         validation_data = list(x_val, y_val) )	
+tic <- proc.time()	
+print(paste0("Total Compute Time: ", proc.time() - tic))
+```
+```{r}
+library(plotly)	
+epochs <- 20	
+time <- 1:epochs	
+hist_df <- data.frame(time=time, loss=history$metrics$loss, acc=history$metrics$accuracy, 	
+                      valid_loss=history$metrics$val_loss, valid_acc=history$metrics$val_accuracy)	
+	
+plot_ly(hist_df, x = ~time)  %>% 	
+  add_trace(y = ~loss, name = 'training loss', mode = 'lines') %>% 	
+  add_trace(y = ~acc, name = 'training accuracy', mode = 'lines+markers') %>% 	
+  add_trace(y = ~valid_loss, name = 'validation loss',mode = 'lines+markers') %>% 	
+  add_trace(y = ~valid_acc, name = 'validation accuracy', mode = 'lines+markers') %>% 	
+  layout(legend = list(orientation = 'h'))
+```
+```{r}
+# Finally prediction of MNIST testing image classification (auto-labeling):	
+pred.label <- model %>% predict(t(test))	
+for (i in 1:9) {	
+  print(sprintf("NN predicted Label for image %d is %s", i, which.max(pred.label[i,])-1))	
+}
+```
+```{r}
+array_3D <- array(t(test), c(28000, 28, 28))	
+plot(as.cimg(array_3D[1,,], nrow = 28, ncol = 28))	
+	
+# #initialize a list of m=9 testing images from the N=28,000 available images	
+# m_start <- 1	
+# m_end <- 9	
+# label_Ypositons <- vector()  # initialize the array of label positions on the plot	
+# for (i in m_start:m_end) {	
+#   if (i==m_start) { 	
+#     img1 <- as.cimg(array_3D[1,,], nrow = 28, ncol = 28)	
+#   }	
+#   else img1 <- imappend(list(img1, as.cimg(array_3D[i,,], nrow = 28, ncol = 28)), "y")	
+#   label.names[i] <- which.max(pred.label[i,])-1	
+#   label_Ypositons[i+1-m_start] <- 15 + 28*(i-m_start)	
+# }	
+# 	
+# plot(img1, axes=FALSE)	
+# text(40, label_Ypositons, labels=label.names, cex= 1.2, col="blue")	
+# mtext(paste((m_end+1-m_start), " Random Images \n Indices (m_start=", m_start, " : m_end=", m_end, ")"), side=2, line=-6, col="black")	
+# mtext("NN Classification Labels", side=4, line=-5, col="blue") 	
+```
+
+Note that the `keras::predict()` method only works with *Sequential* network models. However, when using the functional API network model we need to use the `keras::predict()` method to obtain a vector of probabilities and then get the *argmax* of this vector to find the most class label for the image.
+
+# Classifying Real-World Images using *Tensorflow* and *Keras*
+
+A real-world example of deep learning is classification of 2D images (pictures) or 3D volumes (e.g., neuroimages).
+
+We will demonstrate the use of **pre-trained** network models ([resnet50](https://keras.io/api/applications/resnet/), [vgg16](https://keras.io/api/applications/vgg/), and [vgg19](https://keras.io/api/applications/vgg/)) to predict the class-labels of real world images. There are [dozens of pre-trained models that are made available to the entire community](https://keras.io/api/applications/). These advanced Deep Network models yield a state-of-the-art predictions accurately labeling different types of 2D images. We will use the `keras` and `tensoflow` packages to load the pre-trained network models and classify the images, along with `imager` package to load and preprocess raw images in `R`.
+
+```{r}
+# install.packages("imager")	
+library(imager)
+```
+
+## Load the Pre-trained Model
+
+You can [download, unzip. and examine this pre-trained model](https://www.socr.umich.edu/people/dinov/2017/Spring/DSPA_HS650/data/Inception.zip). There are many different types of pre-trained deep neural network models, e.g., 	
+ 	
+- [Resnet50: Deep Residual Learning for Image Recognition](https://arxiv.org/abs/1512.03385),	
+- [VGG16: Very Deep Convolutional Networks for Large-Scale Image Recognition](https://arxiv.org/abs/1409.1556), by Oxford's Visual Geometry Group, and	
+- [VGG19: Very Deep Convolutional Networks for Large-Scale Image Recognition](https://arxiv.org/abs/1409.1556)
+
+The VGG's are deep convolutional networks, trained to classify images, with VGG19 model layers comprised of:	
+ 	
+-  Conv3x3 (64)	
+-  Conv3x3 (64)	
+-  *MaxPool*	
+-  Conv3x3 (128)	
+-  Conv3x3 (128)	
+-  *MaxPool*	
+-  Conv3x3 (256)	
+-  Conv3x3 (256)	
+-  Conv3x3 (256)	
+-  Conv3x3 (256)	
+-  *MaxPool*	
+-  Conv3x3 (512)	
+-  Conv3x3 (512)	
+-  Conv3x3 (512)	
+-  Conv3x3 (512)	
+-  *MaxPool*	
+-  Conv3x3 (512)	
+-  Conv3x3 (512)	
+-  Conv3x3 (512)	
+-  Conv3x3 (512)	
+-  *MaxPool*	
+-  Fully Connected (4096)	
+-  Fully Connected (4096)	
+-  Fully Connected (1000)	
+-  *SoftMax*.
+
+More information about the [VGG architecture is available online](https://iq.opengenus.org/vgg19-architecture/).
+
+## Load and Preprocess a New Image
+
+To classify a new image, select an image and load it in. Below, we show the classification of several alternative images.
+
+```{r}
+BiocManager::install("EBImage")
+library("imager")	
+library("EBImage")	
+library("keras")	
+	
+# One should be able to load the image directly from the web (but sometimes there may be problems, in which case, we need to first download the image and then load it in R:	
+# im <- imager::load.image("https://wiki.socr.umich.edu/images/6/69/DataManagementFig1.png")	
+	
+# download file to local working directory, use "wb" mode to avoid problems	
+download.file("https://wiki.socr.umich.edu/images/6/69/DataManagementFig1.png", paste(getwd(),"results/image.png", sep="/"), mode = 'wb')	
+	
+# report download image path	
+paste(getwd(),"results/image.png", sep="/")	
+	
+img <- image_load(paste(getwd(),"results/image.png", sep="/"), target_size = c(224,224)) 	
+# dim(image_to_array(img))  # [1] 1084 1875    3	
+img <- rgbImage(red=t(image_to_array(img)[,,1]/255), 	
+                          green=t(image_to_array(img)[,,2]/255), blue=t(image_to_array(img)[,,3]/255))	
+display(img)	
+```
+
+Before feeding the image to the deep learning network for classification, we *may* need to do some preprocessing to make it fit the network input requirements. This image preprocessing (e.g., cropping, intensity mean-centralization and scaling, etc.) can be done manually in `R`. For example below is an instance of an image-preprocessing function. In practice we can also use the function `keras::imagenet_preprocess_input()`.
+
+```{r}
+preproc.image <-function(im) {	
+  # crop the image	
+     mean.img <- mean(im)	
+     shape <- dim(im)	
+     # short.edge <- min(shape[1:2])	
+     # xx <- floor((shape[1] - short.edge) / 2)	
+     # yy <- floor((shape[2] - short.edge) / 2)	
+     # resize to 224 x 224, needed by input of the model.	
+     resized <- resize(im, 224, 224)	
+     plot(resized)	
+     # Reshape to format (width, height, channel, num)	
+     dim(resized) <- c(224, 224, 3, 1)	
+     return(resized)	
+}
+```
+
+Here is an example of calling the preprocessing function to obtain a conforming (normalized) image ready for auto-classification.
+
+```{r}
+normed <- preproc.image(img)	
+# plot(normed)
+```
+
+## Image Classification
+
+Use the `predict()` function to get the probability over all (learned) classes and classify the image type.
+
+```{r}
+# get info about local version of Python installation	
+reticulate::py_config()
+```
+```{r}
+# The first time you run this install Pillow!	
+# tensorflow::install_tensorflow(extra_packages='pillow')	
+	
+# Preprocess input image	
+x <- image_to_array(img)	
+# ensure we have a 4d tensor with single element in the first (batch) dimension,	
+# then preprocess the input for prediction using resnet50	
+x <- array_reshape(x, c(1, dim(x)))	
+x <- imagenet_preprocess_input(x)   # note centralization: display(100*(x[1,,,1]+103))	
+	
+# Specify and compare Predictions based on different Pre-trained Models	
+# Model 1: resnet50	
+model_resnet50 <- application_resnet50(weights = 'imagenet')	
+	
+# make predictions then decode and print them	
+preds_resnet50 <- model_resnet50 %>% predict(x)	
+imagenet_decode_predictions(preds_resnet50, top = 10)
+```
+```{r}
+# Model2: VGG19	
+model_vgg19 <- application_vgg19(weights = 'imagenet')	
+preds_vgg19 <- model_vgg19 %>% predict(x)	
+imagenet_decode_predictions(preds_vgg19, top = 10)[[1]]	
+```
+```{r}
+# Model 3: VGG16	
+model_vgg16 <- application_vgg16(weights = 'imagenet')	
+preds_vgg16 <- model_vgg16 %>% predict(x)	
+imagenet_decode_predictions(preds_vgg16, top = 10)[[1]]	
+	
+dim(preds_vgg16)
+```
+
+The `prob` prediction generates a $1000 \times 1$ array representing the (vector) probability of the input image to resemble (be classified as) the top 1,000 known image categories. We can report the indices of the top-10 closest image classes to the input image.
+
+Clearly, this US weather pattern image is not well classified by either of the three different deep networks. The optimal predictions include *television*, *digital_clock*, *theater_curtain*, etc., however, the confidence is very low, $Prob< 0.052$. None of the other top-10 class-labels capture the type of this weather-pattern image.
+
+## Additional Image Classification Examples
+
+The machine learning image classifications results won't always be this poor. Let's try classifying several alternative images.
+
+###  Lake Mapourika, New Zealand
+
+Let's try the automated image classification of this lakeside panorama.
+
+```{r}
+# load the image	
+download.file("https://upload.wikimedia.org/wikipedia/commons/2/23/Lake_mapourika_NZ.jpeg", paste(getwd(),"results/image.png", sep="/"), mode = 'wb')	
+img <- image_load(paste(getwd(),"results/image.png", sep="/"), target_size = c(224,224))	
+	
+imgRGB <- rgbImage(red=t(image_to_array(img)[,,1]/255), 	
+                          green=t(image_to_array(img)[,,2]/255), blue=t(image_to_array(img)[,,3]/255))	
+display(imgRGB)	
+```
+```{r}
+# Preprocess input image	
+x <- image_to_array(img)	
+# ensure we have a 4d tensor with single element in the batch dimension,	
+# the preprocess the input for prediction using resnet50	
+x <- array_reshape(x, c(1, dim(x)))	
+x <- imagenet_preprocess_input(x)	
+	
+# Specify and compare Predictions based on different Pre-trained Models	
+# Model 1: resnet50	
+model_resnet50 <- application_resnet50(weights = 'imagenet')	
+	
+# make predictions then decode and print them	
+preds_resnet50 <- model_resnet50 %>% predict(x)	
+imagenet_decode_predictions(preds_resnet50, top = 10)	
+	
+# Model2: VGG19	
+model_vgg19 <- application_vgg19(weights = 'imagenet')	
+preds_vgg19 <- model_vgg19 %>% predict(x)	
+imagenet_decode_predictions(preds_vgg19, top = 10)[[1]]	
+	
+# Model 3: VGG16	
+model_vgg16 <- application_vgg16(weights = 'imagenet')	
+preds_vgg16 <- model_vgg16 %>% predict(x)	
+imagenet_decode_predictions(preds_vgg16, top = 10)[[1]]	
+	
+dim(preds_vgg16)
+```
+
+This photo does represent a lakeside, which is reflected by the top three class labels:	
+ 	
+* Model 1 (resnet50): lakeside,  boathouse, dock, breakwater.	
+* Model 1 (VGG19): lakeside, breakwater, boathouse, dock.	
+* Model 1 (VGG16): lakeside, breakwater, dock, canoe.
+
+###  Beach
+
+Another coastal boundary between water and land is represented in this [beach image](https://upload.wikimedia.org/wikipedia/commons/9/90/Holloways_beach_1920x1080.jpg).
+
+```{r}
+download.file("https://upload.wikimedia.org/wikipedia/commons/9/90/Holloways_beach_1920x1080.jpg", paste(getwd(),"results/image.png", sep="/"), mode = 'wb')	
+img <- image_load(paste(getwd(),"results/image.png", sep="/"), target_size = c(224,224))	
+	
+# imgRGB <- rgbImage(red=t(image_to_array(img)[,,1]/255), 	
+#                           green=t(image_to_array(img)[,,2]/255), blue=t(image_to_array(img)[,,3]/255))	
+# display(imgRGB)	
+```
+```{r}
+# Preprocess input image	
+x <- image_to_array(img)	
+# ensure we have a 4d tensor with single element in the batch dimension,	
+# the preprocess the input for prediction using resnet50	
+x <- array_reshape(x, c(1, dim(x)))	
+x <- imagenet_preprocess_input(x)	
+	
+# Specify and compare Predictions based on different Pre-trained Models	
+# Model 1: resnet50	
+model_resnet50 <- application_resnet50(weights = 'imagenet')	
+	
+# make predictions then decode and print them	
+preds_resnet50 <- model_resnet50 %>% predict(x)	
+imagenet_decode_predictions(preds_resnet50, top = 10)	
+	
+# Model2: VGG19	
+model_vgg19 <- application_vgg19(weights = 'imagenet')	
+preds_vgg19 <- model_vgg19 %>% predict(x)	
+imagenet_decode_predictions(preds_vgg19, top = 10)
+	
+# Model 3: VGG16	
+model_vgg16 <- application_vgg16(weights = 'imagenet')	
+preds_vgg16 <- model_vgg16 %>% predict(x)	
+imagenet_decode_predictions(preds_vgg16, top = 10)
+```
+
+This photo was classified appropriately and with high-confidence as:	
+ 	
+* sandbar.                                      	
+* lakeside.                                 	
+* seashore.
+
+###  Volcano
+
+Here is another natural image representing the [Mount St. Helens Vocano](https://upload.wikimedia.org/wikipedia/commons/thumb/d/dc/MSH82_st_helens_plume_from_harrys_ridge_05-19-82.jpg/1200px-MSH82_st_helens_plume_from_harrys_ridge_05-19-82.jpg).
+
+```{r}
+download.file("https://upload.wikimedia.org/wikipedia/commons/thumb/d/dc/MSH82_st_helens_plume_from_harrys_ridge_05-19-82.jpg/1200px-MSH82_st_helens_plume_from_harrys_ridge_05-19-82.jpg", paste(getwd(),"results/image.png", sep="/"), mode = 'wb')	
+img <- image_load(paste(getwd(),"results/image.png", sep="/"), target_size = c(224,224))	
+	
+imgRGB <- rgbImage(red=t(image_to_array(img)[,,1]/255), 	
+                          green=t(image_to_array(img)[,,2]/255), blue=t(image_to_array(img)[,,3]/255))	
+display(imgRGB)	
+```
+```{r}
+# Preprocess input image	
+x <- image_to_array(img)	
+# ensure we have a 4d tensor with single element in the batch dimension,	
+# the preprocess the input for prediction using resnet50	
+x <- array_reshape(x, c(1, dim(x)))	
+x <- imagenet_preprocess_input(x)	
+	
+# Specify and compare Predictions based on different Pre-trained Models	
+# Model 1: resnet50	
+model_resnet50 <- application_resnet50(weights = 'imagenet')	
+	
+# make predictions then decode and print them	
+preds_resnet50 <- model_resnet50 %>% predict(x)	
+imagenet_decode_predictions(preds_resnet50, top = 10)	
+	
+# Model2: VGG19	
+model_vgg19 <- application_vgg19(weights = 'imagenet')	
+preds_vgg19 <- model_vgg19 %>% predict(x)	
+imagenet_decode_predictions(preds_vgg19, top = 10)[[1]]	
+	
+# Model 3: VGG16	
+model_vgg16 <- application_vgg16(weights = 'imagenet')	
+preds_vgg16 <- model_vgg16 %>% predict(x)	
+imagenet_decode_predictions(preds_vgg16, top = 10)[[1]]	
+```
+
+The predicted top class labels for this image are perfect:	
+	
+* volcano, alps.	
+* mountain_tent.	
+* geyser.
+
+### Brain Surface
+
+The next image represents a 2D snapshot of 3D shape reconstruction of a brain cortical surface. This image is particularly difficult to automatically classify because (1) few people have ever seen a real brain, (2) the mathematical and computational models used to obtain the 2D manifold representing the brain surface do vary, and (3) the patterns of sulcal folds and gyral crests are quite inconsistent between people.
+
+```{r}
+download.file("https://wiki.socr.umich.edu/images/e/ea/BrainCortex2.png", paste(getwd(),"results/image.png", sep="/"), mode = 'wb')	
+img <- image_load(paste(getwd(),"results/image.png", sep="/"), target_size = c(224,224))	
+	
+imgRGB <- rgbImage(red=t(image_to_array(img)[,,1]/255), 	
+                          green=t(image_to_array(img)[,,2]/255), blue=t(image_to_array(img)[,,3]/255))	
+display(imgRGB)
+```
+```{r}
+# Preprocess input image	
+x <- image_to_array(img)	
+# ensure we have a 4d tensor with single element in the batch dimension,	
+# the preprocess the input for prediction using resnet50	
+x <- array_reshape(x, c(1, dim(x)))	
+x <- imagenet_preprocess_input(x)	
+	
+# Specify and compare Predictions based on different Pre-trained Models	
+# Model 1: resnet50	
+model_resnet50 <- application_resnet50(weights = 'imagenet')	
+	
+# make predictions then decode and print them	
+preds_resnet50 <- model_resnet50 %>% predict(x)	
+imagenet_decode_predictions(preds_resnet50, top = 10)	
+	
+# Model2: VGG19	
+model_vgg19 <- application_vgg19(weights = 'imagenet')	
+preds_vgg19 <- model_vgg19 %>% predict(x)	
+imagenet_decode_predictions(preds_vgg19, top = 10)[[1]]	
+	
+# Model 3: VGG16	
+model_vgg16 <- application_vgg16(weights = 'imagenet')	
+preds_vgg16 <- model_vgg16 %>% predict(x)	
+imagenet_decode_predictions(preds_vgg16, top = 10)[[1]]
+```
+
+The top class labels for the brain image are:	
+ 	
+* brain, coral.	
+* mask, knot.	
+* cauliflower.	
+* acorn.
+
+Imagine if we can train a brain image classifier that labels individuals (volunteers or patients) solely based on their brain scans into different classes reflecting their development, clinical phenotypes, disease states, or aging profiles. This will require a substantial amount of expert-labeled brain scans, model training and extensive validation. However any progress in this direction will lead to effective computational clinical decision support systems that can assist physicians with diagnosis, tracking, and prognostication of brain growth and aging in health and disease.
+
+## Face mask: synthetic face image
+
+We can also try the deep learning methods to see if they can uncover (recover) the core deterministic model or structure used to generate designed, synthetic, or simulated images.
+
+This example is a synthetic computer-generated image representing a cartoon face or a mask.
+
+```{r}
+download.file("https://wiki.socr.umich.edu/images/f/fb/FaceMask1.png", paste(getwd(),"results/image.png", sep="/"), mode = 'wb')	
+img <- image_load(paste(getwd(),"results/image.png", sep="/"), target_size = c(224,224))	
+	
+imgRGB <- rgbImage(red=t(image_to_array(img)[,,1]/255), 	
+                          green=t(image_to_array(img)[,,2]/255), blue=t(image_to_array(img)[,,3]/255))	
+display(imgRGB)	
+```
+```{r}
+# Preprocess input image	
+x <- image_to_array(img)	
+# ensure we have a 4d tensor with single element in the batch dimension,	
+# the preprocess the input for prediction using resnet50	
+x <- array_reshape(x, c(1, dim(x)))	
+x <- imagenet_preprocess_input(x)	
+	
+# Specify and compare Predictions based on different Pre-trained Models	
+# Model 1: resnet50	
+model_resnet50 <- application_resnet50(weights = 'imagenet')	
+	
+# make predictions then decode and print them	
+preds_resnet50 <- model_resnet50 %>% predict(x)	
+imagenet_decode_predictions(preds_resnet50, top = 10)	
+	
+# Model2: VGG19	
+model_vgg19 <- application_vgg19(weights = 'imagenet')	
+preds_vgg19 <- model_vgg19 %>% predict(x)	
+imagenet_decode_predictions(preds_vgg19, top = 10)[[1]]	
+	
+# Model 3: VGG16	
+model_vgg16 <- application_vgg16(weights = 'imagenet')	
+preds_vgg16 <- model_vgg16 %>% predict(x)	
+imagenet_decode_predictions(preds_vgg16, top = 10)[[1]]
+```
+The top class labels for the face mask are:	
+ 	
+* comic_book, mask.	
+* analog_clock.	
+* shield, abaya.
+
+You can easily test the same image classifier on your own images and identify classes of pictures that are either well or poorly classified by the deep learning based machine learning model.
+
+# Data Generation:  simulating synthetic data
+
+## Fractal shapes
+
+One way to design fractal shapes is using [iterated function systems (IFS)](https://en.wikipedia.org/wiki/Iterated_function_system). each IFS is represented by finite set of [contraction mappings](https://en.wikipedia.org/wiki/Contraction_mapping) acting on complete metric spaces:	
+ 	
+$$\{f_i : X \rightarrow X ∣ i=1,2,... , N\} , N \in \mathbb {N}.$$	
+In the case of 2D sets and images, linear and contracting IFS's can be represented as linear operators:	
+$$f(x,y) = A \begin{bmatrix} x \\ 	
+ y \end{bmatrix}	
+ +	
+\begin{bmatrix} e \\ 	
+ f 	
+\end{bmatrix}	
+=	
+\begin{bmatrix} 	
+ a & b \\ 	
+ c & d 	
+ \end{bmatrix} 	
+ \begin{bmatrix} 	
+ x \\ y 	
+ \end{bmatrix} + 	
+ \begin{bmatrix} e \\ 	
+ f \end{bmatrix}.$$
+
+Computationally, these linear IFS contraction maps can be expressed as $N\times 7$ matrices, where $N$ is the number of maps and $7$ is the number of parameters needed to describe an affine transformation in $R^2$.	
+ 	
+map | $A_{1,1}$ | $A_{1,2}$ | $A_{2,1}$ | $A_{2,2}$ | $B_{1}$ | $B_{2}$ | probability	
+----|-----------|-----------|-----------|-----------|---------|---------|-----------	
+w |	a |	b |	c |	d |	e |	f |	p	
+ 	
+Let's take as an example [Barnsleys fern](https://en.wikipedia.org/wiki/Barnsley_fern), which is designed to model [real lady ferns (*athyrium filix-femina*)](https://en.wikipedia.org/wiki/Athyrium_filix-femina). It can be defined by a set of $N=4$ IFS contraction maps:	
+ 	
+map | $A_{1,1}$ | $A_{1,2}$ | $A_{2,1}$ | $A_{2,2}$ | $B_{1}$ | $B_{2}$ | probability | Fern Portion	
+----|-----------|-----------|-----------|-----------|---------|---------|-------------|-------------	
+$f_1$ | 	0 |	0 |	0 |	0.16 |	0 |	0 |	0.01 |	Stem 	
+$f_2$ | 	0.85 |	0.02 |	−0.02 |	0.85 |	0 |	1.60 |	0.85 |	Successively smaller leaflets	
+$f_3$ | 	0.20 |	−0.26 |	0.23 	| 0.22 |	0 |	1.60 |	0.1 |	Largest left-hand leaflet	
+$f_4$ | −0.15 |	0.28 |	0.26 |	0.24 |	0 |	0.44 |	0.05 |	Largest right-hand leaflet 
+
+Here is how the *Barnsley Fern* can be generated in R.
+
+```{r}
+# Barnsley's Fern
+# (1) create the 4-IFS functions of the probability and the current point
+fractal_BarnsleyFern <- function(x, p){
+    if (p <= 0.01) {
+        A <- matrix(c(0, 0, 0, 0.16), 2, 2)
+        B <- c(0, 0)
+    } else if (p <= 0.86) {
+        A <- matrix(c(.85, -.02, .02, .85), 2, 2)
+        B <- c(0, 1.6)
+    } else if (p <= 0.95) {
+        A <- matrix(c(.2, .23, -.26, .22), 2, 2)
+        B <- c(0, 1.6)
+    } else {
+        A <- matrix(c(-.15, .26, .28, .24), 2, 2)
+        B <- c(0, .44)
+    }
+    return(A %*% x + B)
+}
+
+# Fern Resolution depends on the number of iterative applications of the IFS system
+reps <- 100000
+
+# create a vector with probability values, and a matrix to store coordinates
+p <- runif(reps)
+
+# initialize a point at the origin
+init_coords <- c(0, 0)
+
+# compute the list of reps fractal coordinates: (X,Y) pairs
+A <- Reduce(fractal_BarnsleyFern, p, accumulate = T, init = init_coords)
+A <- t(do.call(cbind, A)) # unwind the list of (X,Y) pairs as (reps * 2) array
+
+# Plot
+# plot(A, type = "p", cex = 0.1, col = "darkgreen",
+#      xlim = c(-3, 3), ylim = c(0, 15), 
+#      xlab = NA, ylab = NA, axes = FALSE)
+plot_ly(x=~A[,1], y=~A[,2], type="scatter", mode="markers", name="Barnesley's Fern",
+        marker = list(color = 'rgb(157, 255, 157)', size = 1))
+```
+```{r}
+# export Fern as JPG image
+jpeg(paste(getwd(), sep="/", "results/FernPlot.jpg"))
+plot(A, type = "p", cex = 0.1, col = "darkgreen", xlim = c(-3, 3), ylim = c(0, 15), 
+     xlab = NA, ylab = NA, axes = FALSE)
+dev.off()
+```
+```{r}
+# Load the image back in and test the DNN classification	
+img <- image_load(paste(getwd(),"results/FernPlot.jpg", sep="/"), target_size = c(224,224))	
+# Plot Fern	
+	
+# Preprocess the Fern image and predict its class (label)	
+imgRGB <- rgbImage(red=t(image_to_array(img)[,,1]/255), 	
+                          green=t(image_to_array(img)[,,2]/255), blue=t(image_to_array(img)[,,3]/255))	
+display(imgRGB)	
+	
+# Preprocess input image	
+x <- image_to_array(img)	
+# ensure we have a 4d tensor with single element in the batch dimension,	
+# the preprocess the input for prediction using resnet50	
+x <- array_reshape(x, c(1, dim(x)))	
+x <- imagenet_preprocess_input(x)	
+	
+# Specify and compare Predictions based on different Pre-trained Models	
+# Model 1: resnet50	
+model_resnet50 <- application_resnet50(weights = 'imagenet')	
+	
+# make predictions then decode and print them	
+preds_resnet50 <- model_resnet50 %>% predict(x)	
+imagenet_decode_predictions(preds_resnet50, top = 10)	
+	
+# Model2: VGG19	
+model_vgg19 <- application_vgg19(weights = 'imagenet')	
+preds_vgg19 <- model_vgg19 %>% predict(x)	
+imagenet_decode_predictions(preds_vgg19, top = 10)[[1]]	
+	
+# Model 3: VGG16	
+model_vgg16 <- application_vgg16(weights = 'imagenet')	
+preds_vgg16 <- model_vgg16 %>% predict(x)	
+imagenet_decode_predictions(preds_vgg16, top = 10)[[1]]	
+```
+
+## Fake images
+
+You can also try to use `TensorFlow` and `Keras` to generate some "fake" *synthetic images* that can be then classified. This can be accomplished by using a [Generative Adversarial network (GAN)](https://en.wikipedia.org/wiki/Generative_adversarial_network) to synthetically sample from a collection of images like the MNIST image sets, e.g., `keras::dataset_fashion_mnist`, `keras::cifar10`, and `keras::dataset_mnist`. See [tutorial 1](https://blogs.rstudio.com/tensorflow/posts/2018-08-26-eager-dcgan/), [tutorial 2](https://jjallaire.github.io/deep-learning-with-r-notebooks/notebooks/8.5-introduction-to-gans.nb.html#), and [this R code](https://github.com/rstudio/keras/blob/master/vignettes/examples/eager_dcgan.R) for examples.
+
+```{r}
+library(keras)	
+latent_dim <- 32	
+height <- 32	
+width <- 32	
+channels <- 3	
+generator_input <- layer_input(shape = c(latent_dim))	
+generator_output <- generator_input %>%	
+  layer_dense(units = 128 * 16 * 16) %>%                             	
+  layer_activation_leaky_relu() %>%                                  	
+  layer_reshape(target_shape = c(16, 16, 128)) %>%                   	
+  layer_conv_2d(filters = 256, kernel_size = 5,	
+                padding = "same") %>%	
+  layer_activation_leaky_relu() %>%	
+  layer_conv_2d_transpose(filters = 256, kernel_size = 4,            	
+                          strides = 2, padding = "same") %>%         	
+  layer_activation_leaky_relu() %>%                                  	
+  layer_conv_2d(filters = 256, kernel_size = 5,	
+                padding = "same") %>%	
+  layer_activation_leaky_relu() %>%	
+  layer_conv_2d(filters = 256, kernel_size = 5,	
+                padding = "same") %>%	
+  layer_activation_leaky_relu() %>%	
+  layer_conv_2d(filters = channels, kernel_size = 7,                 	
+                activation = "tanh", padding = "same")               	
+generator <- keras_model(generator_input, generator_output)          	
+	
+discriminator_input <- layer_input(shape = c(height, width, channels))	
+discriminator_output <- discriminator_input %>%	
+  layer_conv_2d(filters = 128, kernel_size = 3) %>%	
+  layer_activation_leaky_relu() %>%	
+  layer_conv_2d(filters = 128, kernel_size = 4, strides = 2) %>%	
+  layer_activation_leaky_relu() %>%	
+  layer_conv_2d(filters = 128, kernel_size = 4, strides = 2) %>%	
+  layer_activation_leaky_relu() %>%	
+  layer_conv_2d(filters = 128, kernel_size = 4, strides = 2) %>%	
+  layer_activation_leaky_relu() %>%	
+  layer_flatten() %>%	
+  layer_dropout(rate = 0.4) %>%                                            	
+  layer_dense(units = 1, activation = "sigmoid")                           	
+discriminator <- keras_model(discriminator_input, discriminator_output)    	
+discriminator_optimizer <- optimizer_rmsprop(	
+  learning_rate = 0.0008,	
+  clipvalue = 1.0,                                                         	
+  weight_decay = 1e-8                                                             	
+)	
+discriminator %>% compile(	
+  optimizer = discriminator_optimizer,	
+  loss = "binary_crossentropy"	
+)	
+	
+# freeze_weights(discriminator)                         1	
+gan_input <- layer_input(shape = c(latent_dim))	
+gan_output <- discriminator(generator(gan_input))	
+gan <- keras_model(gan_input, gan_output)	
+gan_optimizer <- optimizer_rmsprop(	
+  learning_rate =  0.0004,	
+  clipvalue = 1.0,	
+  weight_decay = 1e-8	
+)	
+gan %>% compile(	
+  optimizer = gan_optimizer,	
+  loss = "binary_crossentropy"	
+)	
+	
+# mnist_fashion <- keras::dataset_fashion_mnist()  # shape (num_samples, 28, 28) 	
+cifar10 <- dataset_cifar10()  # shape (num_samples, 3, 32, 32)                                          	
+c(c(x_train, y_train), c(x_test, y_test)) %<-% cifar10	
+x_train <- x_train[as.integer(y_train) == 6,,,]                           	
+x_train <- x_train / 255                                                  	
+iterations <- 100	
+batch_size <- 20	
+save_dir <- getwd()                                                   	
+start <- 1	
+for (step in 1:iterations) {	
+  random_latent_vectors <- matrix(rnorm(batch_size * latent_dim),         	
+                                  nrow = batch_size, ncol = latent_dim)	
+  generated_images <- generator %>% predict(random_latent_vectors)        	
+  stop <- start + batch_size - 1                                          	
+  real_images <- x_train[start:stop,,,]                                   	
+  rows <- nrow(real_images)                                               	
+  combined_images <- array(0, dim = c(rows * 2, dim(real_images)[-1]))    	
+  combined_images[1:rows,,,] <- generated_images                          	
+  combined_images[(rows+1):(rows*2),,,] <- real_images                    	
+  labels <- rbind(matrix(1, nrow = batch_size, ncol = 1),                 	
+                  matrix(0, nrow = batch_size, ncol = 1))                 	
+  labels <- labels + (0.5 * array(runif(prod(dim(labels))),               	
+                                  dim = dim(labels)))                     	
+  d_loss <- discriminator %>% train_on_batch(combined_images, labels)     	
+  random_latent_vectors <- matrix(rnorm(batch_size * latent_dim),         	
+                                  nrow = batch_size, ncol = latent_dim)   	
+  misleading_targets <- array(0, dim = c(batch_size, 1))                  	
+  a_loss <- gan %>% train_on_batch(                                       	
+    random_latent_vectors,                                                	
+    misleading_targets                                                    	
+  )                                                                       	
+  start <- start + batch_size	
+  if (start > (nrow(x_train) - batch_size))	
+    start <- 1	
+  if (step %% 10 == 0) {                                                 	
+    # save_model_weights_hdf5(gan, "gan.h5")                                	
+    # Status Reporting	
+    cat("Completion Status: ", round((100*step)/iterations,0), "% \n")	
+    cat("\t discriminator loss:", d_loss, "\n")	
+    cat("\t adversarial loss:", a_loss, "\n")	
+	
+    # Optionally save the real/generated images	
+    # image_array_save(generated_images[1,,,]*255,path=file.path(save_dir,paste0("generated_img",step,".png")))	
+    # image_array_save(real_images[1,,,]*255,path = file.path(save_dir, paste0("real_img", step, ".png")))	
+  }	
+}
+```
+```{r}
+# Generated images are: generated_images[batch_size=20, x=32, y=32, channels=3]
+# Upscale the last generated image 32*32 -> 128*128*
+normed <- EBImage::resize(generated_images[10,,,2]*255, w = 224, h = 224)
+# image(normed, asp = 1, xaxt='n', yaxt='n', ann=FALSE, frame.plot=F)
+# title(main = "Synthetic Image", font.main = 10)
+plot_ly(z=~generated_images[15,,,1], type="contour", showscale=F)
+```
+```{r}
+# plot_ly(z=~generated_images[10,,,2], type="image")
+
+#convert the image to 4D
+normed4D <- rbind (normed, normed, normed)
+dim(normed4D) <- c(224, 224, 3, 1)
+
+# predict class label of synth image (normed4D)
+x <- image_to_array(img)
+# ensure we have a 4d tensor with single element in the batch dimension,
+# the preprocess the input for prediction using resnet50
+x <- array_reshape(x, c(1, dim(x)))
+x <- imagenet_preprocess_input(x)
+
+# Specify and compare Predictions based on different Pre-trained Models
+# Model 1: resnet50
+model_resnet50 <- application_resnet50(weights = 'imagenet')
+
+# make predictions then decode and print them
+preds_resnet50 <- model_resnet50 %>% predict(x)
+imagenet_decode_predictions(preds_resnet50, top = 10)
+```
+
+Clearly this is a very simple image and the DNN classification is not expected to be very informative. The results reported below will vary with the draw of the randomly generated synthetic image ...	
+ 	
++ pedestal, plinth, footstall; Probability: 0.08,                                     	
++ hair spray; Probability: 0.09,                                  	
++ lotion, sunscreen, sunblock, sun blocker; Probability: 0.06.	
+ 	
+# Generative Adversarial networks (GANs)
+
+The articles [Generating Sequences With Recurrent Neural Networks, by Alex Graves](https://arxiv.org/abs/1308.0850) and [Generative Adversarial Nets, by Goodfellow and colleagues](https://papers.nips.cc/paper/2014/file/5ca3e9b122f61f8f06494c97b1afccf3-Paper.pdf), introduced a novel strategy to use recurrent neural networks to generate realistic signals, including audio generation (music, speech, dialogue), image generation, text-synthesis, and molecule design, etc.  GANs represent an alternative strategy to [variational auto-encoders (VAE)](https://ieeexplore.ieee.org/document/8285168) to generate synthetic data.
+
+GAN frameworks estimate generative models using an adversarial process that simultaneously trains a pair of network models - a *generative model* $G$ that captures the data distribution, and a separate *discriminative model* $D$ that estimates the probability that a previously generated (synthetic) sample was real, i.e., came from the training data, rather than a synthetic $G$ output.
+
+For a binary classification, the $G$ training maximizes the probability of $D$ making a mistake (adversity), which corresponds to a *mini-max* optimization of a two-player game. The state space of all potential $G$ and $D$ permits a unique solution where $G$ recovers the training data distribution and $D=\frac{1}{2}$ is a constant, which corresponds to 50-50 change (largest entropy). Often, the $G$ and $D$ networks are defined as multilayer perceptrons (MLP) that can be fit jointly using [backpropagation](https://en.wikipedia.org/wiki/Backpropagation).
+
+GAN learning requires iterative estimation of the generator’s distribution $p_g$ using the training data $x$, subject to some prior on noisy input latent variables $Z\sim p_Z(z)$. Denote a generator mapping to the data space as $G(z; \theta_g)$ where $G$ is a differentiable function representing a multilayer perceptron network with parameters $\theta_g$, and let the second multilayer perceptron network $D(x; \theta_g)$ represents the output scalar probability that the input $x$ came from the training data rather than from generator’s distribution $p_g$.
+
+The iterative NN modeling fitting (learning) involves:	
+ 	
+- $D$ maximization of the probability of assigning the correct labels (true=real or false=synthetic) to both types of inputs $x$, either from training examples of synthetic samples from $G$, and	
+- Simultaneous training $G$ to minimize $\log(1 −D(G(z)))$.
+
+This dual optimization process for $D$ and $G$ corresponds to a two-player *mini-max* game with an objective value function $V (G,D)$:
+
+$$\min_G \max_D V (D,G) = \mathbb{E}_{x∼p_{data}(x)} [\log D(x)] + \mathbb{E}_{x∼p_{Z}(z)} [\log(1 −D(G(z)))]. $$
+
+This training approach enables recovering the data generating distribution using numerical iterative approaches. Note that for finite datasets, a perfect optimization of $D$ in the inner loop of training is computationally impractical and in general may result in overfitting. Therefore, the algorithm alternates the estimation process by performing $k$ steps of optimizing $D$ followed by $1$ step of optimizing $G$. When $G$ updates change slowly, repeating this process yields $D$ estimation near its optimal solution. In practice, direct gradient optimization of the objective value function $V (G,D)$ may be insufficient to learn/estimate $G$. Therefore, early in the learning process when $G$ may be poorly estimated, $D$ can reject samples with higher confidence because these early generations are expected to be obviously simple and fake, i.e., different from the training data and unrealistic, as for the early initial iterations, $\log(1 −D(G(z)))$ may saturate. Therefore, in the early training process, rather than training $G$ to minimize $\log(1 −D(G(z)))$, the $G$ training may focus on maximizing $\log D(G(z))$. Eventually, we transition to minimizing the correct cost $\log(1 −D(G(z)))$ and the final result of this dynamic optimization still has the same fixed point for $G$ and $D$, but provides stronger gradients early in the learning process.
+
+## CIFAR10 Archive
+
+We show GAN training using [CIFAR10 images, dataset of 50K $32\times 32$ RGB images, representing 10 classes (5K images per class)](https://en.wikipedia.org/wiki/CIFAR-10). Let's focus on `birds` (label=2). All (low-resolution) images are of dimension $\left (\underbrace{32, 32}_{pixels}, \underbrace{3}_{RGB\ colors} \right )$. Note the 3-channel RGB intensities. Below is a $10\times 10$ collage of the first 100 bird images in the CIFAR10 archive.
+
+```{r}
+library(keras)	
+library(tensorflow)	
+# install_tensorflow(version = "gpu")	
+# install_keras(tensorflow = "gpu")	
+library(EBImage)	
+	
+# CIFAR10 original labels: https://www.cs.toronto.edu/~kriz/cifar.html 	
+# The label data is just a list of 10,000 numbers ranging from 0 to 9, which corresponds to each of the 10 classes in CIFAR-10.	
+#     airplane : 0	
+#     automobile : 1	
+#     bird : 2	
+#     cat : 3	
+#     deer : 4	
+#     dog : 5	
+#     frog : 6	
+#     horse : 7	
+#     ship : 8	
+#     truck : 9	
+	
+# Focus on CIFAR10 BIRD images(label 2)!	
+	
+# Loads CIFAR10 data	
+cifar10 <- dataset_cifar10()                                              	
+c(c(x_train, y_train), c(x_test, y_test)) %<-% cifar10	
+	
+# Selects bird images (class 2)	
+x_train <- x_train[as.integer(y_train) == 2,,,]                           	
+	
+# Normalizes image intensities (bytes [0,255] --> [0,1])	
+x_train <- x_train / 255                                                  	
+	
+# Display a grid of 10*10 Bird images	
+img_real <- list()	
+bird_images <- x_train[1:(10*10),,,]	
+for (i in 1:10) {	
+  for (j in 1:10) {	
+    img_real[[i+ (j-1)*10]] <- rotate(rgbImage(   # normalize the RGB values to [0,1] to use EBImage::display()	
+      normalize(bird_images[i+ (j-1)*10,,,1]), normalize(bird_images[i+ (j-1)*10,,,2]), 	
+      normalize(bird_images[i+ (j-1)*10,,,3])), 90) 	
+  }	
+} 	
+img_comb = EBImage::combine(img_real)	
+# Display the Bird images	
+EBImage::display(img_comb, method="raster", all = TRUE)	
+```
+
+## Generator ($G$)
