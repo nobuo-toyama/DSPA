@@ -2694,3 +2694,702 @@ EBImage::display(img_comb, method="raster", all = TRUE)
 ```
 
 ## Generator ($G$)
+
+Recall that the GAN represents a forger (adversarial) network $G$ and an expert network $D$ duking it out for superiority. Let's first examine $G$ and experiment with a generator network which takes a random vector input (a stochastic point in the latent space) and outputs a decoded synthetic image that is sent to the expert (discriminator) for auto-labeling.
+
+We will demonstrate a [keras](https://keras.io/examples/generative/dcgan_overriding_train_step/) implementation of GAN modeling using deep convolutional GAN (DCGAN). Both the generator $G$ and discriminator $D$ will be [deep convnets](https://en.wikipedia.org/wiki/Convolutional_neural_network)
+
+The method `layer_conv_2d_transpose()` is used for image upsampling in the generator. GAN model includes:	
+ 	
+- A generator network $G$ mapping vectors of shape (*latent_dim*) to (fake) RGB images of dimension $\left (\underbrace{32, 32}_{pixels}, \underbrace{3}_{RGB\ colors} \right )$.	
+- A discriminator network $D$ mapping images of of the same dimension to a binary score estimating the probability that the image is real.	
+- A GAN network concatenating the generator and the discriminator together: `gan(x) <- discriminator(generator(x))` to map latent space vectors $x$ to the discriminator’s decoding real/fake and an assessment of the realism of generator output images.	
+- $D$ is trained using examples of *real* and *synthetic* $G$-output images along with their corresponding “real”/”synth” labels.	
+- $G$ training using the gradients of the generator’s weights reflecting the loss of the GAN objective function. At each iteration, these $G$ weights are updated to optimize the cost function in a direction to improve $D$ performance to correctly ID  “real” and "synth" images supplied by the generator.	
+- To avoid getting the generator stuck with generating purely noisy images, we use dropout on both the discriminator and the generator.
+
+```{r}
+latent_dim <- 32	
+height <- 32	
+width <- 32	
+channels <- 3	
+generator_input <- layer_input(shape = c(latent_dim))	
+generator_output <- generator_input %>%	
+  # transforms the input into a 16 × 16, 128 channel feature	
+  layer_dense(units = 128 * 16 * 16) %>%                             	
+  layer_activation_leaky_relu() %>%                                  	
+  layer_reshape(target_shape = c(16, 16, 128)) %>%    	
+  layer_conv_2d(filters = 256, kernel_size = 5,	
+                padding = "same") %>%	
+  layer_activation_leaky_relu() %>%	
+  # Upsample images 16 x 16 --> 32 × 32	
+  layer_conv_2d_transpose(filters = 256, kernel_size = 4,            	
+                          strides = 2, padding = "same") %>%         	
+  layer_activation_leaky_relu() %>%                                  	
+  layer_conv_2d(filters = 256, kernel_size = 5,	
+                padding = "same") %>%	
+  layer_activation_leaky_relu() %>%	
+  # generate a 3-channel RGB feature-map 32 × 32 reflecting the dimensions of all CIFAR10 images	
+  layer_conv_2d(filters = 256, kernel_size = 5, padding = "same") %>%	
+  layer_activation_leaky_relu() %>%	
+  # instantiate the generator model, mapping the input of latent_dim into an image of dimension (32, 32, 3)	
+  layer_conv_2d(filters = channels, kernel_size = 7,                 	
+                activation = "tanh", padding = "same")               	
+generator <- keras_model(generator_input, generator_output) 
+```
+
+## Discriminator
+
+The expert (Discriminator) network takes as input a real or synthetic image and outputs a label (or probability prediction) about the chance that the image came from the real training set or was synthetically created by the generator network ($G$).
+
+$G$ is trained to confuse the discriminator network $D$ and evolve toward generating increasingly more realistic output images. As the number of training epochs increases, the artificially created images become similar to the real training data images.
+
+Thus, $D$ continuously adapts its neural network to increase the probability of catching fake images. However, this process also gradually improves the $G$ capability to generate highly realistic output images. As the dual optimization process stabilizes and the training terminates, the generator is producing realistic images from random points in the state space, and the discriminator improves with detection of fakes.
+
+Below is an implementation of a discriminator model taking as input a (real or synthetic) candidate image and outputting a classification label “generated (synth) image” or “real	
+image from the training set.
+
+```{r}
+discriminator_input <- layer_input(shape = c(height, width, channels))	
+discriminator_output <- discriminator_input %>%	
+  layer_conv_2d(filters = 128, kernel_size = 3) %>%	
+  layer_activation_leaky_relu() %>%	
+  layer_conv_2d(filters = 128, kernel_size = 4, strides = 2) %>%	
+  layer_activation_leaky_relu() %>%	
+  layer_conv_2d(filters = 128, kernel_size = 4, strides = 2) %>%	
+  layer_activation_leaky_relu() %>%	
+  layer_conv_2d(filters = 128, kernel_size = 4, strides = 2) %>%	
+  layer_activation_leaky_relu() %>%	
+  layer_flatten() %>%	
+  # one dropout layer, see text	
+  layer_dropout(rate = 0.4) %>%     	
+  # classification layer	
+  layer_dense(units = 1, activation = "sigmoid")                           	
+# instantiate the discriminator model, taking a (32, 32, 3) input into a binary classification decision (fake/real)	
+discriminator <- keras_model(discriminator_input, discriminator_output)    	
+discriminator_optimizer <- optimizer_rmsprop(	
+  learning_rate =  0.0008,	
+  # gradient clipping (by value) in the optimizer	
+  clipvalue = 1.0,  	
+  # to stabilize training, specify a learning-rate decay	
+  weight_decay = 1e-8                                                             	
+)	
+discriminator %>% compile(	
+  optimizer = discriminator_optimizer,	
+  loss = "binary_crossentropy"	
+)	
+```
+
+## The adversarial network
+
+## Training the DCGAN
+
+The DCGAN *training* and *tuning* requires as much rigorous science as artistry, just like all deep learning processes. The theoretical foundations are intertwined with heuristic approaches translating some intuition and human-intelligence into the computational modeling. Some of the exemplary heuristics involved in DCGAN modeling  and the implementation of the GAN *generator* and *discriminator* include:	
+ 	
+- Using the $\tanh()$ function in the last activation of the generator, as opposed to the more standard `sigmoid` function commonly employed in other types of DL models.	
+- Random sampling points from the latent space rely on *Gaussian (normal)* distribution, rather than a high-entropy *uniform* distribution. This randomness and stochasticity during training yields more reliability and robustness in the final models. 	
+- DCGAN training aims to achieve a dynamic equilibrium (tug-of-war between $G$ and $D$ nets). To ensure the GAN models avoid local minima (sub-optimal solutions), randomness embedded during training helps overcome such problems. Stochasticity is introduces by using dropout in the discriminator (omitting or dropping out the feedback of each discriminator in the framework with some probability at the end of each batch) and by adding random noise to the labels for the discriminator.	
+- Sparse gradients can negatively impact the GAN training process. Sparsity is often a desirable property in DL as it makes many theoretically intractable computational problems solvable in practice. Gradient sparsity in DCGANs is the result of (1) *max-pooling* operations (operation calculating the largest value in each patch of each feature map, reflecting that the results are down sampled, or pooled, feature maps highlighting the most present feature in the patch, not the average presence of the feature in the case of average pooling); or (2) *ReLU activations* (rectified linear activation function, ReLU, is a piece-wise linear function that will output the input directly if it is positive, otherwise, it will output zero). `Max-pooling` can be swapped with strided convolutions for downsampling. Whereas `ReLU` activation can be replaced by `layer_activation_leaky_relu`, which is similar to ReLU, but it relaxes sparsity constraints by allowing small negative activation values.	
+- The $G$ generated output images may exhibit checkerboard artifacts caused by unequal coverage of the pixel space in the generator. This problem may be addressed by employing a kernel of size divisible by the image stride size whenever we use a strided `layer_conv_2d_transpose` or `layer_conv_2d` in both the generator and the discriminator. The stride, or pitch, is the number of bytes from one row of pixels in memory to the next row of pixels in memory; the presence of padding bytes widens the stride relative to the width of the image.
+
+Recall that stochastic gradient descent optimization facilitates iterative learning using a training dataset to update the learnt model at each iteration.	
+     	
+- The [*batch size* is a hyperparameter](https://machinelearningmastery.com/difference-between-a-batch-and-an-epoch/) of gradient descent that controls the number of training samples to work through before the model’s internal parameters are updated.	
+- The *number of epochs* is a hyperparameter of gradient descent that controls the number of complete passes through the training dataset.
+
+Let's demonstrate the synthetic image generation using the [CIFAR10](https://www.cs.toronto.edu/~kriz/cifar.html) imaging data archive of 10K images labeled in 10 different categories (e.g., airplanes, horses).
+
+The example below just does 2 epochs. Increasing the *iterations* parameter ($k\times 100$) would generate more, and more accurate synthetic images (in this case we are focusing on birds, label 2).
+
+## Elements of the DCGAN Training
+
+The DCGAN training involves looping (iterating over each epoch) the following steps:	
+ 	
+- Randomly traverse the latent space (introduce random noise by random sampling).	
+- Use $G$ to generate images based on the random noise in the previous step.	
+- Mix the synth-generated images with real real-images (from training data).	
+- Train $D$ to discriminate (label) these mixed images, outputting “real” or “fake” class labels.	
+- Again, randomly traverse the latent space drawing new random points (in the latent space).	
+- Train the DCGAN model using these random vectors, with a fixed target labels="real" for all images. This process updates only the network weights of the generator! The discriminator is static inside the GAN!. Hence, these updates force the discriminator to predict “real images” for synthetically-generated images. This is the adversarial phase, as it trains the generator to fool the (frozen) discriminator.	
+- In the experiment below, we use a low iteration number `iterations <- 200`, to generate more realistic results, this number need to be much higher (e.g., $10,000$).
+
+GPU computing Note: these DCGAN models are very compute-intensive. The performance is enhanced by installing [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) and [NVIDIA cuDNN](https://developer.nvidia.com/cudnn), which allow you to run the calculations on the GPU, instead of the default, CPU.
+
+```{r}
+iterations <- 200 # 10000	
+# build the layout matrix with additional separating cells	
+nx <- 10 # number of images in a row	
+ny <- 10 # number of images in a column	
+batch_size <- 20	
+start <- 1	
+	
+# List of nx*ny synthetic and real images (as matrices)	
+img_gan <- list()	
+#img_gan[[1]] <- x_train[1,,,1]; image(img_gan[[1]])	
+img_real <- list()	
+	
+for (step in 1:iterations) {	
+  # First-tier sampling of random points in the latent space	
+  random_latent_vectors <- matrix(rnorm(batch_size * latent_dim),  nrow = batch_size, ncol = latent_dim)	
+  	
+  # str(generated_images) (Batch-size, 2D-grid, RGB-colors)	
+  # Array[1:20, 1:32, 1:32, 1:3]	
+  # decode/generate and save synth-generated images	
+  generated_images <- generator %>% predict(random_latent_vectors)  	
+  	
+  # Combine synth and real images	
+  stop <- start + batch_size - 1                                          	
+  real_images <- x_train[start:stop,,,]                                   	
+  rows <- nrow(real_images)                                               	
+  combined_images <- array(0, dim = c(rows * 2, dim(real_images)[-1]))    	
+  combined_images[1:rows,,,] <- generated_images                          	
+  combined_images[(rows+1):(rows*2),,,] <- real_images                    	
+  	
+  # Assemble the labels discriminating synth from real images	
+  labels <- rbind(matrix(1, nrow = batch_size, ncol = 1),                 	
+                  matrix(0, nrow = batch_size, ncol = 1))                 	
+  	
+  # Add random noise to the image-labels to avoid trapping in local minima	
+  labels <- labels + (0.5 * array(runif(prod(dim(labels))),               	
+                                  dim = dim(labels)))                     	
+  	
+  # First, train the discriminator, $D$	
+  d_loss <- discriminator %>% train_on_batch(combined_images, labels)     	
+  	
+  # Second-tier sampling of random points in the latent space	
+  random_latent_vectors <- matrix(rnorm(batch_size*latent_dim), nrow = batch_size, ncol = latent_dim)   	
+  	
+  # Assemble labels = "real images” (fake incorrect labels)	
+  misleading_targets <- array(0, dim = c(batch_size, 1))                  	
+  	
+  # Second, train the generator $G$ using the GAN model. Note that the discriminator weights are fixed (static) during this optimization	
+  a_loss <- gan %>% train_on_batch(                                       	
+    random_latent_vectors,                                                	
+    misleading_targets                                                    	
+  )                                                                       	
+  start <- start + batch_size	
+  if (start > (nrow(x_train) - batch_size))   start <- 1	
+  	
+  # Display some of the generated images for visual inspection (number = iterations/(nx*ny))	
+  if (step %% (nx*ny) == 0) {                                                 	
+    # Save the GAN model weights in h5 format	
+    save_model_weights_hdf5(gan, "gan.h5")                                	
+    	
+    # Report metrics	
+    cat("Step=", step, "; discriminator loss=", d_loss, "\n")                              	
+    cat("Step=", step, "; adversarial loss=", a_loss, "\n")                                	
+	
+    # Save one synth-generated image, Need to normalize the RGB values to [0,1] to use EBImage::display()?	
+    img_gan[[step/(nx*ny)]] <- rotate(rgbImage(generated_images[1,,,1],	
+                              generated_images[1,,,2], generated_images[1,,,3]), 90)                           # Save one real (bird) image	
+    img_real[[step/(nx*ny)]] <- rotate(rgbImage(real_images[1,,,1], 	
+                              real_images[1,,,2], real_images[1,,,3]), 90) 	
+  }	
+}	
+	
+img_comb = EBImage::combine(c(img_real, img_gan))	
+# Display the Bird images	
+EBImage::display(img_comb, method="raster", all = TRUE)	
+```
+
+The **generator** transforms *random latent vectors* into *images*. The **discriminator** attempts to correctly identify the real and synthetically-generated images. The generator is trained to fool the discriminator.
+
+**Iterative Protocol**:	
+ 	
+- *Inputs*: Random vector from the latent space (`random_latent_vectors <- matrix(rnorm(batch_size * latent_dim), nrow = batch_size, ncol = latent_dim)`) and Real Images (`real_images[1,,,] * 255`);	
+- Generator (decoder) - receives *Inputs* and *training feedback* from Discriminator including real and synth images and their discriminated labels (real or synthetic);	
+- Generator outputs new synth (decoded) image that is sent along with another real image as input to the Discriminator below for another real vs. synth labeling	
+- Discriminator receives a pair of (real and synth) images as inputs, and outputs labels (real or synth) to them and forwards the results to generator	
+- This iterative process continuous until certain stopping criterion is reached.
+
+The GAN (generator network) is iteratively trained and tuned to fool the discriminator network (i.e., pass synth images as real). This training cycle continuous, neural network evolves toward generating increasingly realistic images. Simulated artificial images begin to look indistinguishable from their real counterparts. The discriminator network becomes less effective in telling the two types of images apart. In this iterative process, the discriminator is constantly adapting to the gradually improving capabilities of the generator. This constant reinforcement yields realistic versions of synthetic computer-generated images. At the end of the training process, which is highly non-linear and discontinuous, the generator churns out input latent space points into a realistic-looking images.
+
+# Transfer Learning
+
+Humans learn complex tasks by heavily capitalizing on their prior experiences, no matter how remote these previous encounters may appear to be. By the age of 5, most kids can learn how to ride a bicycle in a couple of training sessions. This riding ability is acquired after they have already mastered the arts of running, also known as controlled falling, navigating complex 3D environments, and anticipating dynamic 4D spatio-temporal events. In effect, before kids start pedaling, their many prior holistic training experiences ensure that they “know” the basics of bike balancing. Children’s formative years include a very large number of trial-and-errors, parental guidance sessions, and societal cues. These events already provide the basic building blocks necessary to learn bicycle riding. And this is well in advance of the actual “bicycle training” experience, which we typically associate with bicycle training.
+
+This learning process is very different for machines. It’s extremely difficult to train a machine (a robot) to ride a bike, because these prior experiences kids go through are missing and can not be easily built and transferred to complete the new task of learning how to balance a bike. In a way, humans learn new tasks easily as (1) they already have a large collection of skills they have already mastered, and (2) they can transfer, mix, match, integrate, and harness their prior experiences to the process of learning a new task. Transfer machine learning attempts to replicate this human transfer learning process into the domain of artificial intelligence. The goals are to expedite the ML training process by capitalizing on prior knowledge, expand the realm of ML/AI applications, and enable their “last mile” training to ensure they generate “reasonable decisions and actions” without starting with a blank-sleight de novo learning.
+
+## Deep Network Transfer Learning in Text Classification
+
+One of the main challenges of AI/ML interpretation of free text is the extreme heterogeneity of the information and the unstructured format of the text content. This problem can be resolved by structurizing the input text and establishing homologies between multiple text samples (e.g., clinical notes). In a nutshell, transfer learning facilitates this process and enables (1) synthetic text generation (new data) that simulates realistic textual content (non-human data); and (2) transforming unstructured text to structured data elements. For instance, if an $$input=clinical notes$$, a DNN model generates $$output=vector$$ representing a quantitative signature vector of the input text; think of it as a vector of principal components associated with the specific free text.
+
+The result of this AI process is that independently of the text length or type, DNN always generates a numeric vector of a fixed size (say 128 values). This canonical representation establishes a homology between any given sets of strings (character arrays).
+
+Let’s see an example of transfer machine learning using the medical specialty text-mining example of clinical notes that we saw in Chapter 7. This data includes a binary outcome indicating if the medical specialty unit (there are 40 such units) is a surgical unit or not. We’ll split the 4,999 cases, each containing 6 data elements, including the medical-specialty unit and clinical notes, into training and testing sets.
+
+The key will be to use 'keras' to build and train a ML model for predicting surgical vs. non-surgical units from the content in the corresponding medical notes by using a previously trained text-mining DNN that quantizes text of any size.
+
+```{r}
+# load the necessary libraries
+# May need some installations first, e.g., 
+#    install.packages("remotes")
+#    remotes::install_github("rstudio/tfds")
+
+library(keras)
+library(reticulate)
+library(tfhub)
+# library(tfds)
+library(tfdatasets)
+library(utf8)
+
+# specify r-reticulate or r-tensorflow python Anaconda environment
+# use_condaenv("r-tensorflow")
+use_condaenv("r-reticulate", required = TRUE)
+
+# Check tensorflow install configuration
+tensorflow::tf_config()
+py_module_available("tensorflow_hub")
+
+# py_install("tensorflow_hub", pip = TRUE) # py_install("tensorflow_hub")
+# py_install("tfds", pip = TRUE) # py_install("tfds")
+# py_install("tensorflow_datasets", pip = TRUE)
+
+# py_module_available("tensorflow_datasets")
+# py_module_available("tfds")  # tensorflow_datasets
+```
+
+### Binary Transfer Learning Label-Classification of Clinical Text
+
+Let’s now design a full DNN binary-classification model composed of 4 layers stacked sequentially. The first transfer learning layer represents the pre-trained TensorFlow Hub layer (prior model), which is loaded as the a priori left-most base layer in the full DNN and maps clinical notes (description sentences) into its embedding vector (canonical signature vector). There are a number of pre-trained text embedding models we can choose in this transfer-learning example. For instance, we can use google/tf2-preview/gnews-swivel-20dim/1, which splits the sentences into tokens, embeds each token, and then combines the embedding yielding an output of dimensions: (num_examples, embedding_dimension). The output of this initial transfer learning prior model layer is a fixed-length output vector, which is fed into the next fully-connected (Dense) layer-2 with 16 hidden units. Layer-2 output feeds into the next (dense) layer-3 with 6 nodes. Finally, Layer-3 output goes into the last layer-4, which also is a densely connected layer with a single output (class label). Using the sigmoid activation function, this output represents a probability value between 0 and 1 indicating the model predicted chance, or confidence level, that the medical note text was written in a hospital surgical unit.
+
+Other examples of pre-trained text mining models that can be used for transfer learning include:
+
+- google/tf2-preview/gnews-swivel-20dim/1,
+- google/tf2-preview/nnlm-en-dim128/1, and
+- google/tf2-preview/gnews-swivel-20dim-with-oov/1, similar to - - - google/tf2-preview/gnews-swivel-20dim/1, but with 2.5% vocabulary converted to OOV buckets, which helps when the training and testing vocabularies are not fully overlapping.
+- google/tf2-preview/nnlm-en-dim50/1 is a much larger pre-trained model with vocabulary of size 1M and 50 dimensions.
+- google/tf2-preview/nnlm-en-dim128/1 is another large model, vocabulary of size 1M, and 128 dimensions.
+
+We will demonstrate NN-augmentation (transfer learning) modifying the base-model using the pre-trained NN English Google News 200B corpus by adding 4 extra layers at the end, which will be tuned for our specific clinical text (medical notes). Of course, similarly, any of the other pre-trained models can be used as alternatives.
+
+Download the clinical dataset and split it into training:training (80:20).
+
+Note that in this clinical-notes example, the input data consists of medical text transcriptions stored as string sentences. In teh first demonstration, we will try to predict a binary integer label, 0 or 1, representing non-surgical or surgical clinical unit where the clinical note was transcribed. To structurize the free-text as a computable data object (a matrix), we will automatically convert convert sentences into embedding vectors. This can be accomplished using text2vec or keras::layer_text_vectorization() transformations, or by including a pre-trained text embedding as the first layer. This takes care of the text preprocessing, facilitates transfer learning, and makes the text-to-matrix independent of the text and the size of the clinical note.
+
+```{r}
+dataCT <- read.csv('https://umich.instructure.com/files/21152999/download?download_frd=1', header=T) 
+str(dataCT)
+
+# 'data.frame': 4999 obs. with  6 variables
+colnames(dataCT)
+```
+```{r}
+# Binarize the 40 hospital units as Surgery-type and Non-Surgery types
+dataCT$surgLabel <- ifelse(grepl('Surg', dataCT$medical_specialty), 1, 0)
+table(grepl('Surg', dataCT$medical_specialty))
+```
+```{r}
+# Fix the descriptions to UTF-8 encoding
+library(stringi)
+# table(stri_enc_mark(dataCT$description)) # ASCII native #  4994      5
+dataCT$description <- stri_encode(dataCT$description, "", "UTF-8") 
+dataCT$transcription <- stri_encode(dataCT$transcription, "", "UTF-8") 
+
+dataCT$clinicalNotes <- paste(dataCT$description, dataCT$transcription)
+
+# Clean the clinical notes
+library(tm)
+## Vectorize the text
+train_corpus <- VCorpus(VectorSource(dataCT$clinicalNotes))
+## Remove Punctuation
+train_corpus <- tm_map(train_corpus, content_transformer(removePunctuation))
+## Remove numbers
+train_corpus <- tm_map(train_corpus, removeNumbers)
+## Convert text to lower case
+train_corpus <- tm_map(train_corpus, content_transformer(tolower))
+## Remove stop words
+train_corpus <- tm_map(train_corpus, content_transformer(removeWords), stopwords("english"))
+## Stemming
+train_corpus <- tm_map(train_corpus, stemDocument)
+## Remove multiple whitespaces
+train_corpus <- tm_map(train_corpus, stripWhitespace)
+# Extract only the simplified text from the complex train_corpus object
+dataCT$clinicalNotes <- unlist(lapply(train_corpus, `[[`, 1))
+
+# Split the data 80:20
+train_set_ind <- sample(nrow(dataCT), floor(nrow(dataCT)*0.8)) # 80:20 plot training:testing
+train_data <- dataCT[train_set_ind , ]
+test_data <- dataCT[-train_set_ind , ]  
+
+num_words <- 10000
+max_length <- 300
+text_vectorization <- layer_text_vectorization(max_tokens = num_words, output_sequence_length = max_length)
+
+# # `adapt()` the Clinical Notes Text Vectorization layer. Calling adapt allows the input layer to learn about 
+# # the unique Medical Text in this dataset and assign an integer value for each word
+# text_vectorization %>%  adapt(train_data$clinicalNotes)
+# 
+# # Confirm the Medical Notes vocabulary is in the text vectorization layer.
+# get_vocabulary(text_vectorization)
+# 
+# # Input Layer shape - the text vectorization layer transforms it’s inputs
+# trainDataX <- text_vectorization(matrix(train_data$clinicalNotes, ncol = 1))
+# trainDataY_one_hot_labels <- to_categorical(train_data$surgLabel, num_classes = 2)
+
+# Define and fit the model - the input data consists of an array of word-indices. 
+# The predicted labels are either 0 or 1.
+# The classifier is based on sequentially stacking the network layers
+# The first embedding layer takes the integer-encoded vocabulary and looks up the embedding vector for each word-index. 
+# These vectors are learned as the model trains. 
+# The vectors add a dimension to the output array. The resulting dimensions are: (batch, sequence, embedding).
+# A global_average_pooling_1d layer returns a fixed-length output vector for each example by averaging over the sequence dimension. 
+# This allows the model to handle *variable-length* inputs
+# The fixed-length output vector is piped through a fully-connected (dense) layer with 16 hidden units.
+# The last output layer is densely connected with a single output node. 
+# Sigmoid activation function yields a probability between 0 and 1 indicating the confidence of the binary level.
+```
+
+### Define a fresh new model1 de novo
+
+```{r}
+# 1. Define a new fresh model1 de novo
+# input <- layer_input(input_shape = input_shape = c(300))  # For numerical input, e.g., trainDataX
+input <- layer_input(shape = c(1), dtype = "string")   # for raw text input as string, needs to match exp next layer
+output <- input %>% 
+  text_vectorization() %>% 
+  layer_embedding(input_dim = num_words + 1, output_dim = 32) %>%
+  layer_global_average_pooling_1d() %>%
+  layer_dense(units = 16, activation = "relu") %>%
+  layer_dropout(0.5) %>% 
+  layer_dense(units = 1, activation = "sigmoid")
+
+model1 <- keras_model(input, output)
+
+model1 %>% compile(
+  optimizer = 'adam',
+  loss = 'binary_crossentropy',
+  metrics = list('accuracy')
+)
+
+history <- model1 %>% fit(train_data$clinicalNotes,
+          as.numeric(train_data$surgLabel),  
+          epochs = 10, batch_size = 512, validation_split = 0.2, verbose=2)
+
+# Evaluate the model1 performance
+results <- model1 %>% evaluate(test_data$clinicalNotes, as.numeric(test_data$surgLabel), verbose = 0)
+results
+```
+
+### Naive - out-of-the-box prior-model assessment (without retraining)
+
+In a naive approach, we can even evaluate the performance of the prior model (English Google News 200B), i.e., assess transfer learning without any additional add-on training using the new problem-specific data. Remember that we have a univariate (binary) outcome and if we use dataset_batch(32), the output will include a vector of 32 probability estimates.
+
+We will see next that Keras knows how to extract elements from TensorFlow Datasets automatically making it a much more memory efficient alternative than loading the entire dataset to RAM before passing to Keras.
+
+To build the DNN model, we need to specify the network topology as a stack of network layers that include (1) schema representing the unstructured text data (clinical note descriptions), and (2) Number and complexity of each subsequent layer in the model. For simplicity, in this example we will convert the 40 different medical units into binary “surgical” unit labels; 0 or 1 factors.
+
+The unstructured text can be converted into embedding vectors of a fixed size, which simplifies the text processing. Using the transfer learning prior model, which includes a pre-trained text embedding and appears as the first DNN layer. This allows us to outsource the text preprocessing and transformation into quantitative information tensor. This is the key step illustrating the benefits of add-on based transfer-learning in fine-tuning previously trained models.
+
+The result of using this transfer-learning prior is that the model is invariant with respect to the length of the input clinical text - the output shape of the embeddings is $$(num_examples \times embedding_dimension)$$.
+
+```{r}
+#  2. Naive - out-of-the-box prior-model assessment (without any retraining)
+# Transfer Learning based on nnlm-en-dim128 (prior model) Define only output layer structure
+model2 <- keras_model_sequential() %>% 
+  layer_hub(
+    handle = "https://tfhub.dev/google/tf2-preview/nnlm-en-dim128/1",
+    input_shape = list(),
+    dtype = tf$string,
+    trainable = FALSE   # Set to TRUE for full model retraining, we use FALSE for quick transfer learning
+  ) %>%
+  layer_dense(units = 1, activation = "sigmoid")  # add the binary labeling output layer format
+summary(model2)
+
+```
+```{r}
+model2 %>% compile(
+  optimizer = 'adam',
+  loss = 'binary_crossentropy',
+  metrics = list('accuracy')
+)
+# Just estimate the final 128+1 coefficients of the final layer
+history <- model2 %>% fit(
+  train_data$clinicalNotes, train_data$surgLabel, 
+  epochs = 5, ### increase epochs for better performance
+  batch_size = 128
+)
+
+# Assess performance
+score <- model2 %>% evaluate(test_data$clinicalNotes, test_data$surgLabel)
+print(score)
+
+y_pred <- ifelse((model2 %>% predict(test_data$clinicalNotes)) >0.5, 1, 0)
+table(y_pred, test_data$surgLabel)
+```
+
+Clearly these surgical unit predictions can’t be expected to be very reliable, as the model is not fine-tuned yet to respond specifically to clinical text.
+
+The next step is to compile the transfer-learning model by specifying a loss function and an optimizer to facilitate the transfer-learning during the iterative network model fitting (fine-tuning). In this binary classification problem, we will use the binary_crossentropy() loss function. The model results in generating a probability value, which is presented as the output of the final DNN layer (the right-most single-unit layer with a sigmoid activation).
+
+Another possible loss function for binary outcome is mean_squared_error(). However, binary_crossentropy is often better for dealing with probabilities as it measures the “distances” between probability distributions representing the predicted outcome and the ground-truth in supervised problems. Yet, mean_squared_error() is also applicable in a regression model setting. We will also employ Adaptive Moment Estimation (ADAM) as it’s an effective optimizer.
+
+### Simple Transfer Learning
+
+Let’s use the 'nnlm-en-dim128' (prior model) to define an expanded DNN model by adding additional four layers at the end to customize the deep neural network to our specific clinical data.
+
+```{r}
+# 3. Transfer Learning based on the nnlm-en-dim128 (prior model) Define expanded DNN model structure + 4 layers
+model3 <- keras_model_sequential() %>% 
+  layer_hub(
+    handle = "https://tfhub.dev/google/tf2-preview/nnlm-en-dim128/1",
+    input_shape = list(),
+    dtype = tf$string,
+    trainable = FALSE   # Set to TRUE for full model retraining, we use FALSE for quick transfer learning
+  ) %>% 
+  # modify default pre-trained model by adding 4 extra layers at the end tuned for our clinical text (medical notes)
+  layer_dense(units = 64, activation = "sigmoid") %>% 
+  #layer_dropout(rate = 0.5) %>% 
+  layer_dense(units = 32, activation = "sigmoid") %>% 
+  #layer_dropout(rate = 0.5) %>%
+  layer_dense(units = 16, activation = "sigmoid") %>% 
+  #layer_dropout(rate = 0.5) %>%
+  layer_dense(units = 1, activation = "sigmoid")
+#   layer_dense(units = 16, activation = "relu") %>% 
+#   layer_dense(units = 6, activation = "relu") %>% 
+#   layer_dense(units = 1, activation = "sigmoid")
+
+summary(model3)
+```
+```{r}
+model3 %>% compile(
+  optimizer = 'adam',
+  loss = 'binary_crossentropy',
+  metrics = list('accuracy')
+)
+
+history <- model3 %>% fit(
+  train_data$clinicalNotes, train_data$surgLabel, 
+  epochs = 10, ### increase epochs for better performance
+  batch_size = 128
+)
+
+# Assess performance
+score <- model3 %>% evaluate(test_data$clinicalNotes, test_data$surgLabel)
+print(score)
+
+y_pred <- ifelse((model3 %>% predict(test_data$clinicalNotes)) >0.48, 1, 0)
+table(y_pred, test_data$surgLabel)
+```
+
+### Full-scale Transfer learning
+
+Next we will use the structure/topology of the pre-trained model, but estimate all 124M
+ network parameters, not only the final 11K
+ parameters at the end, as we did earlier.
+
+```{r}
+# 4. Full-scale Transfer learning using the skeleton of the pre-trained model, but estimating all parameters 
+model4 <- keras_model_sequential() %>% 
+  layer_hub(
+    handle = "https://tfhub.dev/google/tf2-preview/nnlm-en-dim128/1",
+    input_shape = list(),
+    dtype = tf$string,
+    trainable = TRUE   # Set to FALSE for simple TL-model retraining, we use TRUE for full-transfer learning
+  ) %>% 
+  # modify default pre-trained model by adding 4 extra layers at the end tuned for our clinical text (medical notes)
+  layer_dense(units = 64, activation = "sigmoid") %>% 
+  #layer_dropout(rate = 0.5) %>% 
+  layer_dense(units = 32, activation = "sigmoid") %>% 
+  #layer_dropout(rate = 0.5) %>%
+  layer_dense(units = 16, activation = "sigmoid") %>% 
+  #layer_dropout(rate = 0.5) %>%
+  layer_dense(units = 1, activation = "sigmoid")
+#   layer_dense(units = 16, activation = "relu") %>% 
+#   layer_dense(units = 6, activation = "relu") %>% 
+#   layer_dense(units = 1, activation = "sigmoid")
+
+summary(model4)
+```
+```{r}
+model4 %>% compile(
+  optimizer = 'adam',
+  loss = 'binary_crossentropy',
+  metrics = list('accuracy')
+)
+
+history <- model4 %>% fit(
+  train_data$clinicalNotes, train_data$surgLabel, 
+  epochs = 10, ### increase epochs for better performance
+  batch_size = 128
+)
+
+# Assess performance
+score <- model4 %>% evaluate(test_data$clinicalNotes, test_data$surgLabel)
+print(score)
+
+y_pred <- ifelse((model4 %>% predict(test_data$clinicalNotes)) >0.47, 1, 0)
+table(y_pred, test_data$surgLabel)
+```
+
+The final pair of steps include:
+
+- Training. Transfer learning involving fine-tuning the model starting with a prior pre-trained model, which is re-trained on the specific medical text (training) data, and
+- Validation. The learning process involves repeated model estimation using mini-batches of 512 samples (see dataset_batch()) with 10 (for speed) or more (e.g., 100+, for accuracy and precision) epochs. This process involves 10 (or 100+) iterations over all samples in the dataset. During the fine-tuning training process, the transfer learner will report the initial and each subsequent model loss-value (optimization measure) and accuracy (fidelity measure) on sets of 10,000 samples from the validation set (see dataset_shuffle()).
+
+```{r}
+# Evaluate the model
+# Examine the model performance. 
+# mind the trajectories of the Loss (representing the error), 
+# lower values are better), and accuracy, high values are better
+library(plotly)
+
+plot_ly(x = ~c(1:history$params$epochs),  y = ~history$metrics$loss,
+        type = "scatter", mode="markers+lines", name="Loss") %>% 
+  add_trace(x = ~c(1:history$params$epochs),  y = ~history$metrics$accuracy,
+        type = "scatter", mode="markers+lines", name="Accuracy") %>%
+  layout(title="DNN Training Performance", xaxis=list(title="epoch"),
+         yaxis=list(title="Metric Value"), legend = list(orientation='h'),
+         hovermode = "x unified")
+```
+
+This simple transfer learning approach achieves an accuracy of about 73-76%. More model customization and longer training are expected to significantly improve the performance of the fine-tuned transfer-learning DNN model. Additional information about R-based tensorflow DNN modeling is available here and here.
+
+### Multinomial Transfer Learning classification of Clinical Text
+
+Load all the appropriate R/Python packages and set up the RStudio environment.
+
+The same clinical data can be used for multinomial classification, where the outcome is the clinical specialty unit (there are 40 hospital units in this case-study), the input is the given clinical text. Start by defining the special labels (clinical units). The prediction of the 40-class labels will depend on the input $$x$$ consisting of the string clinicalNotes, representing the concatenated transcriptions and descriptions.
+
+In this transfer learning example of multiclass text classification, we will utilize the gnews-swivel-20dim model with text embedding trained on English Google News 130GB corpus.
+
+```{r}
+library(stringi)
+dataCT <- read.csv('https://umich.instructure.com/files/21152999/download?download_frd=1', header=T) 
+
+dataCT$description <- stri_encode(dataCT$description, "", "UTF-8") 
+dataCT$transcription <- stri_encode(dataCT$transcription, "", "UTF-8") 
+
+# Concatenate Transcriptions and Descriptions into one string/character: clinicalNotes
+dataCT$clinicalNotes <- paste(dataCT$description, dataCT$transcription)
+
+convert_specialty <- list()
+keys <- unique(dataCT$medical_specialty)
+medical_specialtyNames <- dataCT$medical_specialty
+values <- 1:length(keys)
+for(i in 1:length(keys)) { convert_specialty[keys[i]] <- values[i] }
+specialty <- c()
+for (i in 1:length(dataCT$medical_specialty)){
+  specialty[i] <- as.numeric(convert_specialty[dataCT$medical_specialty[i]])
+}
+
+dataCT$medical_specialty <- specialty
+dataCT$medical_specialty <- matrix(dataCT$medical_specialty,
+                                   nrow = length(dataCT$medical_specialty), ncol = 1)
+
+# Convert labels to categorical one-hot encoding
+one_hot_SpecialtyLabels <- to_categorical(dataCT$medical_specialty,
+               num_classes = length(unique(dataCT$medical_specialty))+1)
+one_hot_SpecialtyLabels <- one_hot_SpecialtyLabels[, -1] # remove empty column 1
+# library(keras)
+# labels <- to_categorical
+# sum(one_hot_SpecialtyLabels)  [1] 4999
+
+num_words <- 10000
+max_length <- 300
+text_vectorization <- layer_text_vectorization(max_tokens = num_words, output_sequence_length = max_length)
+
+train_set_ind <- sample(nrow(dataCT), floor(nrow(dataCT)*0.8)) # 80:20 plot training:testing
+train_data <- dataCT[train_set_ind, ]
+test_data <- dataCT[-train_set_ind, ]
+one_hot_SpecialtyLabels_trainY <- one_hot_SpecialtyLabels[train_set_ind, ]
+one_hot_SpecialtyLabels_testY  <- one_hot_SpecialtyLabels[-train_set_ind, ]
+ 
+# input <- layer_input(shape = c(1), dtype = "string")   # for raw text input as string, needs to match exp next layer
+# output <- input %>% 
+#   text_vectorization() %>% 
+#   layer_embedding(input_dim = num_words + 1, output_dim = 256) %>%
+#   layer_global_average_pooling_1d() %>%
+#   layer_dense(units = 256, activation = "relu") %>%
+#   layer_dropout(0.25) %>% 
+#   layer_dense(units = 128, activation = "relu") %>%
+#   layer_dropout(0.25) %>% 
+#   layer_dense(units = 64, activation = "relu") %>%
+#   # layer_dropout(0.25) %>% 
+#   layer_dense(units = length(keys), activation = 'softmax')
+# model2 <- keras_model(input, output)
+# 
+# model2 %>% compile(
+#   loss = 'categorical_crossentropy', 
+#   optimizer = optimizer_sgd(learning_rate = 0.01, decay = 1e-6, momentum = 0.9, nesterov = TRUE),
+#   metrics = list('accuracy')
+# )
+# 
+# history2 <- model2 %>% fit(train_data$clinicalNotes, one_hot_SpecialtyLabels_trainY,  
+#                   epochs = 10, batch_size = 512, validation_split = 0.2, verbose=2)
+# 
+# # Evaluate the model2 performance
+# results2 <- model2 %>% evaluate(test_data$clinicalNotes, one_hot_SpecialtyLabels_testY, verbose = 2)
+# results2  
+# 
+# score <- model2 %>% evaluate(test_data$clinicalNotes, one_hot_SpecialtyLabels_testY)
+# print(score)
+# y_pred <- model2 %>% predict(test_data$clinicalNotes)
+# head(apply(y_pred, 1, which.max))  # table(apply(y_pred, 1, which.max))
+# # hist(y_pred[,8])
+# table(y_pred, test_data$medical_specialty)
+# 
+# ============================================
+```
+```{r}
+model3 <- keras_model_sequential() %>% 
+  layer_hub(
+    handle = "https://tfhub.dev/google/tf2-preview/gnews-swivel-20dim/1",
+    input_shape = list(),
+    dtype = tf$string,
+    trainable = TRUE
+  ) %>% 
+  layer_dense(units = 256, activation = "relu") %>%
+  layer_dropout(0.25) %>% 
+  layer_dense(units = 128, activation = "relu") %>%
+  layer_dropout(0.25) %>% 
+  layer_dense(units = 64, activation = "relu") %>%
+  # layer_dropout(0.25) %>% 
+  layer_dense(units = length(keys), activation = 'softmax')
+
+summary(model3)
+```
+```{r}
+model3 %>% compile(
+  loss = 'categorical_crossentropy', 
+  optimizer = optimizer_sgd(learning_rate = 0.01, weight_decay = 1e-6, momentum = 0.9, nesterov = TRUE),
+  metrics = list('accuracy')
+)
+
+history3 <- model3 %>% fit(train_data$clinicalNotes, one_hot_SpecialtyLabels_trainY,  
+                  epochs = 100, batch_size = 512, validation_split = 0.2, verbose=2)
+
+results3 <- model3 %>% evaluate(test_data$clinicalNotes, one_hot_SpecialtyLabels_testY, verbose = 2)
+print(paste0("Mind that the testing-case performance metrics (Loss=", round(results3["loss"], 3), 
+             " and Accuracy=", round(results3["accuracy"], 3),
+             ") of the DNN text classification reflect results of ",
+             length(keys), " medical specialties (classes), not a binary classification!")) 
+
+score <- model3 %>% evaluate(test_data$clinicalNotes, one_hot_SpecialtyLabels_testY)
+print(score)
+
+y_pred <- model3 %>% predict(test_data$clinicalNotes)
+head(apply(y_pred, 1, which.max))  # table(apply(y_pred, 1, which.max))
+
+y_pred_class <- apply(y_pred, 1, which.max)
+# hist(y_pred[,8])
+table(y_pred_class, test_data$medical_specialty[,1])
+```
+```{r}
+# DT::datatable(matrix(table(y_pred_class, test_data$medical_specialty[,1]),40,40) )
+
+heat <- matrix(0, 40, 40)
+for ( i in 1:length(test_data$clinicalNotes)) { 
+  heat[test_data$medical_specialty[i, 1], y_pred_class[i]] =  
+    heat[test_data$medical_specialty[i, 1], y_pred_class[i]] + 1 
+}
+
+plot_ly(x =~keys, y = ~keys, z = ~heat, name="Model Performance",
+        hovertemplate = paste('<i>Matching</i>: %{z:.0f}', 
+                              '<br><b>True</b>: %{x}<br>', '<b>Pred</b>: %{y}'),
+        colors = 'Reds', type = "heatmap") %>% 
+  layout(title="Predicated Classes vs. True Clinical Units", 
+         xaxis=list(title="Actual Class"), yaxis=list(title="Predicted Class"))
+```
+
+### Binary Classification of Film Reviews
